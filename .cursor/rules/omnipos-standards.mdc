@@ -1,0 +1,47 @@
+---
+description: OmniPOS architecture and design standards
+alwaysApply: true
+---
+
+# OmniPOS Production Rule
+
+Build OmniPOS as a clean, scalable React Native POS app (Expo SDK 52, TypeScript) for multi-shop retail, offline-first sync, role-based access, inventory, orders, returns, analytics, and multi-store operations.
+
+## Non-Negotiable Architecture
+- MUST use feature-first modular architecture with clear UI/business/state/database/service separation.
+- MUST keep route screens inside `src/app/**` only.
+- MUST keep reusable UI split as `src/components/atoms/**`, `src/components/molecules/**`, `src/components/organisms/**`.
+- MUST keep business logic in `src/features/**` and shared logic in hooks.
+- MUST keep global state in Zustand slices under `src/store/**`.
+- MUST use TanStack Query for server async/cache flows.
+
+## Data and Layer Boundaries
+- MUST isolate Supabase client/config/API wrappers in `src/services/**`.
+- MUST isolate WatermelonDB schema/models/sync in `src/database/**`.
+- MUST keep constants in `src/constants/**` and typed contracts in `src/types/**`.
+- MUST NOT call Supabase directly from files in `src/app/**`.
+- MUST NOT move feature logic into presentation-only components.
+
+## Canonical Structure Expectations
+- Routes: `src/app/(auth)`, `src/app/(tabs)`, `src/app/pos`, `src/app/product`, `src/app/settings`, plus `_layout.tsx` and `index.tsx`.
+- Features: `src/features/{auth,products,orders,returns,analytics,stores}` each with `hooks.ts`, `service.ts`, `types.ts`.
+- Stores: `src/store/{authStore,storeSlice,cartStore,printerStore,syncStore,uiStore}.ts`.
+- Services: `src/services/{supabase,api,storage,printer,notifications}.ts`.
+- Database: `src/database/{schema,models,sync,watermelon}.ts`.
+- Shared primitives: `src/hooks/**`, `src/navigation/**`, `src/utils/**`, `src/theme/**`.
+
+## Design System Enforcement
+- MUST use `#0767de` for primary buttons, active states, links, highlights.
+- MUST use `#042358` for headings, icons, nav bars, strong text.
+- MUST use `#fe7403` for alerts, returns flow, badges, warnings, CTA emphasis.
+- MUST use `#fafbfb` as default background/surface.
+- MUST style primary buttons with `borderRadius: 50` (pill shape).
+- MUST style cards with `borderRadius: 20` and soft shadow.
+- MUST style inputs with `borderRadius: 14`.
+- MUST maintain a clean modern mobile SaaS/fintech visual style.
+
+## Scalability and Reliability
+- Keep multi-shop and role flows modular; avoid tightly coupled cross-feature code.
+- Preserve offline-first and sync-safe behavior when adding new features.
+- Prefer extending existing modules over adding new top-level directories.
+- Use Expo Router for routing and keep navigation primitives in `src/navigation/**`.

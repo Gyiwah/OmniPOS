@@ -4,13 +4,17 @@
     "slug": "OmniPOS",
     "version": "1.0.0",
     "orientation": "portrait",
+    "scheme": "omnipos",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "plugins": [
+      "expo-router"
+    ],
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#fafbfb"
     },
     "ios": {
       "supportsTablet": true
@@ -18,7 +22,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#fafbfb"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
