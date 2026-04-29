@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 type StoreSlice = {
   activeStoreId: string | null;
-  setActiveStore: (storeId: string) => void;
+  setActiveStore: (storeId: string | null) => void;
 };
 
 export const useStoreSlice = create<StoreSlice>((set) => ({
