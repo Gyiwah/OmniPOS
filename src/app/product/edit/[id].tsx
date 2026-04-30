@@ -1,7 +1,8 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { Q } from "@nozbe/watermelondb";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
@@ -11,18 +12,60 @@ import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
+import { database } from "@/src/database";
+import type Product from "@/src/database/models/Product";
+import { enqueueChange } from "@/src/sync/enqueue";
+import { useStoreSlice } from "@/src/store/storeSlice";
 
 export default function EditProductScreen() {
   const { id } = useLocalSearchParams<{ id?: string | string[] }>();
   const router = useRouter();
-  const productId = Array.isArray(id) ? id[0] : id;
+  const routeParam = Array.isArray(id) ? id[0] : id;
+  const activeStoreId = useStoreSlice((s) => s.activeStoreId);
+
+  const [productRef, setProductRef] = useState<Product | null>(null);
   const [imageUri, setImageUri] = useState<string | null>(null);
-  const [name, setName] = useState("Sawyer Picaridin Insect Repellent");
-  const [sku] = useState(productId ?? "050716005646");
-  const [quantity, setQuantity] = useState("20");
-  const [costPrice, setCostPrice] = useState("10.00");
-  const [sellPrice, setSellPrice] = useState("13.00");
-  const [tags, setTags] = useState("repellent, travel");
+  const [name, setName] = useState("");
+  const [sku, setSku] = useState(routeParam ?? "");
+  const [quantity, setQuantity] = useState("0");
+  const [costPrice, setCostPrice] = useState("");
+  const [sellPrice, setSellPrice] = useState("");
+  const [tags, setTags] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadProduct() {
+      if (!routeParam) return;
+      try {
+        let found: Product | null = null;
+        try {
+          found = await database.get<Product>("products").find(routeParam);
+        } catch {
+          const bySku = await database
+            .get<Product>("products")
+            .query(Q.where("sku", routeParam))
+            .fetch();
+          found = bySku[0] ?? null;
+        }
+        if (!mounted || !found) return;
+        setProductRef(found);
+        setName(found.name ?? "");
+        setSku(found.sku ?? routeParam);
+        setQuantity(String(found.stock ?? 0));
+        setCostPrice(found.costPrice == null ? "" : String(found.costPrice));
+        setSellPrice(String(found.sellPrice ?? 0));
+        setImageUri(null);
+        setTags("");
+      } catch {
+        // keep fallback values when product is unavailable in local cache
+      }
+    }
+    void loadProduct();
+    return () => {
+      mounted = false;
+    };
+  }, [routeParam]);
 
   async function pickImageFromLibrary() {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -56,15 +99,54 @@ export default function EditProductScreen() {
     }
   }
 
-  function removeProduct() {
+  async function deleteProductNow() {
+    if (!activeStoreId) {
+      Alert.alert("Store not selected", "Select a store before deleting products.");
+      return;
+    }
+    if (!productRef) {
+      Alert.alert("Product not found", "This product is not available in the local cache yet.");
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const remoteId = productRef.remoteId;
+      const skuValue = productRef.sku;
+
+      await database.write(async () => {
+        await productRef.destroyPermanently();
+      });
+
+      await enqueueChange({
+        storeId: activeStoreId,
+        entity: "products",
+        operation: "delete",
+        payload: {
+          remote_id: remoteId,
+          sku: skuValue,
+        },
+        recordId: productRef.id,
+        remoteId,
+      });
+
+      router.replace("/inventory");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Delete failed";
+      Alert.alert("Delete failed", message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function confirmDelete() {
     Alert.alert("Delete product", "Remove this product from the store?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
         onPress: () => {
-          // TODO: wire to product store/database removal action.
-          router.back();
+          void deleteProductNow();
         },
       },
     ]);
@@ -76,7 +158,7 @@ export default function EditProductScreen() {
       fixedHeader
       title="Edit Product"
       right={
-        <Pressable onPress={removeProduct} hitSlop={10} style={styles.trashBtn}>
+        <Pressable onPress={confirmDelete} hitSlop={10} style={styles.trashBtn} disabled={deleting}>
           <Ionicons name="trash-outline" size={28} color={Colors.danger} />
         </Pressable>
       }
@@ -157,7 +239,7 @@ export default function EditProductScreen() {
         />
       </SectionCard>
 
-      <PrimaryButton label="Update product" onPress={() => {}} />
+      <PrimaryButton label={deleting ? "Deleting..." : "Update product"} disabled={deleting} onPress={() => {}} />
     </AppScrollScreen>
   );
 }

@@ -69,6 +69,18 @@ async function flushProductQueue(storeId: string): Promise<void> {
           row.id = body.id;
         }
         await supabase.from("products").upsert(row, { onConflict: "store_id,sku" });
+      } else if (item.entity === "products" && item.operation === "delete") {
+        const body = JSON.parse(item.payload) as {
+          id?: string;
+          remote_id?: string;
+          sku?: string;
+        };
+        const remoteId = body.id ?? body.remote_id ?? item.remoteId;
+        if (remoteId) {
+          await supabase.from("products").delete().eq("store_id", storeId).eq("id", remoteId);
+        } else if (body.sku) {
+          await supabase.from("products").delete().eq("store_id", storeId).eq("sku", body.sku);
+        }
       }
 
       await database.write(async () => {
