@@ -6,6 +6,7 @@ const TAB_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   home: "home-outline",
   inventory: "cube-outline",
   orders: "receipt-outline",
+  returns: "return-down-back-outline",
   analytics: "bar-chart-outline",
 };
 
