@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 
 import { Avatar } from "@/src/components/atoms/Avatar";
@@ -14,7 +14,7 @@ import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
-import { MOCK_BAR_WEEK, MOCK_KPIS, MOCK_SALES_CHART } from "@/src/lib/uiMock";
+import { supabase } from "@/src/services/supabase";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
 
@@ -36,6 +36,13 @@ export default function HomeScreen() {
   const activeStoreId = useStoreSlice((s) => s.activeStoreId);
   const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [kpis, setKpis] = useState([
+    { title: "Net sales", value: "₵ 0.00", period: "Last 7 days", variant: "primary" as const },
+    { title: "Orders", value: "0", period: "Last 7 days", variant: "accent" as const },
+    { title: "Avg. ticket", value: "₵ 0.00", period: "Per completed sale", variant: "success" as const },
+  ]);
+  const [salesChart, setSalesChart] = useState<{ label: string; value: number }[]>([]);
+  const [barWeek, setBarWeek] = useState<{ label: string; sales: number; returns: number }[]>([]);
   const {
     shopName,
     shopEmail,
@@ -54,6 +61,66 @@ export default function HomeScreen() {
     if (currency === "NGN") return "₦";
     return "₵";
   }, [currency]);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadDashboard() {
+      if (!activeStoreId) return;
+      const since = new Date();
+      since.setDate(since.getDate() - 6);
+
+      const { data: orders } = await supabase
+        .from("orders")
+        .select("id, total, created_at")
+        .eq("store_id", activeStoreId)
+        .gte("created_at", since.toISOString());
+      const { data: returns } = await supabase
+        .from("returns")
+        .select("amount, created_at")
+        .eq("store_id", activeStoreId)
+        .gte("created_at", since.toISOString());
+
+      const orderRows = orders ?? [];
+      const returnRows = returns ?? [];
+      const orderTotal = orderRows.reduce((sum, o) => sum + Number(o.total ?? 0), 0);
+      const returnTotal = returnRows.reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
+      const netSales = Math.max(0, orderTotal - returnTotal);
+      const avgTicket = orderRows.length ? orderTotal / orderRows.length : 0;
+
+      const dayKeys = Array.from({ length: 7 }).map((_, idx) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (6 - idx));
+        return d;
+      });
+
+      const line = dayKeys.map((d) => {
+        const key = d.toISOString().slice(0, 10);
+        const value = orderRows
+          .filter((o) => String(o.created_at).slice(0, 10) === key)
+          .reduce((sum, o) => sum + Number(o.total ?? 0), 0);
+        return { label: d.toLocaleDateString(undefined, { weekday: "short" }).slice(0, 3), value };
+      });
+      const bar = dayKeys.map((d) => {
+        const key = d.toISOString().slice(0, 10);
+        const sales = orderRows.filter((o) => String(o.created_at).slice(0, 10) === key).length;
+        const refunds = returnRows.filter((r) => String(r.created_at).slice(0, 10) === key).length;
+        return { label: d.toLocaleDateString(undefined, { weekday: "short" }).slice(0, 1), sales, returns: refunds };
+      });
+
+      if (!mounted) return;
+      setKpis([
+        { title: "Net sales", value: `${currencySymbol} ${netSales.toFixed(2)}`, period: "Last 7 days", variant: "primary" },
+        { title: "Orders", value: String(orderRows.length), period: "Last 7 days", variant: "accent" },
+        { title: "Avg. ticket", value: `${currencySymbol} ${avgTicket.toFixed(2)}`, period: "Per completed sale", variant: "success" },
+      ]);
+      setSalesChart(line);
+      setBarWeek(bar);
+    }
+    void loadDashboard();
+    return () => {
+      mounted = false;
+    };
+  }, [activeStoreId, currencySymbol]);
 
   if (!activeStoreId) return <Redirect href="/onboarding/store" />;
 
@@ -94,11 +161,11 @@ export default function HomeScreen() {
         </SectionCard>
 
         <View style={styles.kpiRow}>
-          {MOCK_KPIS.map((k) => (
+          {kpis.map((k) => (
             <View key={k.title} style={styles.kpiCell}>
               <KPICard
                 title={k.title}
-                value={k.value.replace("₵", currencySymbol)}
+                value={k.value}
                 period={k.period}
                 variant={k.variant}
               />
@@ -108,12 +175,12 @@ export default function HomeScreen() {
 
         <SectionCard>
           <Text style={styles.sectionTitle}>Sales trend</Text>
-          <SalesLineChart data={MOCK_SALES_CHART} period="Last 7 days" />
+          <SalesLineChart data={salesChart} period="Last 7 days" />
         </SectionCard>
 
         <SectionCard>
           <Text style={styles.sectionTitle}>Orders vs Returns</Text>
-          <OrdersBarChart data={MOCK_BAR_WEEK} period="This week" />
+          <OrdersBarChart data={barWeek} period="This week" />
         </SectionCard>
 
         <SectionCard>

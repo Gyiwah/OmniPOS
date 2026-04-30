@@ -13,6 +13,7 @@ type AppScrollScreenProps = {
   title: string;
   subtitle?: string;
   right?: ReactNode;
+  left?: ReactNode;
   showBack?: boolean;
   fixedHeader?: boolean;
   children: ReactNode;
@@ -22,8 +23,9 @@ export function AppScrollScreen({
   title,
   subtitle,
   right,
+  left,
   showBack,
-  fixedHeader = false,
+  fixedHeader = true,
   children,
 }: AppScrollScreenProps) {
   const insets = useSafeAreaInsets();
@@ -40,10 +42,11 @@ export function AppScrollScreen({
         >
           <Ionicons name="chevron-back" size={24} color={Colors.primaryBlue} />
         </Pressable>
-      ) : null}
+      ) : (
+        left ?? null
+      )}
       <View style={styles.titleBlock}>
         <Text style={styles.title}>{title}</Text>
-        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       </View>
       {right ? <View style={styles.right}>{right}</View> : null}
     </View>
@@ -108,11 +111,6 @@ const styles = StyleSheet.create({
   title: {
     ...Typography.headline,
     color: Colors.textPrimary,
-  },
-  subtitle: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-    lineHeight: 22,
   },
   right: {
     marginLeft: "auto",

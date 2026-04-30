@@ -1,6 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { Q } from "@nozbe/watermelondb";
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 
@@ -12,48 +13,79 @@ import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
+import { database } from "@/src/database";
+import type Product from "@/src/database/models/Product";
 import { useOrderDraftStore } from "@/src/store/orderDraftStore";
 import { useSettingsStore } from "@/src/store/settingsStore";
+import { useStoreSlice } from "@/src/store/storeSlice";
 
-type CatalogItem = { id: string; name: string; price: number; barcode: string };
-
-const CATALOG: CatalogItem[] = [
-  { id: "p1", name: "Sawyer Picaridin Insect Repellent", price: 13, barcode: "050716005646" },
-  { id: "p2", name: "Dove advanced CARE", price: 33, barcode: "024000000000" },
-  { id: "p3", name: "Filtered water 500ml", price: 2.5, barcode: "111111111111" },
-  { id: "p4", name: "Wholewheat loaf", price: 8, barcode: "222222222222" },
-];
+type CatalogItem = { id: string; remoteId?: string; sku: string; name: string; price: number; barcode: string };
 
 function toMoney(value: number, currency: string) {
-  const symbol = currency === "USD" ? "$" : currency === "NGN" ? "?" : "?";
+  const symbol = currency === "USD" ? "$" : currency === "NGN" ? "₦" : "₵";
   return `${symbol} ${value.toFixed(2)}`;
 }
 
 export default function AddOrderScreen() {
   const router = useRouter();
+  const activeStoreId = useStoreSlice((s) => s.activeStoreId);
   const [search, setSearch] = useState("");
   const [showScanner, setShowScanner] = useState(false);
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const { lines, addOrIncrementLine, setLineQty, removeLine, clearDraft } = useOrderDraftStore();
   const { currency } = useSettingsStore();
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadProducts() {
+      if (!activeStoreId) return;
+      const rows = await database
+        .get<Product>("products")
+        .query(Q.where("store_id", activeStoreId))
+        .fetch();
+      if (!mounted) return;
+      setCatalog(
+        rows.map((row) => ({
+          id: row.id,
+          remoteId: row.remoteId,
+          sku: row.sku,
+          name: row.name,
+          price: Number(row.sellPrice ?? 0),
+          barcode: row.barcode ?? row.sku,
+        })),
+      );
+    }
+    void loadProducts();
+    return () => {
+      mounted = false;
+    };
+  }, [activeStoreId]);
 
   const total = useMemo(() => lines.reduce((sum, row) => sum + row.price * row.quantity, 0), [lines]);
 
   const matches = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return [];
-    return CATALOG.filter((item) => item.name.toLowerCase().includes(q) || item.barcode.includes(q)).slice(0, 5);
-  }, [search]);
+    return catalog.filter((item) => item.name.toLowerCase().includes(q) || item.barcode.includes(q)).slice(0, 5);
+  }, [search, catalog]);
 
   function addFromCatalog(entry: CatalogItem) {
-    addOrIncrementLine({ id: entry.id, name: entry.name, price: entry.price, barcode: entry.barcode });
+    addOrIncrementLine({
+      id: entry.id,
+      remoteId: entry.remoteId,
+      sku: entry.sku,
+      name: entry.name,
+      price: entry.price,
+      barcode: entry.barcode,
+    });
   }
 
   function addFromSearchOrScan(payload: string) {
     const clean = payload.trim();
     setSearch(clean);
     const hit =
-      CATALOG.find((item) => item.barcode === clean) ??
-      CATALOG.find((item) => item.name.toLowerCase().includes(clean.toLowerCase()));
+      catalog.find((item) => item.barcode === clean) ??
+      catalog.find((item) => item.name.toLowerCase().includes(clean.toLowerCase()));
     if (hit) addFromCatalog(hit);
   }
 
@@ -98,6 +130,7 @@ export default function AddOrderScreen() {
             ))}
           </View>
         ) : null}
+        {!showScanner && catalog.length === 0 ? <Text style={styles.empty}>No inventory products found for this store.</Text> : null}
       </SectionCard>
 
       <SectionCard>
@@ -218,8 +251,8 @@ const styles = StyleSheet.create({
   },
   stepText: { color: Colors.textWhite, fontSize: 16, lineHeight: 18, fontWeight: "700" },
   totalRow: { flexDirection: "row", justifyContent: "space-between", paddingTop: Spacing.sm },
-  totalLabel: { fontSize: 32, color: Colors.textPrimary, fontWeight: "600" },
-  totalValue: { fontSize: 44, color: Colors.textPrimary, fontWeight: "800" },
+  totalLabel: { fontSize: 22, color: Colors.textPrimary, fontWeight: "600" },
+  totalValue: { fontSize: 30, color: Colors.textPrimary, fontWeight: "800" },
   empty: { textAlign: "center", color: Colors.textMuted, paddingVertical: Spacing.sm },
   swipeBg: {
     flex: 1,

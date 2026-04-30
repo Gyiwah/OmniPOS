@@ -6,6 +6,8 @@ export type DraftLine = {
   price: number;
   quantity: number;
   barcode?: string;
+  remoteId?: string;
+  sku?: string;
 };
 
 type DiscountMode = "percentage" | "amount";

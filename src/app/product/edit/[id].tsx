@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useState } from "react";
 import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import NetInfo from "@react-native-community/netinfo";
 
 import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { TextInput } from "@/src/components/atoms/TextInput";
@@ -15,6 +16,7 @@ import { Typography } from "@/src/constants/typography";
 import { database } from "@/src/database";
 import type Product from "@/src/database/models/Product";
 import { enqueueChange } from "@/src/sync/enqueue";
+import { runSyncCycle } from "@/src/sync/syncEngine";
 import { useStoreSlice } from "@/src/store/storeSlice";
 
 export default function EditProductScreen() {
@@ -32,6 +34,7 @@ export default function EditProductScreen() {
   const [sellPrice, setSellPrice] = useState("");
   const [tags, setTags] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -152,6 +155,86 @@ export default function EditProductScreen() {
     ]);
   }
 
+  async function updateProductNow() {
+    if (!activeStoreId) {
+      Alert.alert("Store not selected", "Select a store before updating products.");
+      return;
+    }
+    if (!productRef) {
+      Alert.alert("Product not found", "This product is not available in the local cache yet.");
+      return;
+    }
+
+    const cleanName = name.trim();
+    const stock = Number(quantity || 0);
+    const sell = Number(sellPrice || 0);
+    const cost = costPrice.trim().length ? Number(costPrice) : undefined;
+    if (!cleanName) {
+      Alert.alert("Missing fields", "Product name is required.");
+      return;
+    }
+    if (!Number.isFinite(stock) || stock < 0 || !Number.isFinite(sell) || sell < 0) {
+      Alert.alert("Invalid values", "Stock and sell price must be valid non-negative numbers.");
+      return;
+    }
+    if (cost != null && (!Number.isFinite(cost) || cost < 0)) {
+      Alert.alert("Invalid cost price", "Cost price must be empty or a valid non-negative number.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const now = Date.now();
+      await database.write(async () => {
+        await productRef.update((rec) => {
+          rec.name = cleanName;
+          rec.stock = Math.floor(stock);
+          rec.sellPrice = sell;
+          rec.costPrice = cost;
+          rec.barcode = sku.trim() || rec.barcode;
+          rec.updatedAt = now;
+          rec.dirty = true;
+        });
+      });
+
+      await enqueueChange({
+        storeId: activeStoreId,
+        entity: "products",
+        operation: "upsert",
+        recordId: productRef.id,
+        remoteId: productRef.remoteId,
+        payload: {
+          id: productRef.remoteId ?? productRef.id,
+          remote_id: productRef.remoteId,
+          name: cleanName,
+          sku: productRef.sku,
+          barcode: sku.trim() || productRef.sku,
+          stock: Math.floor(stock),
+          sell_price: sell,
+          cost_price: cost,
+          image_url: imageUri ?? null,
+          tags: tags
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean),
+        },
+      });
+
+      const net = await NetInfo.fetch();
+      if (net.isConnected) {
+        void runSyncCycle(activeStoreId);
+      }
+
+      Alert.alert("Updated", "Product updated successfully.");
+      router.replace("/inventory");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Update failed";
+      Alert.alert("Update failed", message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <AppScrollScreen
       showBack
@@ -239,7 +322,12 @@ export default function EditProductScreen() {
         />
       </SectionCard>
 
-      <PrimaryButton label={deleting ? "Deleting..." : "Update product"} disabled={deleting} onPress={() => {}} />
+      <PrimaryButton
+        label={saving ? "Updating..." : deleting ? "Deleting..." : "Update product"}
+        loading={saving}
+        disabled={deleting || saving}
+        onPress={() => void updateProductNow()}
+      />
     </AppScrollScreen>
   );
 }

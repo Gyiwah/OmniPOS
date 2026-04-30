@@ -5,6 +5,7 @@ import { NativeModules, Platform } from "react-native";
 
 import { Product, SyncQueueItem } from "./models";
 import wmSchema from "./wmSchema";
+let warnedMissingBridge = false;
 
 function hasWatermelonNativeBridge(): boolean {
   return Boolean(
@@ -35,10 +36,13 @@ function createAdapter() {
   }
 
   if (__DEV__) {
-    // eslint-disable-next-line no-console -- intentional operator-facing warning
-    console.warn(
-      "[OmniPOS] WMDatabaseBridge missing — using in-memory Loki (data resets on reload). Rebuild native: `npx expo run:android` or `npm run dev:android`.",
-    );
+    if (!warnedMissingBridge) {
+      warnedMissingBridge = true;
+      // eslint-disable-next-line no-console -- intentional operator-facing warning
+      console.warn(
+        "[OmniPOS] WMDatabaseBridge missing — using in-memory Loki (data resets on reload). Rebuild native: `npx expo run:android` or `npm run dev:android`.",
+      );
+    }
     return new LokiJSAdapter({
       schema: wmSchema,
       dbName: "omnipos",

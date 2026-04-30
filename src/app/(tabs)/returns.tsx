@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
@@ -9,8 +9,9 @@ import { ReturnCard } from "@/src/components/molecules/ReturnCard";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
 import { Colors } from "@/src/constants/colors";
-import { MOCK_RETURNS } from "@/src/lib/uiMock";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { supabase } from "@/src/services/supabase";
+import { useStoreSlice } from "@/src/store/storeSlice";
 
 type DateFilter = "all" | "today" | "7d" | "30d";
 
@@ -23,13 +24,57 @@ const FILTER_LABEL: Record<DateFilter, string> = {
 
 export default function ReturnsScreen() {
   const router = useRouter();
+  const activeStoreId = useStoreSlice((s) => s.activeStoreId);
   const [query, setQuery] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const [rows, setRows] = useState<
+    { id: string; dateLabel: string; itemCount: number; totalRefundLabel: string; thumbnail: string | null }[]
+  >([]);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadReturns() {
+      if (!activeStoreId) return;
+      const { data: returns } = await supabase
+        .from("returns")
+        .select("id, order_id, amount, created_at")
+        .eq("store_id", activeStoreId)
+        .order("created_at", { ascending: false })
+        .limit(120);
+      const orderIds = (returns ?? []).map((r) => String(r.order_id));
+      const counts = new Map<string, number>();
+      if (orderIds.length > 0) {
+        const { data: items } = await supabase
+          .from("order_items")
+          .select("order_id, quantity")
+          .eq("store_id", activeStoreId)
+          .in("order_id", orderIds);
+        (items ?? []).forEach((item) => {
+          const key = String(item.order_id);
+          counts.set(key, (counts.get(key) ?? 0) + Number(item.quantity ?? 0));
+        });
+      }
+      if (!mounted) return;
+      setRows(
+        (returns ?? []).map((r) => ({
+          id: String(r.id),
+          dateLabel: new Date(String(r.created_at)).toLocaleDateString(),
+          itemCount: counts.get(String(r.order_id)) ?? 1,
+          totalRefundLabel: `₵ ${Number(r.amount ?? 0).toFixed(2)}`,
+          thumbnail: null,
+        })),
+      );
+    }
+    void loadReturns();
+    return () => {
+      mounted = false;
+    };
+  }, [activeStoreId]);
 
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const base = MOCK_RETURNS.filter(
+    const base = rows.filter(
       (row) =>
         !q ||
         row.dateLabel.toLowerCase().includes(q) ||
@@ -41,10 +86,10 @@ export default function ReturnsScreen() {
     if (dateFilter === "7d") return base.slice(0, 2);
     if (dateFilter === "30d") return base;
     return base;
-  }, [dateFilter, query]);
+  }, [dateFilter, query, rows]);
 
   return (
-    <AppScrollScreen title="Returns" subtitle="Recent refunds (static).">
+    <AppScrollScreen title="Returns">
       <PrimaryButton label="Process new return" onPress={() => router.push("/pos/add-return")} />
 
       <SectionCard>

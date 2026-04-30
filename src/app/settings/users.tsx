@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Avatar } from "@/src/components/atoms/Avatar";
 import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
@@ -11,6 +11,7 @@ import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
 
 type Role = "cashier" | "manager" | "owner";
+type Invite = { id: string; email: string; role: Role; sentAt: string; status: "pending" | "accepted" };
 
 const STAFF = [
   { id: "u1", name: "Ama Mensah", role: "cashier" as Role, email: "ama@northside.shop" },
@@ -20,9 +21,31 @@ const STAFF = [
 export default function SettingsUsersScreen() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [role, setRole] = useState<Role>("cashier");
+  const [invites, setInvites] = useState<Invite[]>([]);
+
+  function sendInvite() {
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      Alert.alert("Invalid email", "Enter a valid email address for the invite.");
+      return;
+    }
+    const invite: Invite = {
+      id: `inv-${Date.now()}`,
+      email,
+      role,
+      sentAt: new Date().toLocaleString(),
+      status: "pending",
+    };
+    setInvites((prev) => [invite, ...prev]);
+    setInviteEmail("");
+  }
+
+  function resendInvite(email: string) {
+    Alert.alert("Invite resent", `A fresh invite link was sent to ${email}.`);
+  }
 
   return (
-    <AppScrollScreen showBack title="Users" subtitle="Invite staff and manage roles.">
+    <AppScrollScreen showBack title="Users" subtitle="Invite staff and manage roles across locations.">
       <SectionCard>
         <Text style={styles.sectionTitle}>Team members</Text>
         <View style={styles.list}>
@@ -42,7 +65,7 @@ export default function SettingsUsersScreen() {
       </SectionCard>
 
       <SectionCard>
-        <Text style={styles.sectionTitle}>Invite user</Text>
+        <Text style={styles.sectionTitle}>Multi-user invite</Text>
         <TextInput
           label="Email address"
           value={inviteEmail}
@@ -62,9 +85,32 @@ export default function SettingsUsersScreen() {
             </Pressable>
           ))}
         </View>
+        <PrimaryButton label="Send invite" onPress={sendInvite} />
       </SectionCard>
 
-      <PrimaryButton label="Send invite" onPress={() => {}} />
+      <SectionCard>
+        <Text style={styles.sectionTitle}>Pending invites</Text>
+        <View style={styles.list}>
+          {invites.map((invite) => (
+            <View key={invite.id} style={styles.inviteRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.name}>{invite.email}</Text>
+                <Text style={styles.meta}>
+                  {invite.role.toUpperCase()} · {invite.sentAt} · {invite.status}
+                </Text>
+              </View>
+              <PrimaryButton
+                label="Resend"
+                variant="outline"
+                fullWidth={false}
+                style={styles.resendBtn}
+                onPress={() => resendInvite(invite.email)}
+              />
+            </View>
+          ))}
+          {invites.length === 0 ? <Text style={styles.empty}>No invites yet.</Text> : null}
+        </View>
+      </SectionCard>
     </AppScrollScreen>
   );
 }
@@ -82,6 +128,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.input,
+    backgroundColor: Colors.surface,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.sm,
+  },
+  inviteRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: Radius.input,
@@ -132,5 +189,12 @@ const styles = StyleSheet.create({
   },
   roleTextActive: {
     color: Colors.primaryBlue,
+  },
+  resendBtn: {
+    minWidth: 86,
+  },
+  empty: {
+    color: Colors.textMuted,
+    textAlign: "center",
   },
 });

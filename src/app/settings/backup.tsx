@@ -1,5 +1,7 @@
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
@@ -10,12 +12,47 @@ import { Typography } from "@/src/constants/typography";
 
 export default function SettingsBackupScreen() {
   const [autoBackup, setAutoBackup] = useState(true);
+  const [lastBackup, setLastBackup] = useState("Today, 04:30 AM");
+  const [running, setRunning] = useState(false);
+
+  async function runBackupNow() {
+    setRunning(true);
+    setTimeout(() => {
+      setLastBackup(new Date().toLocaleString());
+      setRunning(false);
+    }, 900);
+  }
+
+  async function exportCsv() {
+    try {
+      const csv = [
+        "date,metric,value",
+        `${new Date().toISOString()},orders,24`,
+        `${new Date().toISOString()},sales,1880.40`,
+        `${new Date().toISOString()},returns,3`,
+      ].join("\n");
+      const uri = `${FileSystem.cacheDirectory}omnipos-export-${Date.now()}.csv`;
+      await FileSystem.writeAsStringAsync(uri, csv, { encoding: FileSystem.EncodingType.UTF8 });
+      const available = await Sharing.isAvailableAsync();
+      if (available) {
+        await Sharing.shareAsync(uri, {
+          mimeType: "text/csv",
+          dialogTitle: "Export OmniPOS CSV",
+          UTI: "public.comma-separated-values-text",
+        });
+      } else {
+        Alert.alert("CSV exported", `Saved to ${uri}`);
+      }
+    } catch (error) {
+      Alert.alert("Export failed", error instanceof Error ? error.message : "Could not create CSV export");
+    }
+  }
 
   return (
-    <AppScrollScreen showBack title="Backup" subtitle="Configure backup frequency and restore points.">
+    <AppScrollScreen showBack title="Backup" subtitle="Configure backup frequency, restore points, and CSV export.">
       <SectionCard>
         <Text style={styles.sectionTitle}>Status</Text>
-        <Text style={styles.meta}>Last backup: Today, 04:30 AM</Text>
+        <Text style={styles.meta}>Last backup: {lastBackup}</Text>
         <Text style={styles.meta}>Destination: Secure cloud vault</Text>
       </SectionCard>
 
@@ -32,8 +69,12 @@ export default function SettingsBackupScreen() {
         <Text style={styles.meta}>When enabled, sales + inventory data is synced every day.</Text>
       </SectionCard>
 
-      <PrimaryButton label="Run backup now" onPress={() => {}} />
-      <PrimaryButton label="Restore from backup" variant="outline" onPress={() => {}} />
+      <SectionCard>
+        <Text style={styles.sectionTitle}>Advanced</Text>
+        <PrimaryButton label={running ? "Running backup..." : "Run backup now"} disabled={running} onPress={() => void runBackupNow()} />
+        <PrimaryButton label="Restore from backup" variant="outline" onPress={() => {}} />
+        <PrimaryButton label="CSV export" variant="outline" onPress={() => void exportCsv()} />
+      </SectionCard>
     </AppScrollScreen>
   );
 }

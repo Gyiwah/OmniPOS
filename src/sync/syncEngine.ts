@@ -13,7 +13,9 @@ type RemoteProduct = {
   store_id: string;
   name: string;
   sku: string;
+  barcode: string | null;
   price: number;
+  cost_price: number | null;
   stock: number;
   updated_at: string;
 };
@@ -54,15 +56,19 @@ async function flushProductQueue(storeId: string): Promise<void> {
           id?: string;
           name?: string;
           sku?: string;
+          barcode?: string;
           sell_price?: number;
           price?: number;
+          cost_price?: number;
           stock?: number;
         };
         const row: Record<string, unknown> = {
           store_id: storeId,
           name: body.name ?? "",
           sku: body.sku ?? "",
+          barcode: body.barcode ?? null,
           price: Number(body.sell_price ?? body.price ?? 0),
+          cost_price: body.cost_price == null ? null : Number(body.cost_price),
           stock: Number(body.stock ?? 0),
         };
         if (body.id) {
@@ -130,6 +136,8 @@ async function pullProducts(storeId: string): Promise<void> {
           rec.name = row.name;
           rec.stock = row.stock;
           rec.sellPrice = Number(row.price);
+          rec.costPrice = row.cost_price == null ? undefined : Number(row.cost_price);
+          rec.barcode = row.barcode ?? undefined;
           rec.updatedAt = resolvedTs;
           rec.dirty = false;
         });
@@ -143,8 +151,8 @@ async function pullProducts(storeId: string): Promise<void> {
           rec.sellPrice = Number(row.price);
           rec.updatedAt = resolvedTs;
           rec.dirty = false;
-          rec.costPrice = undefined;
-          rec.barcode = undefined;
+          rec.costPrice = row.cost_price == null ? undefined : Number(row.cost_price);
+          rec.barcode = row.barcode ?? undefined;
         });
       }
     }

@@ -1,7 +1,10 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as ImagePicker from "expo-image-picker";
+import { Q } from "@nozbe/watermelondb";
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import NetInfo from "@react-native-community/netinfo";
 
 import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { TextInput } from "@/src/components/atoms/TextInput";
@@ -11,8 +14,15 @@ import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
+import { database } from "@/src/database";
+import type Product from "@/src/database/models/Product";
+import { enqueueChange } from "@/src/sync/enqueue";
+import { runSyncCycle } from "@/src/sync/syncEngine";
+import { useStoreSlice } from "@/src/store/storeSlice";
 
 export default function AddProductScreen() {
+  const router = useRouter();
+  const activeStoreId = useStoreSlice((s) => s.activeStoreId);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
@@ -21,6 +31,7 @@ export default function AddProductScreen() {
   const [sellPrice, setSellPrice] = useState("");
   const [tags, setTags] = useState("");
   const [showScanner, setShowScanner] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   async function pickImageFromLibrary() {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -51,6 +62,96 @@ export default function AddProductScreen() {
 
     if (!result.canceled) {
       setImageUri(result.assets[0]?.uri ?? null);
+    }
+  }
+
+  async function saveProduct() {
+    if (!activeStoreId) {
+      Alert.alert("Store not selected", "Select an active store before saving products.");
+      return;
+    }
+
+    const cleanName = name.trim();
+    const cleanSku = sku.trim();
+    const stock = Number(quantity || 0);
+    const sell = Number(sellPrice || 0);
+    const cost = costPrice.trim().length ? Number(costPrice) : undefined;
+    const barcode = cleanSku;
+
+    if (!cleanName || !cleanSku) {
+      Alert.alert("Missing fields", "Product name and SKU are required.");
+      return;
+    }
+    if (!Number.isFinite(stock) || stock < 0 || !Number.isFinite(sell) || sell < 0) {
+      Alert.alert("Invalid values", "Stock and sell price must be valid non-negative numbers.");
+      return;
+    }
+    if (cost != null && (!Number.isFinite(cost) || cost < 0)) {
+      Alert.alert("Invalid cost price", "Cost price must be empty or a valid non-negative number.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const existing = await database
+        .get<Product>("products")
+        .query(Q.where("store_id", activeStoreId), Q.where("sku", cleanSku))
+        .fetch();
+      if (existing.length > 0) {
+        Alert.alert("Duplicate SKU", "A product with this SKU already exists in this store.");
+        return;
+      }
+
+      const now = Date.now();
+      let createdId = "";
+      await database.write(async () => {
+        const rec = await database.get<Product>("products").create((r) => {
+          r.storeId = activeStoreId;
+          r.name = cleanName;
+          r.sku = cleanSku;
+          r.barcode = barcode;
+          r.stock = Math.floor(stock);
+          r.sellPrice = sell;
+          r.costPrice = cost;
+          r.updatedAt = now;
+          r.dirty = true;
+        });
+        createdId = rec.id;
+      });
+
+      await enqueueChange({
+        storeId: activeStoreId,
+        entity: "products",
+        operation: "upsert",
+        recordId: createdId,
+        payload: {
+          id: createdId,
+          name: cleanName,
+          sku: cleanSku,
+          barcode,
+          stock: Math.floor(stock),
+          sell_price: sell,
+          cost_price: cost,
+          image_url: imageUri ?? null,
+          tags: tags
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean),
+        },
+      });
+
+      const net = await NetInfo.fetch();
+      if (net.isConnected) {
+        void runSyncCycle(activeStoreId);
+      }
+
+      Alert.alert("Saved", "Product added successfully.");
+      router.replace("/inventory");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to save product";
+      Alert.alert("Save failed", message);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -156,7 +257,7 @@ export default function AddProductScreen() {
         />
       </SectionCard>
 
-      <PrimaryButton label="Save product" onPress={() => {}} />
+      <PrimaryButton label={saving ? "Saving..." : "Save product"} loading={saving} disabled={saving} onPress={() => void saveProduct()} />
     </AppScrollScreen>
   );
 }

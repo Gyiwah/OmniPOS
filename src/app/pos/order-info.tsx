@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { TextInput } from "@/src/components/atoms/TextInput";
@@ -10,8 +10,11 @@ import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
+import { supabase } from "@/src/services/supabase";
+import { useAuthStore } from "@/src/store/authStore";
 import { useOrderDraftStore } from "@/src/store/orderDraftStore";
 import { useSettingsStore } from "@/src/store/settingsStore";
+import { useStoreSlice } from "@/src/store/storeSlice";
 
 function symbolFor(currency: string) {
   if (currency === "USD") return "$";
@@ -21,10 +24,25 @@ function symbolFor(currency: string) {
 
 export default function OrderInfoScreen() {
   const router = useRouter();
-  const { lines, discountMode, discountValue, amountPaid, customerName, customerPhone, shippingAddress, setDiscountMode, setDiscountValue, setAmountPaid, setCustomer } =
-    useOrderDraftStore();
+  const activeStoreId = useStoreSlice((s) => s.activeStoreId);
+  const userId = useAuthStore((s) => s.userId);
+  const {
+    lines,
+    discountMode,
+    discountValue,
+    amountPaid,
+    customerName,
+    customerPhone,
+    shippingAddress,
+    setDiscountMode,
+    setDiscountValue,
+    setAmountPaid,
+    setCustomer,
+    clearDraft,
+  } = useOrderDraftStore();
   const { currency, taxRate, vatRate, serviceRate } = useSettingsStore();
   const [customerOpen, setCustomerOpen] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   const subtotal = useMemo(() => lines.reduce((sum, line) => sum + line.price * line.quantity, 0), [lines]);
   const discountAmount = useMemo(
@@ -37,7 +55,82 @@ export default function OrderInfoScreen() {
   const service = taxedBase * (serviceRate / 100);
   const total = taxedBase + tax + vat + service;
   const change = Math.max(0, amountPaid - total);
+  const balance = Math.max(0, total - amountPaid);
   const sym = symbolFor(currency);
+
+  async function createReceipt() {
+    if (!activeStoreId) {
+      Alert.alert("Store missing", "Select an active store before creating receipts.");
+      return;
+    }
+    if (lines.length === 0) {
+      Alert.alert("No items", "Add at least one item to create an order.");
+      return;
+    }
+
+    const orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    setSubmitting(true);
+    try {
+      const fallbackUser = (await supabase.auth.getUser()).data.user?.id ?? null;
+      const cashierUserId = userId ?? fallbackUser;
+      if (!cashierUserId) {
+        Alert.alert("Not signed in", "Sign in again before creating an order.");
+        return;
+      }
+      await supabase.from("profiles").upsert({ id: cashierUserId }, { onConflict: "id" });
+
+      const { data: inserted, error } = await supabase
+        .from("orders")
+        .insert({
+          store_id: activeStoreId,
+          cashier_user_id: cashierUserId,
+          order_number: orderNumber,
+          status: "completed",
+          subtotal,
+          tax,
+          discount: discountAmount,
+          total,
+          tax_rate: taxRate,
+          vat_rate: vatRate,
+          service_rate: serviceRate,
+          discount_mode: discountMode,
+          discount_value: discountValue,
+          amount_paid: amountPaid,
+          change_due: change,
+          customer_name: customerName || null,
+          customer_phone: customerPhone || null,
+          shipping_address: shippingAddress || null,
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+      if (!inserted?.id) throw new Error("Order created but missing id.");
+
+      const linesPayload = lines.map((line) => ({
+        order_id: inserted.id,
+        store_id: activeStoreId,
+        product_id: line.remoteId ?? null,
+        sku: line.sku ?? line.barcode ?? null,
+        barcode: line.barcode ?? null,
+        product_name: line.name,
+        unit_price: line.price,
+        quantity: line.quantity,
+        line_total: line.price * line.quantity,
+      }));
+      const { error: itemErr } = await supabase.from("order_items").insert(linesPayload);
+      if (itemErr && !itemErr.message.toLowerCase().includes("order_items")) {
+        throw itemErr;
+      }
+
+      clearDraft();
+      router.push(`/pos/receipt/${inserted.id}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to create order";
+      Alert.alert("Create order failed", message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <AppScrollScreen showBack title="Order info" subtitle="Apply discounts, charges, and capture optional customer details.">
@@ -77,10 +170,18 @@ export default function OrderInfoScreen() {
           />
         </View>
         <View style={styles.changeBox}>
-          <Text style={styles.changeLabel}>Change</Text>
-          <Text style={styles.changeVal}>
-            {sym} {change.toFixed(2)}
-          </Text>
+          <View style={styles.amountSplitRow}>
+            <Text style={styles.changeLabel}>Change</Text>
+            <Text style={styles.changeVal}>
+              {sym} {change.toFixed(2)}
+            </Text>
+          </View>
+          <View style={styles.amountSplitRow}>
+            <Text style={styles.changeLabel}>Balance</Text>
+            <Text style={[styles.changeVal, balance > 0 && styles.balanceVal]}>
+              {sym} {balance.toFixed(2)}
+            </Text>
+          </View>
         </View>
         <Text style={styles.breakdown}>
           Subtotal {sym}
@@ -121,14 +222,19 @@ export default function OrderInfoScreen() {
         ) : null}
       </SectionCard>
 
-      <PrimaryButton label="Create Receipt" onPress={() => router.push("/pos/receipt/demo")} />
+      <PrimaryButton
+        label={submitting ? "Creating..." : "Create Receipt"}
+        loading={submitting}
+        disabled={submitting}
+        onPress={() => void createReceipt()}
+      />
     </AppScrollScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  totalLabel: { fontSize: 32, color: Colors.textPrimary, fontWeight: "600" },
-  totalValue: { fontSize: 52, color: Colors.textPrimary, fontWeight: "800", marginTop: 6 },
+  totalLabel: { fontSize: 22, color: Colors.textPrimary, fontWeight: "600" },
+  totalValue: { fontSize: 34, color: Colors.textPrimary, fontWeight: "800", marginTop: 6 },
   discountRow: {
     flexDirection: "row",
     gap: Spacing.xs,
@@ -178,8 +284,10 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     gap: 4,
   },
-  changeLabel: { fontSize: 36, color: Colors.textPrimary, fontWeight: "600" },
-  changeVal: { fontSize: 50, color: "#e05757", fontWeight: "800" },
+  amountSplitRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  changeLabel: { fontSize: 20, color: Colors.textPrimary, fontWeight: "600" },
+  changeVal: { fontSize: 28, color: "#e05757", fontWeight: "800" },
+  balanceVal: { color: Colors.danger },
   breakdown: {
     marginTop: Spacing.xs,
     color: Colors.textMuted,

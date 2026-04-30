@@ -12,9 +12,31 @@ type ReceiptPayload = {
   dateLabel?: string;
 };
 
+export type ReceiptLine = {
+  id: string;
+  name: string;
+  quantity: number;
+  price: number;
+};
+
+export type ReceiptData = {
+  lines: ReceiptLine[];
+  discountMode: "percentage" | "amount";
+  discountValue: number;
+  amountPaid: number;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  shippingAddress?: string | null;
+  taxRate: number;
+  vatRate: number;
+  serviceRate: number;
+  currency?: string;
+};
+
 type ReceiptDocumentProps = {
   order?: ReceiptPayload;
   store?: { name: string };
+  data?: ReceiptData;
   onPrint?: () => void;
   onShare?: () => void;
 };
@@ -36,19 +58,31 @@ function BarcodeVisual() {
   );
 }
 
-export function ReceiptDocument({ order, store, onPrint, onShare }: ReceiptDocumentProps) {
+export function ReceiptDocument({ order, store, data, onPrint, onShare }: ReceiptDocumentProps) {
+  const draft = useOrderDraftStore();
   const { lines, discountMode, discountValue, amountPaid, customerName, customerPhone, shippingAddress } =
     useOrderDraftStore();
   const { currency, taxRate, vatRate, serviceRate } = useSettingsStore();
-  const sym = currencySymbol(currency);
-  const subtotal = lines.reduce((sum, line) => sum + line.price * line.quantity, 0);
-  const discount = discountMode === "percentage" ? subtotal * (discountValue / 100) : discountValue;
+  const sourceLines = data?.lines ?? lines;
+  const sourceDiscountMode = data?.discountMode ?? draft.discountMode;
+  const sourceDiscountValue = data?.discountValue ?? draft.discountValue;
+  const sourceAmountPaid = data?.amountPaid ?? draft.amountPaid;
+  const sourceCustomerName = data?.customerName ?? draft.customerName;
+  const sourceCustomerPhone = data?.customerPhone ?? draft.customerPhone;
+  const sourceShippingAddress = data?.shippingAddress ?? draft.shippingAddress;
+  const sourceTaxRate = data?.taxRate ?? taxRate;
+  const sourceVatRate = data?.vatRate ?? vatRate;
+  const sourceServiceRate = data?.serviceRate ?? serviceRate;
+  const sourceCurrency = data?.currency ?? currency;
+  const sym = currencySymbol(sourceCurrency);
+  const subtotal = sourceLines.reduce((sum, line) => sum + line.price * line.quantity, 0);
+  const discount = sourceDiscountMode === "percentage" ? subtotal * (sourceDiscountValue / 100) : sourceDiscountValue;
   const base = Math.max(0, subtotal - discount);
-  const tax = base * (taxRate / 100);
-  const vat = base * (vatRate / 100);
-  const service = base * (serviceRate / 100);
+  const tax = base * (sourceTaxRate / 100);
+  const vat = base * (sourceVatRate / 100);
+  const service = base * (sourceServiceRate / 100);
   const total = base + tax + vat + service;
-  const change = Math.max(0, amountPaid - total);
+  const change = Math.max(0, sourceAmountPaid - total);
 
   return (
     <View style={styles.page}>
@@ -68,7 +102,7 @@ export function ReceiptDocument({ order, store, onPrint, onShare }: ReceiptDocum
             <Text style={styles.cardTitle}>Item</Text>
             <Text style={styles.cardTitle}>Price</Text>
           </View>
-          {lines.map((line) => (
+          {sourceLines.map((line) => (
             <View key={line.id} style={styles.itemRow}>
               <Text style={styles.itemText}>
                 {line.quantity}x {line.name}
@@ -92,19 +126,21 @@ export function ReceiptDocument({ order, store, onPrint, onShare }: ReceiptDocum
           <View style={styles.rowBetween}>
             <Text style={styles.meta}>Discount</Text>
             <Text style={styles.meta}>
-              {discountMode === "percentage" ? `${discountValue}%` : `${sym} ${discountValue.toFixed(2)}`}
+              {sourceDiscountMode === "percentage"
+                ? `${sourceDiscountValue}%`
+                : `${sym} ${sourceDiscountValue.toFixed(2)}`}
             </Text>
           </View>
           <View style={styles.rowBetween}>
-            <Text style={styles.meta}>Tax {taxRate}%</Text>
+            <Text style={styles.meta}>Tax {sourceTaxRate}%</Text>
             <Text style={styles.meta}>{tax.toFixed(2)}</Text>
           </View>
           <View style={styles.rowBetween}>
-            <Text style={styles.meta}>VAT {vatRate}%</Text>
+            <Text style={styles.meta}>VAT {sourceVatRate}%</Text>
             <Text style={styles.meta}>{vat.toFixed(2)}</Text>
           </View>
           <View style={styles.rowBetween}>
-            <Text style={styles.meta}>Service {serviceRate}%</Text>
+            <Text style={styles.meta}>Service {sourceServiceRate}%</Text>
             <Text style={styles.meta}>{service.toFixed(2)}</Text>
           </View>
         </View>
@@ -118,7 +154,7 @@ export function ReceiptDocument({ order, store, onPrint, onShare }: ReceiptDocum
           </View>
           <View style={styles.rowBetween}>
             <Text style={styles.meta}>Amount Paid</Text>
-            <Text style={styles.meta}>{amountPaid.toFixed(2)}</Text>
+            <Text style={styles.meta}>{sourceAmountPaid.toFixed(2)}</Text>
           </View>
         </View>
 
@@ -126,15 +162,15 @@ export function ReceiptDocument({ order, store, onPrint, onShare }: ReceiptDocum
           <Text style={styles.cardTitle}>Customer Info</Text>
           <View style={styles.rowBetween}>
             <Text style={styles.meta}>Name</Text>
-            <Text style={styles.meta}>{customerName || "Optional"}</Text>
+            <Text style={styles.meta}>{sourceCustomerName || "Optional"}</Text>
           </View>
           <View style={styles.rowBetween}>
             <Text style={styles.meta}>Phone</Text>
-            <Text style={styles.meta}>{customerPhone || "Optional"}</Text>
+            <Text style={styles.meta}>{sourceCustomerPhone || "Optional"}</Text>
           </View>
           <View style={styles.rowBetween}>
             <Text style={styles.meta}>Shipping Address</Text>
-            <Text style={styles.meta}>{shippingAddress || "Optional"}</Text>
+            <Text style={styles.meta}>{sourceShippingAddress || "Optional"}</Text>
           </View>
         </View>
 

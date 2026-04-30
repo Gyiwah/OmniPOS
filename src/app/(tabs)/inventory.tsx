@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
+import { Q } from "@nozbe/watermelondb";
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
 import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
@@ -12,17 +14,75 @@ import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
-import { MOCK_PRODUCTS } from "@/src/lib/uiMock";
+import { database } from "@/src/database";
+import type Product from "@/src/database/models/Product";
+import type SyncQueueItem from "@/src/database/models/SyncQueueItem";
+import { useStoreSlice } from "@/src/store/storeSlice";
+
+type InventoryRow = {
+  id: string;
+  name: string;
+  stockCount: number;
+  lowStockThreshold: number;
+  imageUrl?: string | null;
+};
 
 export default function InventoryScreen() {
   const router = useRouter();
+  const activeStoreId = useStoreSlice((s) => s.activeStoreId);
   const [query, setQuery] = useState("");
   const [showScanner, setShowScanner] = useState(false);
   const [stockFilter, setStockFilter] = useState<"all" | "low" | "out">("all");
+  const [products, setProducts] = useState<InventoryRow[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      async function loadInventory() {
+        if (!activeStoreId) {
+          if (mounted) setProducts([]);
+          return;
+        }
+        const rows = await database
+          .get<Product>("products")
+          .query(Q.where("store_id", activeStoreId))
+          .fetch();
+        const queueRows = await database
+          .get<SyncQueueItem>("sync_queue")
+          .query(Q.where("store_id", activeStoreId), Q.where("entity", "products"), Q.where("operation", "upsert"))
+          .fetch();
+        const imageBySku = new Map<string, string>();
+        queueRows.forEach((row) => {
+          try {
+            const payload = JSON.parse(row.payload) as { sku?: string; image_url?: string | null };
+            if (payload.sku && payload.image_url) {
+              imageBySku.set(payload.sku, payload.image_url);
+            }
+          } catch {
+            // ignore malformed queue payload
+          }
+        });
+        if (!mounted) return;
+        setProducts(
+          rows.map((p) => ({
+            id: p.id,
+            name: p.name,
+            stockCount: Number(p.stock ?? 0),
+            lowStockThreshold: 10,
+            imageUrl: imageBySku.get(p.sku) ?? null,
+          })),
+        );
+      }
+      void loadInventory();
+      return () => {
+        mounted = false;
+      };
+    }, [activeStoreId]),
+  );
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return MOCK_PRODUCTS.filter((p) => {
+    return products.filter((p) => {
       if (stockFilter === "out" && p.stockCount > 0) return false;
       if (stockFilter === "low" && !(p.stockCount <= p.lowStockThreshold)) return false;
       if (!q) return true;
@@ -32,10 +92,10 @@ export default function InventoryScreen() {
         String(p.stockCount).includes(q)
       );
     });
-  }, [query, stockFilter]);
+  }, [products, query, stockFilter]);
 
   return (
-    <AppScrollScreen title="Inventory" subtitle="Stock overview (static).">
+    <AppScrollScreen title="Inventory" subtitle="Stock overview.">
       <SectionCard>
         <TextInput
           label="Search"
@@ -99,6 +159,7 @@ export default function InventoryScreen() {
           {rows.map((p) => (
             <ProductCard
               key={p.id}
+              imageUrl={p.imageUrl}
               name={p.name}
               stockCount={p.stockCount}
               lowStockThreshold={p.lowStockThreshold}
