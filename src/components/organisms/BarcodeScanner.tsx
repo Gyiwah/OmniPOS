@@ -1,7 +1,10 @@
-import { StyleSheet, Text, View } from "react-native";
+import { CameraView, type BarcodeScanningResult, useCameraPermissions } from "expo-camera";
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
+import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 
 /** Stage-1 scaffold: swaps to react-native-vision-camera + barcode plugin in POS build */
 type BarcodeScannerProps = {
@@ -11,17 +14,60 @@ type BarcodeScannerProps = {
 };
 
 export function BarcodeScanner({ label = "Align barcode inside frame", flashEnabled, onScan }: BarcodeScannerProps) {
-  void flashEnabled;
-  void onScan;
+  const [permission, requestPermission] = useCameraPermissions();
+  const [locked, setLocked] = useState(false);
+
+  function handleScanned(result: BarcodeScanningResult) {
+    if (locked) return;
+    const payload = result.data?.trim();
+    if (!payload) return;
+    setLocked(true);
+    onScan(payload);
+  }
+
+  if (!permission?.granted) {
+    return (
+      <View style={styles.panel}>
+        <Text style={styles.caption}>Camera permission is required for barcode scanning.</Text>
+        <PrimaryButton label="Allow camera access" variant="outline" onPress={() => void requestPermission()} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.panel}>
       <View style={styles.frame}>
+        <CameraView
+          style={StyleSheet.absoluteFill}
+          facing="back"
+          enableTorch={Boolean(flashEnabled)}
+          barcodeScannerSettings={{
+            barcodeTypes: [
+              "ean13",
+              "ean8",
+              "upc_a",
+              "upc_e",
+              "code39",
+              "code93",
+              "code128",
+              "itf14",
+              "codabar",
+              "qr",
+            ],
+          }}
+          onBarcodeScanned={handleScanned}
+        />
         <View style={[styles.edge, styles.tl]} />
         <View style={[styles.edge, styles.tr]} />
         <View style={[styles.edge, styles.bl]} />
         <View style={[styles.edge, styles.br]} />
       </View>
       <Text style={styles.caption}>{label}</Text>
+      {locked ? (
+        <Pressable style={styles.resetPill} onPress={() => setLocked(false)}>
+          <Text style={styles.resetLabel}>Scan again</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -43,6 +89,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.35)",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
   edge: {
     position: "absolute",
@@ -83,5 +130,17 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 13,
     opacity: 0.82,
+  },
+  resetPill: {
+    alignSelf: "center",
+    backgroundColor: Colors.primaryBluePale,
+    borderRadius: Radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  resetLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.primaryBlue,
   },
 });

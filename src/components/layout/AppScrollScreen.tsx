@@ -14,40 +14,53 @@ type AppScrollScreenProps = {
   subtitle?: string;
   right?: ReactNode;
   showBack?: boolean;
+  fixedHeader?: boolean;
   children: ReactNode;
 };
 
-export function AppScrollScreen({ title, subtitle, right, showBack, children }: AppScrollScreenProps) {
+export function AppScrollScreen({
+  title,
+  subtitle,
+  right,
+  showBack,
+  fixedHeader = false,
+  children,
+}: AppScrollScreenProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const header = (
+    <View style={[styles.headerRow, fixedHeader && styles.fixedHeader]}>
+      {showBack ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          hitSlop={10}
+        >
+          <Ionicons name="chevron-back" size={24} color={Colors.primaryBlue} />
+        </Pressable>
+      ) : null}
+      <View style={styles.titleBlock}>
+        <Text style={styles.title}>{title}</Text>
+        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+      </View>
+      {right ? <View style={styles.right}>{right}</View> : null}
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
+      {fixedHeader ? header : null}
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
+          fixedHeader && styles.scrollBelowFixedHeader,
           { paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.xl },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.headerRow}>
-          {showBack ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-              onPress={() => router.back()}
-              style={styles.backBtn}
-              hitSlop={10}
-            >
-              <Ionicons name="chevron-back" size={24} color={Colors.primaryBlue} />
-            </Pressable>
-          ) : null}
-          <View style={styles.titleBlock}>
-            <Text style={styles.title}>{title}</Text>
-            {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-          </View>
-          {right ? <View style={styles.right}>{right}</View> : null}
-        </View>
+        {fixedHeader ? null : header}
         {children}
       </ScrollView>
     </SafeAreaView>
@@ -68,10 +81,21 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm,
     gap: Spacing.md,
   },
+  scrollBelowFixedHeader: {
+    paddingTop: Spacing.md,
+  },
   headerRow: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: Spacing.sm,
+  },
+  fixedHeader: {
+    backgroundColor: Colors.background,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.divider,
   },
   backBtn: {
     marginTop: 2,
