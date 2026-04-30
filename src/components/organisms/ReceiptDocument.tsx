@@ -1,13 +1,15 @@
-import { StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { AccentButton } from "@/src/components/atoms/AccentButton";
 import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { Colors } from "@/src/constants/colors";
+import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
+import { useOrderDraftStore } from "@/src/store/orderDraftStore";
+import { useSettingsStore } from "@/src/store/settingsStore";
 
 type ReceiptPayload = {
   orderNumber?: string;
   dateLabel?: string;
-  totalsLine?: string;
 };
 
 type ReceiptDocumentProps = {
@@ -17,49 +19,190 @@ type ReceiptDocumentProps = {
   onShare?: () => void;
 };
 
-export function ReceiptDocument({ order, store, onPrint, onShare }: ReceiptDocumentProps) {
+function currencySymbol(code: string) {
+  if (code === "USD") return "$";
+  if (code === "NGN") return "₦";
+  return "₵";
+}
+
+function BarcodeVisual() {
+  const bars = [2, 1, 3, 1, 2, 2, 1, 3, 1, 2, 2, 1, 3, 1, 2, 1, 2, 3, 1, 2, 1, 3];
   return (
-    <View style={styles.sheet}>
-      <Text style={styles.brand}>{store?.name ?? "OmniPOS"}</Text>
-      <Text style={styles.meta}>Receipt · {order?.orderNumber ?? "—"}</Text>
-      <Text style={styles.meta}>{order?.dateLabel ?? new Date().toLocaleString()}</Text>
-      <View style={styles.block}>
-        <Text style={styles.body}>{order?.totalsLine ?? "Subtotal · Tax · Total will render here"}</Text>
+    <View style={styles.barcodeWrap}>
+      {bars.map((w, idx) => (
+        <View key={`${idx}`} style={[styles.bar, { width: w * 2.2 }]} />
+      ))}
+    </View>
+  );
+}
+
+export function ReceiptDocument({ order, store, onPrint, onShare }: ReceiptDocumentProps) {
+  const { lines, discountMode, discountValue, amountPaid, customerName, customerPhone, shippingAddress } =
+    useOrderDraftStore();
+  const { currency, taxRate, vatRate, serviceRate } = useSettingsStore();
+  const sym = currencySymbol(currency);
+  const subtotal = lines.reduce((sum, line) => sum + line.price * line.quantity, 0);
+  const discount = discountMode === "percentage" ? subtotal * (discountValue / 100) : discountValue;
+  const base = Math.max(0, subtotal - discount);
+  const tax = base * (taxRate / 100);
+  const vat = base * (vatRate / 100);
+  const service = base * (serviceRate / 100);
+  const total = base + tax + vat + service;
+  const change = Math.max(0, amountPaid - total);
+
+  return (
+    <View style={styles.page}>
+      <View style={styles.qrRow}>
+        <View style={styles.dot} />
+        <Text style={styles.qrText}>QR Code Ready</Text>
       </View>
-      <PrimaryButton label="Print receipt" onPress={() => onPrint?.()} fullWidth variant="primary" />
-      <AccentButton label="Share" onPress={() => onShare?.()} fullWidth outlined />
+
+      <ScrollView style={styles.sheet} contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.headerLine}>
+          <Text style={styles.receiptTitle}>RECEIPT</Text>
+          <Text style={styles.receiptDate}>{order?.dateLabel ?? new Date().toLocaleString()}</Text>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.rowBetween}>
+            <Text style={styles.cardTitle}>Item</Text>
+            <Text style={styles.cardTitle}>Price</Text>
+          </View>
+          {lines.map((line) => (
+            <View key={line.id} style={styles.itemRow}>
+              <Text style={styles.itemText}>
+                {line.quantity}x {line.name}
+              </Text>
+              <Text style={styles.itemPrice}>{(line.price * line.quantity).toFixed(2)}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.rowBetween}>
+            <Text style={styles.totalLabel}>Total</Text>
+            <Text style={styles.totalValue}>
+              {sym} {total.toFixed(2)}
+            </Text>
+          </View>
+          <View style={styles.rowBetween}>
+            <Text style={styles.meta}>Subtotal</Text>
+            <Text style={styles.meta}>{subtotal.toFixed(2)}</Text>
+          </View>
+          <View style={styles.rowBetween}>
+            <Text style={styles.meta}>Discount</Text>
+            <Text style={styles.meta}>
+              {discountMode === "percentage" ? `${discountValue}%` : `${sym} ${discountValue.toFixed(2)}`}
+            </Text>
+          </View>
+          <View style={styles.rowBetween}>
+            <Text style={styles.meta}>Tax {taxRate}%</Text>
+            <Text style={styles.meta}>{tax.toFixed(2)}</Text>
+          </View>
+          <View style={styles.rowBetween}>
+            <Text style={styles.meta}>VAT {vatRate}%</Text>
+            <Text style={styles.meta}>{vat.toFixed(2)}</Text>
+          </View>
+          <View style={styles.rowBetween}>
+            <Text style={styles.meta}>Service {serviceRate}%</Text>
+            <Text style={styles.meta}>{service.toFixed(2)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.rowBetween}>
+            <Text style={styles.totalLabel}>Change</Text>
+            <Text style={styles.totalValue}>
+              {sym} {change.toFixed(2)}
+            </Text>
+          </View>
+          <View style={styles.rowBetween}>
+            <Text style={styles.meta}>Amount Paid</Text>
+            <Text style={styles.meta}>{amountPaid.toFixed(2)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Customer Info</Text>
+          <View style={styles.rowBetween}>
+            <Text style={styles.meta}>Name</Text>
+            <Text style={styles.meta}>{customerName || "Optional"}</Text>
+          </View>
+          <View style={styles.rowBetween}>
+            <Text style={styles.meta}>Phone</Text>
+            <Text style={styles.meta}>{customerPhone || "Optional"}</Text>
+          </View>
+          <View style={styles.rowBetween}>
+            <Text style={styles.meta}>Shipping Address</Text>
+            <Text style={styles.meta}>{shippingAddress || "Optional"}</Text>
+          </View>
+        </View>
+
+        <BarcodeVisual />
+        <Text style={styles.footerRef}>
+          {store?.name ?? "OmniPOS"} · Ref {order?.orderNumber ?? "--"}
+        </Text>
+      </ScrollView>
+
+      <View style={styles.bottomRow}>
+        <View style={styles.printWrap}>
+          <PrimaryButton label="Print Receipt" onPress={() => onPrint?.()} fullWidth variant="primary" />
+          <Text style={styles.printHint}>No Printer Connected</Text>
+        </View>
+        <AccentButton label="Share" onPress={() => onShare?.()} fullWidth={false} style={styles.shareBtn} outlined />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  page: { gap: Spacing.sm },
+  qrRow: { alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 6 },
+  dot: { width: 9, height: 9, borderRadius: 4.5, backgroundColor: Colors.success },
+  qrText: { color: Colors.textSecondary, fontSize: 13 },
   sheet: {
-    gap: Spacing.sm,
+    maxHeight: 560,
     backgroundColor: Colors.surface,
-    borderRadius: 20,
-    padding: Spacing.lg,
-  },
-  brand: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: Colors.textPrimary,
-    textAlign: "center",
-  },
-  meta: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    textAlign: "center",
-  },
-  block: {
-    paddingVertical: Spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.card,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
   },
-  body: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: Colors.textPrimary,
-    fontVariant: ["tabular-nums"],
+  sheetContent: { padding: Spacing.md, gap: Spacing.sm },
+  headerLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  receiptTitle: { fontSize: 40, color: Colors.textPrimary, letterSpacing: 1 },
+  receiptDate: { fontSize: 12, color: Colors.textSecondary },
+  card: { backgroundColor: Colors.background, borderRadius: Radius.input, padding: Spacing.sm + 2, gap: Spacing.xs },
+  rowBetween: { flexDirection: "row", justifyContent: "space-between", gap: Spacing.sm },
+  cardTitle: { fontSize: 16, fontWeight: "700", color: Colors.textPrimary },
+  itemRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: Spacing.sm },
+  itemText: { flex: 1, fontSize: 14, color: Colors.textSecondary },
+  itemPrice: { fontSize: 14, color: Colors.textPrimary },
+  totalLabel: { fontSize: 19, fontWeight: "700", color: Colors.textPrimary },
+  totalValue: { fontSize: 24, fontWeight: "800", color: Colors.textPrimary },
+  meta: { fontSize: 13, color: Colors.textSecondary },
+  barcodeWrap: {
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "flex-end",
+    height: 58,
+    gap: 2,
+    marginTop: Spacing.sm,
   },
+  bar: { backgroundColor: "#111827", height: "100%" },
+  footerRef: { textAlign: "center", color: Colors.textMuted, fontSize: 12 },
+  bottomRow: { flexDirection: "row", alignItems: "center", gap: Spacing.xs },
+  printWrap: {
+    flex: 1,
+    backgroundColor: Colors.primaryBluePale,
+    borderRadius: Radius.input,
+    padding: 4,
+  },
+  printHint: {
+    textAlign: "center",
+    color: Colors.accentOrange,
+    fontSize: 12,
+    marginTop: 3,
+    fontWeight: "700",
+  },
+  shareBtn: { minWidth: 110 },
 });
