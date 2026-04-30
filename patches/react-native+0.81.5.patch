@@ -1,0 +1,80 @@
+diff --git a/node_modules/react-native/src/private/webapis/dom/events/Event.js b/node_modules/react-native/src/private/webapis/dom/events/Event.js
+index 6f61673..a6a34f8 100644
+--- a/node_modules/react-native/src/private/webapis/dom/events/Event.js
++++ b/node_modules/react-native/src/private/webapis/dom/events/Event.js
+@@ -69,7 +69,9 @@ export default class Event {
+   [CURRENT_TARGET_KEY]: EventTarget | null = null;
+ 
+   // $FlowExpectedError[unsupported-syntax]
+-  [EVENT_PHASE_KEY]: boolean = Event.NONE;
++  // Use literal 0: phase constants are defined after the class; `event-target-shim`
++  // (used by fetch/abort-controller) may redefine them if descriptors are configurable.
++  [EVENT_PHASE_KEY]: boolean = 0;
+ 
+   // $FlowExpectedError[unsupported-syntax]
+   [IN_PASSIVE_LISTENER_FLAG_KEY]: boolean = false;
+@@ -185,48 +187,64 @@ export default class Event {
+ // $FlowExpectedError[cannot-write]
+ Object.defineProperty(Event, 'NONE', {
+   enumerable: true,
++  writable: true,
++  configurable: true,
+   value: 0,
+ });
+ 
+ // $FlowExpectedError[cannot-write]
+ Object.defineProperty(Event.prototype, 'NONE', {
+   enumerable: true,
++  writable: true,
++  configurable: true,
+   value: 0,
+ });
+ 
+ // $FlowExpectedError[cannot-write]
+ Object.defineProperty(Event, 'CAPTURING_PHASE', {
+   enumerable: true,
++  writable: true,
++  configurable: true,
+   value: 1,
+ });
+ 
+ // $FlowExpectedError[cannot-write]
+ Object.defineProperty(Event.prototype, 'CAPTURING_PHASE', {
+   enumerable: true,
++  writable: true,
++  configurable: true,
+   value: 1,
+ });
+ 
+ // $FlowExpectedError[cannot-write]
+ Object.defineProperty(Event, 'AT_TARGET', {
+   enumerable: true,
++  writable: true,
++  configurable: true,
+   value: 2,
+ });
+ 
+ // $FlowExpectedError[cannot-write]
+ Object.defineProperty(Event.prototype, 'AT_TARGET', {
+   enumerable: true,
++  writable: true,
++  configurable: true,
+   value: 2,
+ });
+ 
+ // $FlowExpectedError[cannot-write]
+ Object.defineProperty(Event, 'BUBBLING_PHASE', {
+   enumerable: true,
++  writable: true,
++  configurable: true,
+   value: 3,
+ });
+ 
+ // $FlowExpectedError[cannot-write]
+ Object.defineProperty(Event.prototype, 'BUBBLING_PHASE', {
+   enumerable: true,
++  writable: true,
++  configurable: true,
+   value: 3,
+ });
+ 

@@ -9,7 +9,12 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-sqlite",
+      [
+        "@morrowdigital/watermelondb-expo-plugin",
+        { "disableJsi": true }
+      ]
     ],
     "splash": {
       "image": "./assets/splash-icon.png",

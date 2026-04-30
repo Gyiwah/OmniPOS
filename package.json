@@ -6,19 +6,28 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "dev:android": "expo run:android",
+    "dev:ios": "expo run:ios",
+    "postinstall": "patch-package"
   },
   "dependencies": {
+    "@morrowdigital/watermelondb-expo-plugin": "^2.3.3",
     "@nozbe/watermelondb": "^0.28.0",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "11.4.1",
     "@supabase/supabase-js": "^2.105.1",
     "@tanstack/react-query": "^5.100.6",
     "expo": "~54.0.33",
     "expo-constants": "~18.0.13",
+    "expo-crypto": "~15.0.9",
+    "expo-dev-client": "~6.0.21",
+    "expo-haptics": "~15.0.8",
     "expo-image-picker": "~17.0.11",
     "expo-linking": "~8.0.12",
     "expo-router": "~6.0.23",
     "expo-secure-store": "~15.0.8",
+    "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -33,8 +42,11 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@babel/plugin-proposal-class-properties": "^7.18.6",
+    "@babel/plugin-proposal-decorators": "^7.29.0",
     "@types/react": "~19.1.0",
     "eas-cli": "^18.8.1",
+    "patch-package": "^8.0.0",
     "typescript": "~5.9.2"
   },
   "private": true

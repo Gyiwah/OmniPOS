@@ -1,3 +1,1 @@
-export async function runSync(): Promise<void> {
-  return;
-}
+export { runSyncCycle as runSync } from "@/src/sync/syncEngine";

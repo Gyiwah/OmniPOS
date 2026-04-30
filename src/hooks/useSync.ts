@@ -1,7 +1,9 @@
-import { runSync } from "@/src/database/sync";
+import { runSyncCycle } from "@/src/sync/syncEngine";
+import { useStoreSlice } from "@/src/store/storeSlice";
 
 export function useSync() {
+  const activeStoreId = useStoreSlice((s) => s.activeStoreId);
   return {
-    syncNow: runSync,
+    syncNow: () => runSyncCycle(activeStoreId),
   };
 }

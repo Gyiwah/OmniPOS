@@ -1,7 +1,11 @@
 import { ReactNode } from "react";
-import { SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "@/src/constants/colors";
+import { Elevation } from "@/src/constants/elevation";
+import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
+import { Typography } from "@/src/constants/typography";
 
 type ScreenPlaceholderProps = {
   title: string;
@@ -11,7 +15,7 @@ type ScreenPlaceholderProps = {
 
 export function ScreenPlaceholder({ title, subtitle, right }: ScreenPlaceholderProps) {
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={styles.root} edges={["top", "left", "right"]}>
       <View style={styles.card}>
         <View style={styles.headerRow}>
           <Text style={styles.title}>{title}</Text>
@@ -29,18 +33,14 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: Colors.background,
-    padding: Spacing.lg,
+    padding: Spacing.md,
   },
   card: {
-    borderRadius: 20,
-    backgroundColor: Colors.white,
-    padding: Spacing.xl,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
+    borderRadius: Radius.card,
+    backgroundColor: Colors.surface,
+    padding: Spacing.lg,
     gap: Spacing.sm,
+    ...Elevation.card,
   },
   headerRow: {
     flexDirection: "row",
@@ -49,13 +49,12 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: Colors.secondary,
+    ...Typography.headline,
+    color: Colors.textPrimary,
   },
   subtitle: {
-    fontSize: 15,
+    ...Typography.body,
     lineHeight: 22,
-    color: Colors.mutedText,
+    color: Colors.textSecondary,
   },
 });
