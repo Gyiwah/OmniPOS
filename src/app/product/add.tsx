@@ -1,4 +1,5 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
+import * as Crypto from "expo-crypto";
 import * as ImagePicker from "expo-image-picker";
 import { Q } from "@nozbe/watermelondb";
 import { useRouter } from "expo-router";
@@ -17,6 +18,8 @@ import { Typography } from "@/src/constants/typography";
 import { database } from "@/src/database";
 import type Product from "@/src/database/models/Product";
 import { enqueueChange } from "@/src/sync/enqueue";
+import { remoteImageUrlOnly } from "@/src/sync/productRow";
+import { isLocalImageUri } from "@/src/services/storage";
 import { runSyncCycle } from "@/src/sync/syncEngine";
 import { useStoreSlice } from "@/src/store/storeSlice";
 
@@ -24,6 +27,7 @@ export default function AddProductScreen() {
   const router = useRouter();
   const activeStoreId = useStoreSlice((s) => s.activeStoreId);
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageMimeType, setImageMimeType] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -42,7 +46,9 @@ export default function AddProductScreen() {
     });
 
     if (!result.canceled) {
-      setImageUri(result.assets[0]?.uri ?? null);
+      const asset = result.assets[0];
+      setImageUri(asset?.uri ?? null);
+      setImageMimeType(asset?.mimeType ?? null);
     }
   }
 
@@ -61,7 +67,9 @@ export default function AddProductScreen() {
     });
 
     if (!result.canceled) {
-      setImageUri(result.assets[0]?.uri ?? null);
+      const asset = result.assets[0];
+      setImageUri(asset?.uri ?? null);
+      setImageMimeType(asset?.mimeType ?? null);
     }
   }
 
@@ -103,20 +111,27 @@ export default function AddProductScreen() {
       }
 
       const now = Date.now();
-      let createdId = "";
+      const productId = Crypto.randomUUID();
+      const parsedTags = tags
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+      let createdId = productId;
       await database.write(async () => {
-        const rec = await database.get<Product>("products").create((r) => {
+        await database.get<Product>("products").create((r) => {
+          r._raw.id = productId;
           r.storeId = activeStoreId;
+          r.remoteId = productId;
           r.name = cleanName;
           r.sku = cleanSku;
           r.barcode = barcode;
           r.stock = Math.floor(stock);
           r.sellPrice = sell;
           r.costPrice = cost;
+          r.imageUrl = imageUri ?? undefined;
           r.updatedAt = now;
           r.dirty = true;
         });
-        createdId = rec.id;
       });
 
       await enqueueChange({
@@ -124,28 +139,40 @@ export default function AddProductScreen() {
         entity: "products",
         operation: "upsert",
         recordId: createdId,
+        remoteId: productId,
         payload: {
-          id: createdId,
+          id: productId,
           name: cleanName,
           sku: cleanSku,
           barcode,
           stock: Math.floor(stock),
-          sell_price: sell,
-          cost_price: cost,
-          image_url: imageUri ?? null,
-          tags: tags
-            .split(",")
-            .map((x) => x.trim())
-            .filter(Boolean),
+          price: sell,
+          cost_price: cost ?? null,
+          image_url: remoteImageUrlOnly(imageUri),
+          local_image_uri: imageUri && isLocalImageUri(imageUri) ? imageUri : null,
+          local_image_mime: imageUri && isLocalImageUri(imageUri) ? imageMimeType : null,
+          tags: parsedTags,
+          is_active: true,
         },
       });
 
       const net = await NetInfo.fetch();
       if (net.isConnected) {
-        void runSyncCycle(activeStoreId);
+        const syncResult = await runSyncCycle(activeStoreId);
+        if (!syncResult.ok) {
+          Alert.alert(
+            "Saved locally",
+            syncResult.lastError
+              ? `Cloud sync failed: ${syncResult.lastError}. The product will retry syncing automatically.`
+              : "Cloud sync failed. The product will retry syncing automatically.",
+          );
+        } else {
+          Alert.alert("Saved", "Product added and synced to the cloud.");
+        }
+      } else {
+        Alert.alert("Saved locally", "Product saved on this device. It will sync when you're back online.");
       }
 
-      Alert.alert("Saved", "Product added successfully.");
       router.replace("/inventory");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to save product";

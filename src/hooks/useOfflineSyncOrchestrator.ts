@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
 import { useEffect } from "react";
-import { AppState, Platform } from "react-native";
+import { AppState } from "react-native";
 
 import { getOrCreateOfflineEncryptionMaterial } from "@/src/database/encryptionKey";
 import { registerBackgroundSync } from "@/src/sync/backgroundSyncRegistration";
@@ -13,51 +13,43 @@ import { useStoreSlice } from "@/src/store/storeSlice";
 /**
  * NetInfo + AppState + initial hydration hooks for OmniPOS offline engine.
  */
-export function useOfflineSyncOrchestrator(): void {
+export function useOfflineSyncOrchestrator(appReady = true): void {
   const activeStoreId = useStoreSlice((s) => s.activeStoreId);
 
   useEffect(() => {
+    if (!appReady) return;
     void getOrCreateOfflineEncryptionMaterial();
     void refreshPendingSyncCount();
     void registerBackgroundSync();
-
-    AsyncStorage.getItem(SYNC_STORAGE.activeStoreId).then((stored) => {
-      if (!stored) return;
-      const current = useStoreSlice.getState().activeStoreId;
-      if (!current) {
-        useStoreSlice.getState().setActiveStore(stored);
-      }
-    });
-  }, []);
+  }, [appReady]);
 
   useEffect(() => {
-    if (activeStoreId) {
-      void AsyncStorage.setItem(SYNC_STORAGE.activeStoreId, activeStoreId);
-    }
-  }, [activeStoreId]);
+    if (!appReady || !activeStoreId) return;
+    void AsyncStorage.setItem(SYNC_STORAGE.activeStoreId, activeStoreId);
+  }, [activeStoreId, appReady]);
 
   useEffect(() => {
-    if (!activeStoreId) return;
+    if (!appReady || !activeStoreId) return;
     const unsub = NetInfo.addEventListener((state) => {
       if (state.isConnected) {
         void runSyncCycle(activeStoreId);
       }
     });
     return unsub;
-  }, [activeStoreId]);
+  }, [activeStoreId, appReady]);
 
   useEffect(() => {
-    if (!activeStoreId) return;
+    if (!appReady || !activeStoreId) return;
     const sub = AppState.addEventListener("change", (next) => {
       if (next === "active") {
         void runSyncCycle(activeStoreId);
       }
     });
     return () => sub.remove();
-  }, [activeStoreId]);
+  }, [activeStoreId, appReady]);
 
   useEffect(() => {
-    if (Platform.OS === "web" || !activeStoreId) return;
+    if (!appReady || !activeStoreId) return;
     void runSyncCycle(activeStoreId);
-  }, [activeStoreId]);
+  }, [activeStoreId, appReady]);
 }

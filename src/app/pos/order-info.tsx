@@ -11,6 +11,13 @@ import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
 import { supabase } from "@/src/services/supabase";
+import {
+  decrementStockForOrder,
+  fetchStockByProductId,
+  InsufficientStockError,
+  restoreStockForOrder,
+  validateCartQuantities,
+} from "@/src/features/orders/stock";
 import { useAuthStore } from "@/src/store/authStore";
 import { useOrderDraftStore } from "@/src/store/orderDraftStore";
 import { useSettingsStore } from "@/src/store/settingsStore";
@@ -70,13 +77,24 @@ export default function OrderInfoScreen() {
 
     const orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     setSubmitting(true);
+    let stockAdjusted = false;
     try {
+      const stockById = await fetchStockByProductId(
+        activeStoreId,
+        lines.map((line) => line.id),
+      );
+      validateCartQuantities(lines, stockById);
+
       const fallbackUser = (await supabase.auth.getUser()).data.user?.id ?? null;
       const cashierUserId = userId ?? fallbackUser;
       if (!cashierUserId) {
         Alert.alert("Not signed in", "Sign in again before creating an order.");
         return;
       }
+
+      await decrementStockForOrder(activeStoreId, lines);
+      stockAdjusted = true;
+
       await supabase.from("profiles").upsert({ id: cashierUserId }, { onConflict: "id" });
 
       const { data: inserted, error } = await supabase
@@ -125,8 +143,20 @@ export default function OrderInfoScreen() {
       clearDraft();
       router.push(`/pos/receipt/${inserted.id}`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to create order";
-      Alert.alert("Create order failed", message);
+      if (stockAdjusted) {
+        try {
+          await restoreStockForOrder(activeStoreId, lines);
+        } catch {
+          // Stock rollback failed; surface the original checkout error.
+        }
+      }
+      const message =
+        error instanceof InsufficientStockError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "Failed to create order";
+      Alert.alert(error instanceof InsufficientStockError ? "Insufficient stock" : "Create order failed", message);
     } finally {
       setSubmitting(false);
     }

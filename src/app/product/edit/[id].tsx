@@ -16,6 +16,7 @@ import { Typography } from "@/src/constants/typography";
 import { database } from "@/src/database";
 import type Product from "@/src/database/models/Product";
 import { enqueueChange } from "@/src/sync/enqueue";
+import { isLocalImageUri, resolveProductImageUrl } from "@/src/services/storage";
 import { runSyncCycle } from "@/src/sync/syncEngine";
 import { useStoreSlice } from "@/src/store/storeSlice";
 
@@ -27,6 +28,7 @@ export default function EditProductScreen() {
 
   const [productRef, setProductRef] = useState<Product | null>(null);
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageMimeType, setImageMimeType] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [sku, setSku] = useState(routeParam ?? "");
   const [quantity, setQuantity] = useState("0");
@@ -58,8 +60,15 @@ export default function EditProductScreen() {
         setQuantity(String(found.stock ?? 0));
         setCostPrice(found.costPrice == null ? "" : String(found.costPrice));
         setSellPrice(String(found.sellPrice ?? 0));
-        setImageUri(null);
         setTags("");
+        if (found.imageUrl) {
+          const resolved = await resolveProductImageUrl(found.imageUrl);
+          setImageUri(resolved);
+          setImageMimeType(null);
+        } else {
+          setImageUri(null);
+          setImageMimeType(null);
+        }
       } catch {
         // keep fallback values when product is unavailable in local cache
       }
@@ -79,7 +88,9 @@ export default function EditProductScreen() {
     });
 
     if (!result.canceled) {
-      setImageUri(result.assets[0]?.uri ?? null);
+      const asset = result.assets[0];
+      setImageUri(asset?.uri ?? null);
+      setImageMimeType(asset?.mimeType ?? null);
     }
   }
 
@@ -98,7 +109,9 @@ export default function EditProductScreen() {
     });
 
     if (!result.canceled) {
-      setImageUri(result.assets[0]?.uri ?? null);
+      const asset = result.assets[0];
+      setImageUri(asset?.uri ?? null);
+      setImageMimeType(asset?.mimeType ?? null);
     }
   }
 
@@ -185,6 +198,9 @@ export default function EditProductScreen() {
     setSaving(true);
     try {
       const now = Date.now();
+      const pickedLocalUri = imageUri && isLocalImageUri(imageUri) ? imageUri : null;
+      const imageRef = productRef.imageUrl ?? null;
+
       await database.write(async () => {
         await productRef.update((rec) => {
           rec.name = cleanName;
@@ -192,6 +208,9 @@ export default function EditProductScreen() {
           rec.sellPrice = sell;
           rec.costPrice = cost;
           rec.barcode = sku.trim() || rec.barcode;
+          if (pickedLocalUri) {
+            rec.imageUrl = pickedLocalUri;
+          }
           rec.updatedAt = now;
           rec.dirty = true;
         });
@@ -205,27 +224,40 @@ export default function EditProductScreen() {
         remoteId: productRef.remoteId,
         payload: {
           id: productRef.remoteId ?? productRef.id,
-          remote_id: productRef.remoteId,
           name: cleanName,
           sku: productRef.sku,
           barcode: sku.trim() || productRef.sku,
           stock: Math.floor(stock),
-          sell_price: sell,
-          cost_price: cost,
-          image_url: imageUri ?? null,
+          price: sell,
+          cost_price: cost ?? null,
+          image_url: imageRef,
+          local_image_uri: pickedLocalUri,
+          local_image_mime: pickedLocalUri ? imageMimeType : null,
           tags: tags
             .split(",")
             .map((x) => x.trim())
             .filter(Boolean),
+          is_active: true,
         },
       });
 
       const net = await NetInfo.fetch();
       if (net.isConnected) {
-        void runSyncCycle(activeStoreId);
+        const syncResult = await runSyncCycle(activeStoreId);
+        if (!syncResult.ok) {
+          Alert.alert(
+            "Updated locally",
+            syncResult.lastError
+              ? `Cloud sync failed: ${syncResult.lastError}. Changes will retry syncing automatically.`
+              : "Cloud sync failed. Changes will retry syncing automatically.",
+          );
+        } else {
+          Alert.alert("Updated", "Product updated and synced to the cloud.");
+        }
+      } else {
+        Alert.alert("Updated locally", "Changes saved on this device. They will sync when you're back online.");
       }
 
-      Alert.alert("Updated", "Product updated successfully.");
       router.replace("/inventory");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Update failed";

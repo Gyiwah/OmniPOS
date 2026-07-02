@@ -4,6 +4,7 @@ import SQLiteAdapter from "@nozbe/watermelondb/adapters/sqlite";
 import { NativeModules, Platform } from "react-native";
 
 import { Product, SyncQueueItem } from "./models";
+import migrations from "./migrations";
 import wmSchema from "./wmSchema";
 let warnedMissingBridge = false;
 
@@ -21,6 +22,7 @@ function createAdapter() {
   if (Platform.OS === "web") {
     return new LokiJSAdapter({
       schema: wmSchema,
+      migrations,
       dbName: "omnipos",
       useWebWorker: false,
       useIncrementalIndexedDB: true,
@@ -30,6 +32,7 @@ function createAdapter() {
   if (hasWatermelonNativeBridge()) {
     return new SQLiteAdapter({
       schema: wmSchema,
+      migrations,
       dbName: "omnipos",
       jsi: false,
     });
@@ -45,6 +48,7 @@ function createAdapter() {
     }
     return new LokiJSAdapter({
       schema: wmSchema,
+      migrations,
       dbName: "omnipos",
       useWebWorker: false,
       // `false` is deprecated in WatermelonDB; RN has no IndexedDB, so Loki still uses memory.

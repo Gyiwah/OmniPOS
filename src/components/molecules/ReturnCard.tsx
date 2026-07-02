@@ -9,10 +9,18 @@ type ReturnCardProps = {
   dateLabel: string;
   itemCount: number;
   totalRefundLabel: string;
+  summaryLabel?: string;
   onPress?: () => void;
 };
 
-export function ReturnCard({ thumbnail, dateLabel, itemCount, totalRefundLabel, onPress }: ReturnCardProps) {
+export function ReturnCard({
+  thumbnail,
+  dateLabel,
+  itemCount,
+  totalRefundLabel,
+  summaryLabel,
+  onPress,
+}: ReturnCardProps) {
   return (
     <Pressable
       onPress={onPress}
@@ -23,7 +31,7 @@ export function ReturnCard({ thumbnail, dateLabel, itemCount, totalRefundLabel, 
       ]}
     >
       <Text style={styles.summary}>
-        Refund · {thumbnail ? "SKU" : "#"} · {dateLabel}
+        {summaryLabel ?? `Refund · ${thumbnail ? "SKU" : "#"}`} · {dateLabel}
       </Text>
       <Text style={styles.detail}>
         Items {itemCount} · Total{" "}

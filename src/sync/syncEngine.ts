@@ -4,8 +4,15 @@ import type Product from "@/src/database/models/Product";
 import type SyncQueueItem from "@/src/database/models/SyncQueueItem";
 import { database } from "@/src/database";
 import { supabase } from "@/src/services/supabase";
+import { isLocalImageUri, uploadProductImageFromUri } from "@/src/services/storage";
 import { useSyncStore } from "@/src/store/syncStore";
 import { SYNC_STORAGE } from "./keys";
+import {
+  buildProductRowForSupabase,
+  type ProductUpsertPayload,
+  resolveProductIdForImage,
+  storedImageRef,
+} from "./productRow";
 import { refreshPendingSyncCount } from "./syncCounters";
 
 type RemoteProduct = {
@@ -17,64 +24,155 @@ type RemoteProduct = {
   price: number;
   cost_price: number | null;
   stock: number;
+  image_url: string | null;
+  tags: string[] | null;
+  is_active: boolean;
   updated_at: string;
 };
 
+export type SyncCycleResult = {
+  ok: boolean;
+  pushed: number;
+  failed: number;
+  lastError?: string;
+};
+
+async function ensureSupabaseSession(): Promise<void> {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw new Error(error.message);
+  if (!data.session) {
+    throw new Error("Not signed in to Supabase. Sign in again before syncing.");
+  }
+}
+
 /** Push outbound queue + pull Postgres products into SQLite */
-export async function runSyncCycle(storeIdHint?: string | null): Promise<void> {
+export async function runSyncCycle(storeIdHint?: string | null): Promise<SyncCycleResult> {
   const fromStorage = await AsyncStorage.getItem(SYNC_STORAGE.activeStoreId);
   const storeId = storeIdHint ?? fromStorage ?? null;
-  if (!storeId) return;
+  if (!storeId) {
+    return { ok: true, pushed: 0, failed: 0 };
+  }
 
   useSyncStore.getState().setSyncStatus("running");
   useSyncStore.getState().setSyncing(true);
 
+  let flushResult: SyncCycleResult = { ok: true, pushed: 0, failed: 0 };
+
   try {
-    await flushProductQueue(storeId);
+    await ensureSupabaseSession();
+    flushResult = await flushProductQueue(storeId);
     await pullProducts(storeId);
     useSyncStore.getState().markSynced(new Date().toISOString());
-    useSyncStore.getState().setSyncStatus("idle");
+    useSyncStore.getState().setSyncStatus(flushResult.ok ? "idle" : "error");
     await AsyncStorage.setItem(SYNC_STORAGE.activeStoreId, storeId);
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "sync failed";
+    flushResult = { ok: false, pushed: flushResult.pushed, failed: flushResult.failed + 1, lastError: message };
     useSyncStore.getState().setSyncStatus("error");
   } finally {
     useSyncStore.getState().setSyncing(false);
     await refreshPendingSyncCount();
   }
+
+  return flushResult;
 }
 
-async function flushProductQueue(storeId: string): Promise<void> {
+async function upsertRemoteProduct(storeId: string, body: ProductUpsertPayload): Promise<string> {
+  const row = buildProductRowForSupabase(storeId, {
+    ...body,
+    image_url: storedImageRef(body.image_url),
+  });
+
+  const { data, error } = await supabase
+    .from("products")
+    .upsert(row, { onConflict: "store_id,sku" })
+    .select("id");
+
+  if (error) throw new Error(error.message);
+
+  const remoteId = data?.[0]?.id ?? (typeof row.id === "string" ? row.id : undefined);
+  if (!remoteId) {
+    throw new Error("Product upsert succeeded but no id was returned.");
+  }
+
+  return remoteId;
+}
+
+async function syncProductImage(
+  storeId: string,
+  body: ProductUpsertPayload,
+  recordId: string | undefined,
+  remoteId: string,
+): Promise<string | null> {
+  const localUri = body.local_image_uri?.trim();
+  if (!localUri || !isLocalImageUri(localUri)) {
+    return storedImageRef(body.image_url);
+  }
+
+  const productId = resolveProductIdForImage(body, recordId) ?? remoteId;
+  const imageRef = await uploadProductImageFromUri({
+    storeId,
+    productId,
+    localUri,
+    mimeType: body.local_image_mime,
+  });
+
+  const { error } = await supabase
+    .from("products")
+    .update({ image_url: imageRef })
+    .eq("store_id", storeId)
+    .eq("id", remoteId);
+
+  if (error) throw new Error(error.message);
+  return imageRef;
+}
+
+async function flushProductQueue(storeId: string): Promise<SyncCycleResult> {
   const pending = await database
     .get<SyncQueueItem>("sync_queue")
     .query(Q.where("store_id", storeId), Q.where("status", "pending"))
     .fetch();
 
+  let pushed = 0;
+  let failed = 0;
+  let lastError: string | undefined;
+
   for (const item of pending.slice(0, 40)) {
     try {
       if (item.entity === "products" && item.operation === "upsert") {
-        const body = JSON.parse(item.payload) as {
-          id?: string;
-          name?: string;
-          sku?: string;
-          barcode?: string;
-          sell_price?: number;
-          price?: number;
-          cost_price?: number;
-          stock?: number;
-        };
-        const row: Record<string, unknown> = {
-          store_id: storeId,
-          name: body.name ?? "",
-          sku: body.sku ?? "",
-          barcode: body.barcode ?? null,
-          price: Number(body.sell_price ?? body.price ?? 0),
-          cost_price: body.cost_price == null ? null : Number(body.cost_price),
-          stock: Number(body.stock ?? 0),
-        };
-        if (body.id) {
-          row.id = body.id;
+        const body = JSON.parse(item.payload) as ProductUpsertPayload;
+        const remoteId = await upsertRemoteProduct(storeId, body);
+
+        let imageRef = storedImageRef(body.image_url);
+        try {
+          const uploadedRef = await syncProductImage(storeId, body, item.recordId, remoteId);
+          if (uploadedRef) {
+            imageRef = uploadedRef;
+          }
+        } catch (imageError) {
+          if (__DEV__) {
+            const message = imageError instanceof Error ? imageError.message : "image upload failed";
+            // eslint-disable-next-line no-console -- operator-facing sync diagnostics
+            console.warn(`[OmniPOS] Product saved to cloud; image upload failed: ${message}`);
+          }
         }
-        await supabase.from("products").upsert(row, { onConflict: "store_id,sku" });
+
+        if (item.recordId) {
+          try {
+            const local = await database.get<Product>("products").find(item.recordId);
+            await database.write(async () => {
+              await local.update((rec) => {
+                rec.remoteId = remoteId;
+                rec.dirty = false;
+                if (imageRef) {
+                  rec.imageUrl = imageRef;
+                }
+              });
+            });
+          } catch {
+            // Local row may have been removed; cloud write still succeeded.
+          }
+        }
       } else if (item.entity === "products" && item.operation === "delete") {
         const body = JSON.parse(item.payload) as {
           id?: string;
@@ -83,9 +181,13 @@ async function flushProductQueue(storeId: string): Promise<void> {
         };
         const remoteId = body.id ?? body.remote_id ?? item.remoteId;
         if (remoteId) {
-          await supabase.from("products").delete().eq("store_id", storeId).eq("id", remoteId);
+          const { error } = await supabase.from("products").delete().eq("store_id", storeId).eq("id", remoteId);
+          if (error) throw new Error(error.message);
         } else if (body.sku) {
-          await supabase.from("products").delete().eq("store_id", storeId).eq("sku", body.sku);
+          const { error } = await supabase.from("products").delete().eq("store_id", storeId).eq("sku", body.sku);
+          if (error) throw new Error(error.message);
+        } else {
+          throw new Error("Delete payload missing product id or sku");
         }
       }
 
@@ -95,8 +197,15 @@ async function flushProductQueue(storeId: string): Promise<void> {
           record.lastError = undefined;
         });
       });
+      pushed += 1;
     } catch (e) {
       const message = e instanceof Error ? e.message : "sync failed";
+      lastError = message;
+      failed += 1;
+      if (__DEV__) {
+        // eslint-disable-next-line no-console -- operator-facing sync diagnostics
+        console.warn(`[OmniPOS] Sync queue item failed (${item.entity}/${item.operation}): ${message}`);
+      }
       await database.write(async () => {
         await item.update((record) => {
           record.attempts = record.attempts + 1;
@@ -106,11 +215,15 @@ async function flushProductQueue(storeId: string): Promise<void> {
       });
     }
   }
+
+  return { ok: failed === 0, pushed, failed, lastError };
 }
 
 async function pullProducts(storeId: string): Promise<void> {
   const cursorKey = `${SYNC_STORAGE.productsCursorIso}:${storeId}`;
-  const cursor = await AsyncStorage.getItem(cursorKey);
+  const localCount = await database.get<Product>("products").query(Q.where("store_id", storeId)).fetchCount();
+  const useFullPull = localCount === 0;
+  const cursor = useFullPull ? null : await AsyncStorage.getItem(cursorKey);
 
   let qb = supabase.from("products").select("*").eq("store_id", storeId);
   if (cursor) {
@@ -138,11 +251,13 @@ async function pullProducts(storeId: string): Promise<void> {
           rec.sellPrice = Number(row.price);
           rec.costPrice = row.cost_price == null ? undefined : Number(row.cost_price);
           rec.barcode = row.barcode ?? undefined;
+          rec.imageUrl = row.image_url ?? undefined;
           rec.updatedAt = resolvedTs;
           rec.dirty = false;
         });
       } else {
         await productsCol.create((rec) => {
+          rec._raw.id = row.id;
           rec.storeId = row.store_id;
           rec.remoteId = row.id;
           rec.name = row.name;
@@ -153,6 +268,7 @@ async function pullProducts(storeId: string): Promise<void> {
           rec.dirty = false;
           rec.costPrice = row.cost_price == null ? undefined : Number(row.cost_price);
           rec.barcode = row.barcode ?? undefined;
+          rec.imageUrl = row.image_url ?? undefined;
         });
       }
     }

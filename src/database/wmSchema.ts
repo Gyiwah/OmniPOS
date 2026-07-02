@@ -1,6 +1,6 @@
 import { appSchema, tableSchema } from "@nozbe/watermelondb";
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export default appSchema({
   version: SCHEMA_VERSION,
@@ -16,6 +16,7 @@ export default appSchema({
         { name: "stock", type: "number" },
         { name: "sell_price", type: "number" },
         { name: "cost_price", type: "number", isOptional: true },
+        { name: "image_url", type: "string", isOptional: true },
         { name: "updated_at", type: "number", isIndexed: true },
         { name: "dirty", type: "boolean" },
       ],

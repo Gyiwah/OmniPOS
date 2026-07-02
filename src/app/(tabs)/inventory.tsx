@@ -17,6 +17,8 @@ import { Typography } from "@/src/constants/typography";
 import { database } from "@/src/database";
 import type Product from "@/src/database/models/Product";
 import type SyncQueueItem from "@/src/database/models/SyncQueueItem";
+import { resolveProductImageUrl } from "@/src/services/storage";
+import { runSyncCycle } from "@/src/sync/syncEngine";
 import { useStoreSlice } from "@/src/store/storeSlice";
 
 type InventoryRow = {
@@ -43,6 +45,7 @@ export default function InventoryScreen() {
           if (mounted) setProducts([]);
           return;
         }
+        await runSyncCycle(activeStoreId);
         const rows = await database
           .get<Product>("products")
           .query(Q.where("store_id", activeStoreId))
@@ -54,24 +57,34 @@ export default function InventoryScreen() {
         const imageBySku = new Map<string, string>();
         queueRows.forEach((row) => {
           try {
-            const payload = JSON.parse(row.payload) as { sku?: string; image_url?: string | null };
-            if (payload.sku && payload.image_url) {
-              imageBySku.set(payload.sku, payload.image_url);
+            const payload = JSON.parse(row.payload) as {
+              sku?: string;
+              image_url?: string | null;
+              local_image_uri?: string | null;
+            };
+            if (!payload.sku) return;
+            const pendingImage = payload.local_image_uri ?? payload.image_url;
+            if (pendingImage) {
+              imageBySku.set(payload.sku, pendingImage);
             }
           } catch {
             // ignore malformed queue payload
           }
         });
         if (!mounted) return;
-        setProducts(
-          rows.map((p) => ({
-            id: p.id,
-            name: p.name,
-            stockCount: Number(p.stock ?? 0),
-            lowStockThreshold: 10,
-            imageUrl: imageBySku.get(p.sku) ?? null,
-          })),
+        const nextProducts = await Promise.all(
+          rows.map(async (p) => {
+            const rawImage = imageBySku.get(p.sku) ?? p.imageUrl ?? null;
+            return {
+              id: p.id,
+              name: p.name,
+              stockCount: Number(p.stock ?? 0),
+              lowStockThreshold: 10,
+              imageUrl: await resolveProductImageUrl(rawImage),
+            };
+          }),
         );
+        setProducts(nextProducts);
       }
       void loadInventory();
       return () => {
