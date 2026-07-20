@@ -13,8 +13,11 @@
       "expo-sqlite",
       [
         "@morrowdigital/watermelondb-expo-plugin",
-        { "disableJsi": true }
-      ]
+        {
+          "disableJsi": true
+        }
+      ],
+      "expo-secure-store"
     ],
     "splash": {
       "image": "./assets/splash-icon.png",
