@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useState } from "react";
-import { Alert, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Alert, StyleSheet, Text, View } from "react-native";
 
 import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { TextInput } from "@/src/components/atoms/TextInput";
@@ -9,23 +9,29 @@ import { StoreSwitcher } from "@/src/components/molecules/StoreSwitcher";
 import { Colors } from "@/src/constants/colors";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
+import { useCreateStore, useStores } from "@/src/features/stores/hooks";
 import { SYNC_STORAGE } from "@/src/sync/keys";
 import { useStoreSlice } from "@/src/store/storeSlice";
-
-type StoreRow = { id: string; name: string };
-
-const INITIAL_STORES: StoreRow[] = [
-  { id: "store-1", name: "Northside Market" },
-  { id: "store-2", name: "Airport Kiosk" },
-  { id: "store-3", name: "East Legon Shop" },
-];
+import { toErrorMessage } from "@/src/utils/errors";
 
 export default function SettingsStoresScreen() {
   const globalActiveStore = useStoreSlice((s) => s.activeStoreId);
   const setActiveStore = useStoreSlice((s) => s.setActiveStore);
-  const [stores, setStores] = useState<StoreRow[]>(INITIAL_STORES);
-  const [activeId, setActiveId] = useState<string | null>(globalActiveStore ?? INITIAL_STORES[0]?.id ?? null);
+  const { data: stores = [], isLoading, isError, error, refetch } = useStores();
+  const createStore = useCreateStore();
+
+  const [activeId, setActiveId] = useState<string | null>(globalActiveStore);
   const [name, setName] = useState("");
+
+  useEffect(() => {
+    if (globalActiveStore) {
+      setActiveId(globalActiveStore);
+      return;
+    }
+    if (stores.length > 0 && !activeId) {
+      setActiveId(stores[0].id);
+    }
+  }, [globalActiveStore, stores, activeId]);
 
   async function applyStoreSwitch() {
     if (!activeId) return;
@@ -34,29 +40,46 @@ export default function SettingsStoresScreen() {
     Alert.alert("Store switched", "Active store updated for sales, sync, and inventory views.");
   }
 
-  function addStore() {
+  async function addStore() {
     const trimmed = name.trim();
     if (!trimmed) return;
-    const id = `store-${stores.length + 1}`;
-    setStores((prev) => [...prev, { id, name: trimmed }]);
-    setName("");
-    setActiveId(id);
+
+    try {
+      const created = await createStore.mutateAsync(trimmed);
+      setName("");
+      setActiveId(created.id);
+      await refetch();
+      Alert.alert("Store added", `${created.name} is ready. Apply the switch to activate it.`);
+    } catch (err) {
+      Alert.alert("Could not add store", toErrorMessage(err, "Store creation failed."));
+    }
   }
 
   return (
     <AppScrollScreen showBack title="Stores" subtitle="Switch active location and manage store list.">
       <SectionCard>
         <Text style={styles.sectionTitle}>Active store</Text>
-        <StoreSwitcher stores={stores} activeId={activeId} onSwitch={setActiveId} />
+        {isLoading ? <ActivityIndicator color={Colors.primaryBlue} /> : null}
+        {isError ? <Text style={styles.error}>{toErrorMessage(error, "Failed to load stores.")}</Text> : null}
+        {!isLoading && stores.length === 0 ? (
+          <Text style={styles.helper}>No stores found for this account yet.</Text>
+        ) : (
+          <StoreSwitcher stores={stores} activeId={activeId} onSwitch={setActiveId} />
+        )}
       </SectionCard>
 
       <SectionCard>
         <Text style={styles.sectionTitle}>Add store</Text>
         <TextInput label="Store name" value={name} onChangeText={setName} placeholder="e.g. Circle Branch" />
-        <PrimaryButton label="Add store to list" variant="outline" onPress={addStore} />
+        <PrimaryButton
+          label={createStore.isPending ? "Adding…" : "Add store to list"}
+          variant="outline"
+          disabled={createStore.isPending}
+          onPress={() => void addStore()}
+        />
       </SectionCard>
 
-      <PrimaryButton label="Apply store switch" onPress={() => void applyStoreSwitch()} />
+      <PrimaryButton label="Apply store switch" disabled={!activeId} onPress={() => void applyStoreSwitch()} />
     </AppScrollScreen>
   );
 }
@@ -70,5 +93,10 @@ const styles = StyleSheet.create({
   helper: {
     ...Typography.caption,
     color: Colors.textMuted,
+  },
+  error: {
+    ...Typography.body,
+    color: Colors.accentOrange,
+    marginBottom: Spacing.xs,
   },
 });

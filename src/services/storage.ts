@@ -72,6 +72,10 @@ export function buildProductImagePath(storeId: string, productId: string, extens
   return `${storeId}/products/${productId}.${extension}`;
 }
 
+export function buildStoreLogoPath(storeId: string, extension: string): string {
+  return `${storeId}/branding/logo.${extension}`;
+}
+
 export async function uploadProductImageFromUri(input: {
   storeId: string;
   productId: string;
@@ -106,7 +110,31 @@ export async function resolveProductImageUrl(imageRef: string | null | undefined
   return data.signedUrl;
 }
 
+export async function uploadStoreLogoFromUri(input: {
+  storeId: string;
+  localUri: string;
+  mimeType?: string | null;
+}): Promise<string> {
+  const extension = inferExtension(input.localUri, input.mimeType);
+  const objectPath = buildStoreLogoPath(input.storeId, extension);
+  const bytes = await readLocalImageBytes(input.localUri, input.mimeType);
+
+  const { error } = await supabase.storage.from(OMNIPOS_ASSETS_BUCKET).upload(objectPath, bytes, {
+    contentType: inferContentType(extension),
+    upsert: true,
+  });
+  if (error) throw new Error(error.message);
+
+  return objectPath;
+}
+
+export async function resolveStoreLogoUrl(logoRef: string | null | undefined): Promise<string | null> {
+  return resolveProductImageUrl(logoRef);
+}
+
 export const storageService = {
   uploadProductImageFromUri,
+  uploadStoreLogoFromUri,
   resolveProductImageUrl,
+  resolveStoreLogoUrl,
 };

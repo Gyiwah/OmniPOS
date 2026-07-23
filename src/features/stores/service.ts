@@ -68,4 +68,34 @@ export const storesService = {
 
     return mapStore(data);
   },
+
+  async create(name: string): Promise<Store> {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      throw new Error("You must be signed in to create a store.");
+    }
+
+    const userId = userData.user.id;
+    const { data: createdStore, error: storeError } = await supabase
+      .from("stores")
+      .insert({ name: name.trim() || "New Store", owner_user_id: userId })
+      .select("id, name, tax_profile, currency, timezone")
+      .single();
+
+    if (storeError || !createdStore) {
+      throw storeError ?? new Error("Store creation failed.");
+    }
+
+    const { error: memberError } = await supabase.from("store_members").insert({
+      store_id: createdStore.id,
+      user_id: userId,
+      role: "admin",
+    });
+
+    if (memberError) {
+      throw memberError;
+    }
+
+    return mapStore(createdStore);
+  },
 };

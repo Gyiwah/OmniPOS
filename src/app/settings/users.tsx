@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Avatar } from "@/src/components/atoms/Avatar";
 import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
@@ -9,58 +9,82 @@ import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
-
-type Role = "cashier" | "manager" | "owner";
-type Invite = { id: string; email: string; role: Role; sentAt: string; status: "pending" | "accepted" };
-
-const STAFF = [
-  { id: "u1", name: "Ama Mensah", role: "cashier" as Role, email: "ama@northside.shop" },
-  { id: "u2", name: "Kofi Boateng", role: "manager" as Role, email: "kofi@northside.shop" },
-];
+import { usePendingInvites, useRevokeInvite, useSendInvite, useStoreTeamMembers } from "@/src/features/settings/hooks";
+import type { InviteRole } from "@/src/features/settings/types";
+import { toErrorMessage } from "@/src/utils/errors";
 
 export default function SettingsUsersScreen() {
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [role, setRole] = useState<Role>("cashier");
-  const [invites, setInvites] = useState<Invite[]>([]);
+  const { data: members = [], isLoading, isError, error } = useStoreTeamMembers();
+  const { data: invites = [], isLoading: invitesLoading } = usePendingInvites();
+  const sendInvite = useSendInvite();
+  const revokeInvite = useRevokeInvite();
 
-  function sendInvite() {
-    const email = inviteEmail.trim().toLowerCase();
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [role, setRole] = useState<InviteRole>("cashier");
+
+  async function onSendInvite(resend = false, emailOverride?: string) {
+    const email = (emailOverride ?? inviteEmail).trim().toLowerCase();
     if (!email || !email.includes("@")) {
       Alert.alert("Invalid email", "Enter a valid email address for the invite.");
       return;
     }
-    const invite: Invite = {
-      id: `inv-${Date.now()}`,
-      email,
-      role,
-      sentAt: new Date().toLocaleString(),
-      status: "pending",
-    };
-    setInvites((prev) => [invite, ...prev]);
-    setInviteEmail("");
+
+    try {
+      const result = await sendInvite.mutateAsync({ email, role, resend });
+      if (!emailOverride) setInviteEmail("");
+
+      if (result.emailSent) {
+        Alert.alert("Invite sent", `An invite email was sent to ${email}.`);
+        return;
+      }
+
+      Alert.alert(
+        "Invite saved",
+        result.warning ??
+          `${email} was added as a pending invite. They can sign in (or create an account) with this email to join.`,
+      );
+    } catch (err) {
+      Alert.alert("Invite failed", toErrorMessage(err, "Could not send invite."));
+    }
   }
 
-  function resendInvite(email: string) {
-    Alert.alert("Invite resent", `A fresh invite link was sent to ${email}.`);
+  function onRevoke(inviteId: string, email: string) {
+    Alert.alert("Revoke invite?", `Remove the pending invite for ${email}?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Revoke",
+        style: "destructive",
+        onPress: () => {
+          void revokeInvite.mutateAsync(inviteId).catch((err) => {
+            Alert.alert("Revoke failed", toErrorMessage(err, "Could not revoke invite."));
+          });
+        },
+      },
+    ]);
   }
 
   return (
     <AppScrollScreen showBack title="Users" subtitle="Invite staff and manage roles across locations.">
       <SectionCard>
         <Text style={styles.sectionTitle}>Team members</Text>
+        {isLoading ? <ActivityIndicator color={Colors.primaryBlue} /> : null}
+        {isError ? <Text style={styles.error}>{toErrorMessage(error, "Failed to load team members.")}</Text> : null}
         <View style={styles.list}>
-          {STAFF.map((member) => (
-            <View key={member.id} style={styles.row}>
+          {members.map((member) => (
+            <View key={member.userId} style={styles.row}>
               <View style={styles.left}>
-                <Avatar fallbackInitials={member.name} />
+                <Avatar uri={member.avatarUrl} fallbackInitials={member.fullName} />
                 <View>
-                  <Text style={styles.name}>{member.name}</Text>
-                  <Text style={styles.meta}>{member.email}</Text>
+                  <Text style={styles.name}>{member.fullName}</Text>
+                  <Text style={styles.meta}>
+                    Joined {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString() : "—"}
+                  </Text>
                 </View>
               </View>
               <Text style={styles.role}>{member.role}</Text>
             </View>
           ))}
+          {!isLoading && members.length === 0 ? <Text style={styles.empty}>No team members found.</Text> : null}
         </View>
       </SectionCard>
 
@@ -75,7 +99,7 @@ export default function SettingsUsersScreen() {
           autoCapitalize="none"
         />
         <View style={styles.roleRow}>
-          {(["cashier", "manager", "owner"] as Role[]).map((option) => (
+          {(["cashier", "manager", "admin"] as InviteRole[]).map((option) => (
             <Pressable
               key={option}
               onPress={() => setRole(option)}
@@ -85,30 +109,48 @@ export default function SettingsUsersScreen() {
             </Pressable>
           ))}
         </View>
-        <PrimaryButton label="Send invite" onPress={sendInvite} />
+        <PrimaryButton
+          label={sendInvite.isPending ? "Sending…" : "Send invite"}
+          disabled={sendInvite.isPending}
+          onPress={() => void onSendInvite(false)}
+        />
       </SectionCard>
 
       <SectionCard>
         <Text style={styles.sectionTitle}>Pending invites</Text>
+        {invitesLoading ? <ActivityIndicator color={Colors.primaryBlue} /> : null}
         <View style={styles.list}>
           {invites.map((invite) => (
             <View key={invite.id} style={styles.inviteRow}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{invite.email}</Text>
                 <Text style={styles.meta}>
-                  {invite.role.toUpperCase()} · {invite.sentAt} · {invite.status}
+                  {invite.role.toUpperCase()} ·{" "}
+                  {invite.sentAt ? new Date(invite.sentAt).toLocaleString() : "—"}
+                  {invite.expiresAt ? ` · expires ${new Date(invite.expiresAt).toLocaleDateString()}` : ""}
                 </Text>
               </View>
-              <PrimaryButton
-                label="Resend"
-                variant="outline"
-                fullWidth={false}
-                style={styles.resendBtn}
-                onPress={() => resendInvite(invite.email)}
-              />
+              <View style={styles.inviteActions}>
+                <PrimaryButton
+                  label="Resend"
+                  variant="outline"
+                  fullWidth={false}
+                  style={styles.actionBtn}
+                  disabled={sendInvite.isPending}
+                  onPress={() => void onSendInvite(true, invite.email)}
+                />
+                <PrimaryButton
+                  label="Revoke"
+                  variant="outline"
+                  fullWidth={false}
+                  style={styles.actionBtn}
+                  disabled={revokeInvite.isPending}
+                  onPress={() => onRevoke(invite.id, invite.email)}
+                />
+              </View>
             </View>
           ))}
-          {invites.length === 0 ? <Text style={styles.empty}>No invites yet.</Text> : null}
+          {!invitesLoading && invites.length === 0 ? <Text style={styles.empty}>No invites yet.</Text> : null}
         </View>
       </SectionCard>
     </AppScrollScreen>
@@ -136,8 +178,6 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
   },
   inviteRow: {
-    flexDirection: "row",
-    alignItems: "center",
     gap: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -145,6 +185,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.sm,
+  },
+  inviteActions: {
+    flexDirection: "row",
+    gap: Spacing.xs,
   },
   left: {
     flexDirection: "row",
@@ -190,11 +234,16 @@ const styles = StyleSheet.create({
   roleTextActive: {
     color: Colors.primaryBlue,
   },
-  resendBtn: {
-    minWidth: 86,
+  actionBtn: {
+    minWidth: 78,
   },
   empty: {
     color: Colors.textMuted,
     textAlign: "center",
+  },
+  error: {
+    ...Typography.body,
+    color: Colors.accentOrange,
+    marginBottom: Spacing.xs,
   },
 });

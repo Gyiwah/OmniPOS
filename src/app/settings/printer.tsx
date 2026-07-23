@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
@@ -8,6 +8,8 @@ import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
+import { printerService } from "@/src/services/printer";
+import { usePrinterStore } from "@/src/store/printerStore";
 
 type PrinterDevice = { id: string; name: string; mac: string };
 
@@ -17,36 +19,39 @@ const MOCK_DEVICES: PrinterDevice[] = [
 ];
 
 export default function SettingsPrinterScreen() {
-  const [paired, setPaired] = useState<PrinterDevice | null>(null);
-  const [paper, setPaper] = useState<"58mm" | "80mm">("80mm");
+  const device = usePrinterStore((s) => s.device);
+  const paperSize = usePrinterStore((s) => s.paperSize);
+  const setPrinter = usePrinterStore((s) => s.setPrinter);
+  const setPaperSize = usePrinterStore((s) => s.setPaperSize);
 
-  const connected = useMemo(() => Boolean(paired), [paired]);
+  const connected = useMemo(() => Boolean(device), [device]);
 
-  function connect(device: PrinterDevice) {
-    setPaired(device);
-    Alert.alert("Printer paired", `${device.name} connected.`);
+  function connect(nextDevice: PrinterDevice) {
+    setPrinter(nextDevice);
+    Alert.alert("Printer paired", `${nextDevice.name} connected.`);
   }
 
-  function testPrint() {
-    Alert.alert("Test print", `Printing sample receipt to ${paired?.name ?? "selected printer"}...`);
+  async function testPrint() {
+    await printerService.printReceipt();
+    Alert.alert("Test print", `Printing sample receipt to ${device?.name ?? "selected printer"}...`);
   }
 
   return (
     <AppScrollScreen showBack title="Printer" subtitle="Pair Bluetooth receipt printers and test output.">
       <SectionCard>
-        <PrinterStatus isConnected={connected} macAddress={paired?.mac ?? null} onPress={() => {}} />
+        <PrinterStatus isConnected={connected} macAddress={device?.mac ?? null} />
       </SectionCard>
 
       <SectionCard>
         <Text style={styles.sectionTitle}>Available printers</Text>
         <View style={styles.devicesWrap}>
-          {MOCK_DEVICES.map((device) => (
-            <Pressable key={device.id} style={styles.deviceRow} onPress={() => connect(device)}>
+          {MOCK_DEVICES.map((item) => (
+            <Pressable key={item.id} style={styles.deviceRow} onPress={() => connect(item)}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.deviceName}>{device.name}</Text>
-                <Text style={styles.deviceMeta}>{device.mac}</Text>
+                <Text style={styles.deviceName}>{item.name}</Text>
+                <Text style={styles.deviceMeta}>{item.mac}</Text>
               </View>
-              <Text style={styles.deviceAction}>{paired?.id === device.id ? "Paired" : "Pair"}</Text>
+              <Text style={styles.deviceAction}>{device?.id === item.id ? "Paired" : "Pair"}</Text>
             </Pressable>
           ))}
         </View>
@@ -60,18 +65,18 @@ export default function SettingsPrinterScreen() {
             {(["58mm", "80mm"] as const).map((size) => (
               <Pressable
                 key={size}
-                onPress={() => setPaper(size)}
-                style={[styles.pill, paper === size && styles.pillActive]}
+                onPress={() => setPaperSize(size)}
+                style={[styles.pill, paperSize === size && styles.pillActive]}
               >
-                <Text style={[styles.pillLabel, paper === size && styles.pillLabelActive]}>{size}</Text>
+                <Text style={[styles.pillLabel, paperSize === size && styles.pillLabelActive]}>{size}</Text>
               </Pressable>
             ))}
           </View>
         </View>
       </SectionCard>
 
-      <PrimaryButton label="Test print" disabled={!paired} onPress={testPrint} />
-      <PrimaryButton label="Unpair printer" variant="outline" disabled={!paired} onPress={() => setPaired(null)} />
+      <PrimaryButton label="Test print" disabled={!device} onPress={() => void testPrint()} />
+      <PrimaryButton label="Unpair printer" variant="outline" disabled={!device} onPress={() => setPrinter(null)} />
     </AppScrollScreen>
   );
 }

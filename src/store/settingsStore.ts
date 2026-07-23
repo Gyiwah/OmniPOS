@@ -17,6 +17,17 @@ type SettingsState = {
   setCurrency: (value: string) => void;
   setAppModeDark: (value: boolean) => void;
   setCharges: (payload: { taxRate?: number; vatRate?: number; serviceRate?: number }) => void;
+  hydrateFromServer: (payload: {
+    shopName: string;
+    shopEmail: string;
+    shopLogoUri: string | null;
+    language: string;
+    currency: string;
+    appModeDark: boolean;
+    taxRate: number;
+    vatRate: number;
+    serviceRate: number;
+  }) => void;
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -46,6 +57,7 @@ export const useSettingsStore = create<SettingsState>()(
           vatRate: vatRate ?? s.vatRate,
           serviceRate: serviceRate ?? s.serviceRate,
         })),
+      hydrateFromServer: (payload) => set(payload),
     }),
     {
       name: "omnipos-settings-v1",

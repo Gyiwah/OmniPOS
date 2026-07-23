@@ -14,6 +14,7 @@ If your target project already has a partial/older `public` schema, `000` is now
 3. `004_integration_alignment.sql` - aligns schema with current mobile app flow
 4. `005_order_items.sql` - order line-item persistence and policies
 5. `002_seed.sql` - optional seed/bootstrap data (edit placeholders first)
+6. `008_store_invites.sql` - staff invite table, RLS, and accept_pending_store_invites RPC
 
 ## Notes
 

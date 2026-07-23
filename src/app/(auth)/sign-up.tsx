@@ -29,10 +29,14 @@ export default function SignUpScreen() {
         password,
       });
 
-      if (result.session?.user) {
-        setSession(result.session.user.id, "admin");
-        setActiveStore("storeId" in result ? result.storeId : null);
-        router.replace("/onboarding/store");
+      if (result.session?.user && "storeId" in result && result.storeId) {
+        const role =
+          "role" in result && (result.role === "admin" || result.role === "manager" || result.role === "cashier")
+            ? result.role
+            : "admin";
+        setSession(result.session.user.id, role);
+        setActiveStore(result.storeId);
+        router.replace(role === "admin" ? "/onboarding/store" : "/(tabs)/home");
         return;
       }
 
