@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
@@ -8,52 +8,109 @@ import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
-import { printerService } from "@/src/services/printer";
+import {
+  useBluetoothPrinters,
+  usePairPrinter,
+  usePrinterAvailability,
+  useTestPrint,
+} from "@/src/features/printer/hooks";
+import type { PrinterDevice } from "@/src/features/printer/types";
 import { usePrinterStore } from "@/src/store/printerStore";
-
-type PrinterDevice = { id: string; name: string; mac: string };
-
-const MOCK_DEVICES: PrinterDevice[] = [
-  { id: "p1", name: "POS-Frontdesk", mac: "00:1A:7D:DA:71:13" },
-  { id: "p2", name: "POS-Backoffice", mac: "00:1A:7D:DA:71:14" },
-];
+import { toErrorMessage } from "@/src/utils/errors";
 
 export default function SettingsPrinterScreen() {
   const device = usePrinterStore((s) => s.device);
   const paperSize = usePrinterStore((s) => s.paperSize);
   const setPrinter = usePrinterStore((s) => s.setPrinter);
   const setPaperSize = usePrinterStore((s) => s.setPaperSize);
+  const { nativeAvailable } = usePrinterAvailability();
+  const [scanEnabled, setScanEnabled] = useState(false);
+  const { data: scanResult, isFetching, refetch, isError, error } = useBluetoothPrinters(scanEnabled);
+  const pairPrinter = usePairPrinter();
+  const testPrint = useTestPrint();
 
   const connected = useMemo(() => Boolean(device), [device]);
+  const devices = scanResult?.devices ?? [];
 
-  function connect(nextDevice: PrinterDevice) {
-    setPrinter(nextDevice);
-    Alert.alert("Printer paired", `${nextDevice.name} connected.`);
+  async function onScan() {
+    setScanEnabled(true);
+    try {
+      await refetch();
+    } catch (err) {
+      Alert.alert("Scan failed", toErrorMessage(err, "Could not scan for Bluetooth printers."));
+    }
   }
 
-  async function testPrint() {
-    await printerService.printReceipt();
-    Alert.alert("Test print", `Printing sample receipt to ${device?.name ?? "selected printer"}...`);
+  async function connect(nextDevice: PrinterDevice) {
+    try {
+      await pairPrinter.mutateAsync(nextDevice);
+      Alert.alert("Printer paired", `${nextDevice.name} is ready for receipts.`);
+    } catch (err) {
+      Alert.alert("Pair failed", toErrorMessage(err, "Could not connect to the printer."));
+    }
+  }
+
+  async function onTestPrint() {
+    try {
+      await testPrint.mutateAsync();
+      Alert.alert("Test print sent", `Sample receipt sent to ${device?.name ?? "printer"}.`);
+    } catch (err) {
+      Alert.alert("Print failed", toErrorMessage(err, "Could not print test receipt."));
+    }
   }
 
   return (
     <AppScrollScreen showBack title="Printer" subtitle="Pair Bluetooth receipt printers and test output.">
+      {!nativeAvailable ? (
+        <SectionCard>
+          <Text style={styles.noticeTitle}>Development build required</Text>
+          <Text style={styles.noticeBody}>
+            Bluetooth printing uses native modules and does not work in Expo Go. Run a dev build with{" "}
+            <Text style={styles.noticeCode}>npm run dev:android</Text> or EAS Build, then return here to pair your
+            ESC/POS printer.
+          </Text>
+        </SectionCard>
+      ) : null}
+
       <SectionCard>
         <PrinterStatus isConnected={connected} macAddress={device?.mac ?? null} />
+        {device ? <Text style={styles.meta}>Address: {device.address}</Text> : null}
       </SectionCard>
 
       <SectionCard>
-        <Text style={styles.sectionTitle}>Available printers</Text>
+        <View style={styles.scanHeader}>
+          <Text style={styles.sectionTitle}>Available printers</Text>
+          <PrimaryButton
+            label={isFetching ? "Scanning…" : "Scan"}
+            variant="outline"
+            fullWidth={false}
+            disabled={!nativeAvailable || isFetching}
+            onPress={() => void onScan()}
+          />
+        </View>
+        {isError ? <Text style={styles.error}>{toErrorMessage(error, "Scan failed.")}</Text> : null}
+        {isFetching ? <ActivityIndicator color={Colors.primaryBlue} /> : null}
         <View style={styles.devicesWrap}>
-          {MOCK_DEVICES.map((item) => (
-            <Pressable key={item.id} style={styles.deviceRow} onPress={() => connect(item)}>
+          {devices.map((item) => (
+            <Pressable
+              key={item.id}
+              style={styles.deviceRow}
+              disabled={pairPrinter.isPending}
+              onPress={() => void connect(item)}
+            >
               <View style={{ flex: 1 }}>
                 <Text style={styles.deviceName}>{item.name}</Text>
-                <Text style={styles.deviceMeta}>{item.mac}</Text>
+                <Text style={styles.deviceMeta}>
+                  {item.mac} · {item.connectionType === "ble" ? "BLE" : "Bluetooth Classic"}
+                </Text>
               </View>
               <Text style={styles.deviceAction}>{device?.id === item.id ? "Paired" : "Pair"}</Text>
             </Pressable>
           ))}
+          {!isFetching && scanEnabled && devices.length === 0 ? (
+            <Text style={styles.empty}>No printers found. Make sure the printer is on and paired in system settings.</Text>
+          ) : null}
+          {!scanEnabled ? <Text style={styles.empty}>Tap Scan to find nearby Bluetooth receipt printers.</Text> : null}
         </View>
       </SectionCard>
 
@@ -75,7 +132,11 @@ export default function SettingsPrinterScreen() {
         </View>
       </SectionCard>
 
-      <PrimaryButton label="Test print" disabled={!device} onPress={() => void testPrint()} />
+      <PrimaryButton
+        label={testPrint.isPending ? "Printing…" : "Test print"}
+        disabled={!device || testPrint.isPending}
+        onPress={() => void onTestPrint()}
+      />
       <PrimaryButton label="Unpair printer" variant="outline" disabled={!device} onPress={() => setPrinter(null)} />
     </AppScrollScreen>
   );
@@ -86,6 +147,27 @@ const styles = StyleSheet.create({
     ...Typography.title,
     color: Colors.textPrimary,
     marginBottom: Spacing.xs,
+  },
+  scanHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  noticeTitle: {
+    ...Typography.title,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.xs,
+  },
+  noticeBody: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+  },
+  noticeCode: {
+    fontWeight: "700",
+    color: Colors.primaryBlue,
   },
   devicesWrap: {
     gap: Spacing.sm,
@@ -143,5 +225,15 @@ const styles = StyleSheet.create({
   },
   pillLabelActive: {
     color: Colors.primaryBlue,
+  },
+  empty: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+    textAlign: "center",
+  },
+  error: {
+    ...Typography.body,
+    color: Colors.accentOrange,
+    marginBottom: Spacing.xs,
   },
 });

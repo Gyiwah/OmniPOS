@@ -1,14 +1,17 @@
 import { useLocalSearchParams } from "expo-router";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, View, Alert } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useEffect, useState } from "react";
 
 import { AppScrollScreen } from "@/src/components/layout/AppScrollScreen";
 import { type ReceiptData, ReceiptDocument } from "@/src/components/organisms/ReceiptDocument";
 import { Colors } from "@/src/constants/colors";
+import { usePrintReceipt } from "@/src/features/printer/hooks";
+import type { ReceiptPrintPayload } from "@/src/features/printer/types";
 import { supabase } from "@/src/services/supabase";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
+import { toErrorMessage } from "@/src/utils/errors";
 
 type OrderRow = {
   id: string;
@@ -37,6 +40,7 @@ export default function ReceiptScreen() {
   const activeStoreId = useStoreSlice((s) => s.activeStoreId);
   const settingsCurrency = useSettingsStore((s) => s.currency);
   const shopName = useSettingsStore((s) => s.shopName);
+  const printReceipt = usePrintReceipt();
   const ref = Array.isArray(id) ? id[0] : id ?? "—";
   const [remoteData, setRemoteData] = useState<ReceiptData | undefined>(undefined);
   const [dateLabel, setDateLabel] = useState<string | undefined>(undefined);
@@ -106,6 +110,32 @@ export default function ReceiptScreen() {
     };
   }, [activeStoreId, ref, settingsCurrency, reloadNonce]);
 
+  async function onPrintReceipt() {
+    if (!remoteData) return;
+    try {
+      const payload: ReceiptPrintPayload = {
+        storeName: shopName,
+        orderNumber,
+        dateLabel: dateLabel ?? new Date().toLocaleString(),
+        currency: remoteData.currency ?? settingsCurrency,
+        lines: remoteData.lines,
+        discountMode: remoteData.discountMode,
+        discountValue: remoteData.discountValue,
+        amountPaid: remoteData.amountPaid,
+        customerName: remoteData.customerName,
+        customerPhone: remoteData.customerPhone,
+        shippingAddress: remoteData.shippingAddress,
+        taxRate: remoteData.taxRate,
+        vatRate: remoteData.vatRate,
+        serviceRate: remoteData.serviceRate,
+      };
+      await printReceipt.mutateAsync(payload);
+      Alert.alert("Receipt sent", "The receipt was sent to your paired printer.");
+    } catch (err) {
+      Alert.alert("Print failed", toErrorMessage(err, "Could not print receipt."));
+    }
+  }
+
   return (
     <AppScrollScreen
       showBack
@@ -138,7 +168,7 @@ export default function ReceiptScreen() {
             dateLabel: dateLabel ?? "—",
           }}
           data={remoteData}
-          onPrint={() => {}}
+          onPrint={() => void onPrintReceipt()}
           onShare={() => {}}
         />
       )}

@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useMemo, useState } from "react";
-import { Modal, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 
 import { Avatar } from "@/src/components/atoms/Avatar";
 import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
@@ -14,9 +14,11 @@ import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
+import { useManualSync } from "@/src/hooks/useManualSync";
 import { supabase } from "@/src/services/supabase";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
+import { formatRelativeSyncTime } from "@/src/utils/date";
 
 const SHORTCUTS: {
   label: string;
@@ -55,12 +57,27 @@ export default function HomeScreen() {
     setCurrency,
     setShopProfile,
   } = useSettingsStore();
+  const { triggerSync, syncing, pendingCount, lastSyncedAt, syncStatus, lastError } = useManualSync();
 
   const currencySymbol = useMemo(() => {
     if (currency === "USD") return "$";
     if (currency === "NGN") return "₦";
     return "₵";
   }, [currency]);
+
+  const syncPillLabel = useMemo(() => {
+    if (syncing) return "Syncing";
+    if (syncStatus === "error") return "Retry";
+    if (pendingCount > 0) return `Sync · ${pendingCount}`;
+    return "Sync";
+  }, [pendingCount, syncStatus, syncing]);
+
+  const heroSub = useMemo(() => {
+    const pendingLabel =
+      pendingCount === 0 ? "All changes synced" : `${pendingCount} change${pendingCount === 1 ? "" : "s"} pending`;
+    const syncedLabel = `Last synced ${formatRelativeSyncTime(lastSyncedAt)}`;
+    return `${pendingLabel} · ${syncedLabel} · ${language} · ${currencySymbol}`;
+  }, [currencySymbol, language, lastSyncedAt, pendingCount]);
 
   useEffect(() => {
     let mounted = true;
@@ -147,17 +164,38 @@ export default function HomeScreen() {
           </Pressable>
         }
         right={
-          <Pressable style={styles.syncPill} onPress={() => {}} accessibilityRole="button">
-            <Text style={styles.syncLabel}>Sync</Text>
+          <Pressable
+            style={[
+              styles.syncPill,
+              syncStatus === "error" && styles.syncPillError,
+              pendingCount > 0 && syncStatus !== "error" && styles.syncPillPending,
+            ]}
+            onPress={() => void triggerSync()}
+            disabled={syncing}
+            accessibilityRole="button"
+            accessibilityLabel={syncPillLabel}
+          >
+            <View style={styles.syncPillInner}>
+              {syncing ? <ActivityIndicator size="small" color={Colors.primaryBlue} /> : null}
+              <Text
+                style={[
+                  styles.syncLabel,
+                  syncStatus === "error" && styles.syncLabelError,
+                ]}
+              >
+                {syncPillLabel}
+              </Text>
+            </View>
           </Pressable>
         }
       >
         <SectionCard>
           <Text style={styles.kicker}>Today</Text>
           <Text style={styles.heroTitle}>Welcome back, {shopName}</Text>
-          <Text style={styles.heroSub}>
-            Pending sync: 3 · Language: {language} · Currency: {currencySymbol}
-          </Text>
+          <Text style={styles.heroSub}>{heroSub}</Text>
+          {syncStatus === "error" && lastError ? (
+            <Text style={styles.syncError}>{lastError}</Text>
+          ) : null}
         </SectionCard>
 
         <View style={styles.kpiRow}>
@@ -281,6 +319,11 @@ const styles = StyleSheet.create({
     ...Typography.body,
     color: Colors.textSecondary,
   },
+  syncError: {
+    ...Typography.caption,
+    color: Colors.accentOrange,
+    marginTop: Spacing.xs,
+  },
   kpiRow: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.sm },
   kpiCell: { flexGrow: 1, flexBasis: "30%", minWidth: 100 },
   sectionTitle: { ...Typography.title, color: Colors.textPrimary },
@@ -291,8 +334,23 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     paddingHorizontal: 14,
     paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: Colors.primaryBluePale,
+  },
+  syncPillPending: {
+    borderColor: Colors.primaryBlue,
+  },
+  syncPillError: {
+    backgroundColor: Colors.accentOrangePale,
+    borderColor: Colors.accentOrange,
+  },
+  syncPillInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   syncLabel: { color: Colors.primaryBlue, fontWeight: "700", fontSize: 13 },
+  syncLabelError: { color: Colors.accentOrange },
   drawerOverlay: { flex: 1, flexDirection: "row", backgroundColor: "rgba(0,0,0,0.3)" },
   backdrop: { flex: 1 },
   drawerPanel: {

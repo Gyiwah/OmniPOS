@@ -4,6 +4,7 @@ import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
+import { usePrinter } from "@/src/hooks/usePrinter";
 import { useOrderDraftStore } from "@/src/store/orderDraftStore";
 import { useSettingsStore } from "@/src/store/settingsStore";
 
@@ -60,6 +61,7 @@ function BarcodeVisual() {
 
 export function ReceiptDocument({ order, store, data, onPrint, onShare }: ReceiptDocumentProps) {
   const draft = useOrderDraftStore();
+  const { connected, deviceName } = usePrinter();
   const { lines, discountMode, discountValue, amountPaid, customerName, customerPhone, shippingAddress } =
     useOrderDraftStore();
   const { currency, taxRate, vatRate, serviceRate } = useSettingsStore();
@@ -182,8 +184,16 @@ export function ReceiptDocument({ order, store, data, onPrint, onShare }: Receip
 
       <View style={styles.bottomRow}>
         <View style={styles.printWrap}>
-          <PrimaryButton label="Print Receipt" onPress={() => onPrint?.()} fullWidth variant="primary" />
-          <Text style={styles.printHint}>No Printer Connected</Text>
+          <PrimaryButton
+            label="Print Receipt"
+            onPress={() => onPrint?.()}
+            fullWidth
+            variant="primary"
+            disabled={!connected}
+          />
+          <Text style={[styles.printHint, connected && styles.printHintReady]}>
+            {connected ? `Ready · ${deviceName ?? "Printer"}` : "Pair a printer in Settings → Printer"}
+          </Text>
         </View>
         <AccentButton label="Share" onPress={() => onShare?.()} fullWidth={false} style={styles.shareBtn} outlined />
       </View>
@@ -239,6 +249,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 3,
     fontWeight: "700",
+  },
+  printHintReady: {
+    color: Colors.primaryBlue,
   },
   shareBtn: { minWidth: 110 },
 });

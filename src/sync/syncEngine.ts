@@ -64,11 +64,15 @@ export async function runSyncCycle(storeIdHint?: string | null): Promise<SyncCyc
     await pullProducts(storeId);
     useSyncStore.getState().markSynced(new Date().toISOString());
     useSyncStore.getState().setSyncStatus(flushResult.ok ? "idle" : "error");
+    if (!flushResult.ok && flushResult.lastError) {
+      useSyncStore.getState().setLastError(flushResult.lastError);
+    }
     await AsyncStorage.setItem(SYNC_STORAGE.activeStoreId, storeId);
   } catch (error) {
     const message = error instanceof Error ? error.message : "sync failed";
     flushResult = { ok: false, pushed: flushResult.pushed, failed: flushResult.failed + 1, lastError: message };
     useSyncStore.getState().setSyncStatus("error");
+    useSyncStore.getState().setLastError(message);
   } finally {
     useSyncStore.getState().setSyncing(false);
     await refreshPendingSyncCount();

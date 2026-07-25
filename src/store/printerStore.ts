@@ -2,11 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-type PrinterDevice = {
-  id: string;
-  name: string;
-  mac: string;
-};
+import type { PrinterDevice } from "@/src/features/printer/types";
 
 type PrinterState = {
   connected: boolean;

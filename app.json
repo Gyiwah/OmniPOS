@@ -25,10 +25,21 @@
       "backgroundColor": "#fafbfb"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "OmniPOS uses Bluetooth to connect to receipt printers.",
+        "NSBluetoothPeripheralUsageDescription": "OmniPOS uses Bluetooth to discover and connect to receipt printers."
+      }
     },
     "android": {
       "package": "com.gyiwah.omnipos",
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#fafbfb"
