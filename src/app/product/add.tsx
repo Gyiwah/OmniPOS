@@ -22,6 +22,7 @@ import { remoteImageUrlOnly } from "@/src/sync/productRow";
 import { isLocalImageUri } from "@/src/services/storage";
 import { runSyncCycle } from "@/src/sync/syncEngine";
 import { useStoreSlice } from "@/src/store/storeSlice";
+import { isNonNegativeNumber, isPositiveNumber, isRequired } from "@/src/utils/validators";
 
 export default function AddProductScreen() {
   const router = useRouter();
@@ -36,6 +37,13 @@ export default function AddProductScreen() {
   const [tags, setTags] = useState("");
   const [showScanner, setShowScanner] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState({
+    sku: "",
+    name: "",
+    quantity: "",
+    costPrice: "",
+    sellPrice: "",
+  });
 
   async function pickImageFromLibrary() {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -73,31 +81,62 @@ export default function AddProductScreen() {
     }
   }
 
+  function validateForm() {
+    const cleanName = name.trim();
+    const cleanSku = sku.trim();
+    const quantityValue = quantity.trim();
+    const sellPriceValue = sellPrice.trim();
+    const costPriceValue = costPrice.trim();
+    const parsedSellPrice = Number(sellPriceValue);
+    const parsedCostPrice = costPriceValue ? Number(costPriceValue) : null;
+
+    const nextErrors = {
+      sku: "",
+      name: "",
+      quantity: "",
+      costPrice: "",
+      sellPrice: "",
+    };
+
+    if (!isRequired(cleanSku)) {
+      nextErrors.sku = "SKU is required.";
+    }
+    if (!isRequired(cleanName)) {
+      nextErrors.name = "Product name is required.";
+    }
+    if (!quantityValue || !isNonNegativeNumber(quantityValue)) {
+      nextErrors.quantity = "Enter a valid non-negative quantity.";
+    }
+    if (costPriceValue && !isNonNegativeNumber(costPriceValue)) {
+      nextErrors.costPrice = "Cost price must be a non-negative number.";
+    }
+    if (!sellPriceValue || !isPositiveNumber(sellPriceValue)) {
+      nextErrors.sellPrice = "Sell price must be at least 1.";
+    } else if (parsedCostPrice != null && Number.isFinite(parsedCostPrice) && parsedSellPrice < parsedCostPrice) {
+      nextErrors.sellPrice = "Sell price must be at least the cost price.";
+    }
+
+    setErrors(nextErrors);
+    return nextErrors;
+  }
+
   async function saveProduct() {
     if (!activeStoreId) {
       Alert.alert("Store not selected", "Select an active store before saving products.");
       return;
     }
 
+    const validationErrors = validateForm();
+    if (Object.values(validationErrors).some(Boolean)) {
+      return;
+    }
+
     const cleanName = name.trim();
     const cleanSku = sku.trim();
-    const stock = Number(quantity || 0);
-    const sell = Number(sellPrice || 0);
-    const cost = costPrice.trim().length ? Number(costPrice) : undefined;
+    const stock = Number(quantity.trim());
+    const sell = Number(sellPrice.trim());
+    const cost = costPrice.trim().length ? Number(costPrice.trim()) : undefined;
     const barcode = cleanSku;
-
-    if (!cleanName || !cleanSku) {
-      Alert.alert("Missing fields", "Product name and SKU are required.");
-      return;
-    }
-    if (!Number.isFinite(stock) || stock < 0 || !Number.isFinite(sell) || sell < 0) {
-      Alert.alert("Invalid values", "Stock and sell price must be valid non-negative numbers.");
-      return;
-    }
-    if (cost != null && (!Number.isFinite(cost) || cost < 0)) {
-      Alert.alert("Invalid cost price", "Cost price must be empty or a valid non-negative number.");
-      return;
-    }
 
     setSaving(true);
     try {
@@ -218,8 +257,12 @@ export default function AddProductScreen() {
         <TextInput
           label="Product code / SKU"
           value={sku}
-          onChangeText={setSku}
+          onChangeText={(value) => {
+            setSku(value);
+            setErrors((prev) => ({ ...prev, sku: "" }));
+          }}
           placeholder="Scan barcode or enter SKU"
+          error={errors.sku}
           rightIcon={
             <Pressable onPress={() => setShowScanner((v) => !v)} hitSlop={10}>
               <Ionicons
@@ -243,8 +286,12 @@ export default function AddProductScreen() {
         <TextInput
           label="Product name"
           value={name}
-          onChangeText={setName}
+          onChangeText={(value) => {
+            setName(value);
+            setErrors((prev) => ({ ...prev, name: "" }));
+          }}
           placeholder="e.g. Sawyer Picaridin Insect Repellent"
+          error={errors.name}
           multiline
         />
       </SectionCard>
@@ -254,22 +301,34 @@ export default function AddProductScreen() {
         <TextInput
           label="Stock / Quantity"
           value={quantity}
-          onChangeText={setQuantity}
+          onChangeText={(value) => {
+            setQuantity(value);
+            setErrors((prev) => ({ ...prev, quantity: "" }));
+          }}
           placeholder="0"
+          error={errors.quantity}
           keyboardType="number-pad"
         />
         <TextInput
           label="Cost price (optional)"
           value={costPrice}
-          onChangeText={setCostPrice}
+          onChangeText={(value) => {
+            setCostPrice(value);
+            setErrors((prev) => ({ ...prev, costPrice: "" }));
+          }}
           placeholder="Optional"
+          error={errors.costPrice}
           keyboardType="decimal-pad"
         />
         <TextInput
           label="Sell price"
           value={sellPrice}
-          onChangeText={setSellPrice}
+          onChangeText={(value) => {
+            setSellPrice(value);
+            setErrors((prev) => ({ ...prev, sellPrice: "" }));
+          }}
           placeholder="0.00"
+          error={errors.sellPrice}
           keyboardType="decimal-pad"
         />
       </SectionCard>
