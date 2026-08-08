@@ -1,3 +1,4 @@
+import * as Linking from "expo-linking";
 import { supabase } from "@/src/services/supabase";
 import { uploadStoreLogoFromUri, resolveStoreLogoUrl } from "@/src/services/storage";
 
@@ -130,6 +131,7 @@ export const settingsService = {
         email,
         role: input.role,
         resend: Boolean(input.resend),
+        redirectTo: Linking.createURL("/auth/callback"),
       },
     });
 

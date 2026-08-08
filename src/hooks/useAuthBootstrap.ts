@@ -22,6 +22,13 @@ export function useAuthBootstrap(): void {
         const session = sessionData.session;
         if (session?.user) {
           const userId = session.user.id;
+
+          try {
+            await supabase.rpc("accept_pending_store_invites");
+          } catch {
+            // Ignore if RPC fails during offline state
+          }
+
           const { data: memberships, error: membershipError } = await supabase
             .from("store_members")
             .select("store_id, role")

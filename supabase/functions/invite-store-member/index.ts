@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
       return json({ error: inviteError?.message ?? "Failed to save invite" }, 400);
     }
 
-    const redirectTo = Deno.env.get("INVITE_REDIRECT_URL") ?? "omnipos://auth/callback";
+    const redirectTo = body.redirectTo?.trim() || Deno.env.get("INVITE_REDIRECT_URL") || "omnipos://auth/callback";
     const { data: invited, error: inviteAuthError } = await adminClient.auth.admin.inviteUserByEmail(email, {
       redirectTo,
       data: {
