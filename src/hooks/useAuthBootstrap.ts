@@ -37,11 +37,19 @@ export function useAuthBootstrap(): void {
 
           if (membershipError) throw membershipError;
 
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("is_super_admin")
+            .eq("id", userId)
+            .maybeSingle();
+
+          const isSuperAdmin = Boolean(profile?.is_super_admin);
+
           const membership = memberships?.[0];
           if (membership) {
-            useAuthStore.getState().setSession(userId, membership.role);
+            useAuthStore.getState().setSession(userId, membership.role, isSuperAdmin);
           } else {
-            useAuthStore.getState().setSession(userId, null);
+            useAuthStore.getState().setSession(userId, isSuperAdmin ? "super_admin" : null, isSuperAdmin);
           }
 
           const storedStoreId = await AsyncStorage.getItem(SYNC_STORAGE.activeStoreId);

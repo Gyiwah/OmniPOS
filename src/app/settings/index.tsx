@@ -15,6 +15,7 @@ import { Typography } from "@/src/constants/typography";
 import { useSaveStoreSettings, useStoreSettings } from "@/src/features/settings/hooks";
 import { isLocalImageUri, resolveStoreLogoUrl } from "@/src/services/storage";
 import { useSettingsStore } from "@/src/store/settingsStore";
+import { useAuthStore } from "@/src/store/authStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
 import { toErrorMessage } from "@/src/utils/errors";
 
@@ -31,6 +32,7 @@ const CURRENCIES = ["GHS", "USD", "NGN"] as const;
 export default function SettingsScreen() {
   const router = useRouter();
   const activeStoreId = useStoreSlice((s) => s.activeStoreId);
+  const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin);
   const { shopName, shopEmail, shopLogoUri, language, currency, taxRate, vatRate, serviceRate, hydrateFromServer } =
     useSettingsStore();
   const { data: remoteSettings, isLoading, isError, error } = useStoreSettings();
@@ -139,6 +141,24 @@ export default function SettingsScreen() {
       {isError ? (
         <SectionCard>
           <Text style={styles.error}>{toErrorMessage(error, "Could not load store settings.")}</Text>
+        </SectionCard>
+      ) : null}
+
+      {isSuperAdmin ? (
+        <SectionCard style={{ backgroundColor: Colors.primaryBluePale, borderColor: Colors.primaryBlue }}>
+          <Pressable
+            onPress={() => router.push("/super-admin" as never)}
+            style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: Spacing.sm, flex: 1 }}>
+              <Ionicons name="shield-checkmark" size={24} color={Colors.primaryBlue} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...Typography.title, color: Colors.primaryBlue }}>Super Admin Portal</Text>
+                <Text style={{ ...Typography.caption, color: Colors.textSecondary }}>Provision system stores & store admin credentials</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={Colors.primaryBlue} />
+          </Pressable>
         </SectionCard>
       ) : null}
 
