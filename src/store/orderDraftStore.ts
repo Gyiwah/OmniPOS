@@ -12,13 +12,17 @@ export type DraftLine = {
 
 type DiscountMode = "percentage" | "amount";
 
+export type PaymentMethod = "cash" | "card" | "transfer" | "split";
+
 type OrderDraftState = {
   lines: DraftLine[];
   discountMode: DiscountMode;
   discountValue: number;
   amountPaid: number;
+  paymentMethod: PaymentMethod;
   customerName: string;
   customerPhone: string;
+  customerId?: string;
   shippingAddress: string;
   addOrIncrementLine: (line: Omit<DraftLine, "quantity">) => void;
   setLineQty: (id: string, quantity: number) => void;
@@ -26,7 +30,8 @@ type OrderDraftState = {
   setDiscountMode: (mode: DiscountMode) => void;
   setDiscountValue: (value: number) => void;
   setAmountPaid: (value: number) => void;
-  setCustomer: (payload: { name?: string; phone?: string; shippingAddress?: string }) => void;
+  setPaymentMethod: (method: PaymentMethod) => void;
+  setCustomer: (payload: { id?: string; name?: string; phone?: string; shippingAddress?: string }) => void;
   clearDraft: () => void;
 };
 
@@ -38,6 +43,7 @@ const INITIAL: Omit<
   | "setDiscountMode"
   | "setDiscountValue"
   | "setAmountPaid"
+  | "setPaymentMethod"
   | "setCustomer"
   | "clearDraft"
 > = {
@@ -45,8 +51,10 @@ const INITIAL: Omit<
   discountMode: "percentage",
   discountValue: 0,
   amountPaid: 0,
+  paymentMethod: "cash",
   customerName: "",
   customerPhone: "",
+  customerId: undefined,
   shippingAddress: "",
 };
 
@@ -75,8 +83,10 @@ export const useOrderDraftStore = create<OrderDraftState>((set) => ({
   setDiscountMode: (discountMode) => set({ discountMode }),
   setDiscountValue: (discountValue) => set({ discountValue: Number.isFinite(discountValue) ? discountValue : 0 }),
   setAmountPaid: (amountPaid) => set({ amountPaid: Number.isFinite(amountPaid) ? amountPaid : 0 }),
-  setCustomer: ({ name, phone, shippingAddress }) =>
+  setPaymentMethod: (paymentMethod) => set({ paymentMethod }),
+  setCustomer: ({ id, name, phone, shippingAddress }) =>
     set((s) => ({
+      customerId: id ?? s.customerId,
       customerName: name ?? s.customerName,
       customerPhone: phone ?? s.customerPhone,
       shippingAddress: shippingAddress ?? s.shippingAddress,

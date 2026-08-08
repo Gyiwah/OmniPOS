@@ -9,7 +9,8 @@
     "web": "expo start --web",
     "dev:android": "expo run:android",
     "dev:ios": "expo run:ios",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "test": "jest"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -52,6 +53,7 @@
     "@babel/plugin-proposal-class-properties": "^7.18.6",
     "@babel/plugin-proposal-decorators": "^7.29.0",
     "@expo/cli": "^54.0.0",
+    "@types/jest": "^29.5.14",
     "@types/react": "~19.1.10",
     "babel-preset-expo": "^54.0.12",
     "eas-cli": "^18.8.1",

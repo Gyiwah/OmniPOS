@@ -77,7 +77,7 @@ async function ensureMembershipAndBootstrap(options?: { storeName?: string; allo
     throw storeError ?? new Error("Store creation failed.");
   }
 
-  const { error: memberInsertError } = await supabase.from("store_members").insert({
+  const { error: memberInsertError } = await supabase.from("store_members").upsert({
     store_id: createdStore.id,
     user_id: userId,
     role: "admin",

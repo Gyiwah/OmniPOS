@@ -13,6 +13,14 @@ import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
 import { toErrorMessage } from "@/src/utils/errors";
 
+import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
+import { Q } from "@nozbe/watermelondb";
+
+import { database } from "@/src/database";
+import type Order from "@/src/database/models/Order";
+import type OrderItem from "@/src/database/models/OrderItem";
+
 type OrderRow = {
   id: string;
   order_number: string;
@@ -66,6 +74,40 @@ export default function ReceiptScreen() {
         .single<OrderRow>();
 
       if (error || !order) {
+        // Fallback: Check WatermelonDB SQLite for offline order
+        try {
+          const localOrders = await database.get<Order>("orders").query(Q.where("store_id", activeStoreId), Q.where("id", ref)).fetch();
+          const localMatch = localOrders[0];
+          if (localMatch) {
+            const localItems = await database.get<OrderItem>("order_items").query(Q.where("order_id", localMatch.id)).fetch();
+            if (!mounted) return;
+            setOrderNumber(localMatch.orderNumber);
+            setDateLabel(new Date(localMatch.createdAt).toLocaleString());
+            setRemoteData({
+              lines: localItems.map((item) => ({
+                id: item.id,
+                name: item.productName,
+                price: Number(item.unitPrice),
+                quantity: Number(item.quantity),
+              })),
+              discountMode: "amount",
+              discountValue: Number(localMatch.discount ?? 0),
+              amountPaid: Number(localMatch.amountPaid ?? 0),
+              customerName: localMatch.customerName,
+              customerPhone: localMatch.customerPhone,
+              shippingAddress: undefined,
+              taxRate: 0,
+              vatRate: 0,
+              serviceRate: 0,
+              currency: settingsCurrency,
+            });
+            setLoading(false);
+            return;
+          }
+        } catch {
+          // ignore local fallback error
+        }
+
         if (!mounted) return;
         setRemoteData(undefined);
         const message = error?.message ?? "Order not found.";
@@ -73,6 +115,7 @@ export default function ReceiptScreen() {
         setLoading(false);
         return;
       }
+
       const { data: items } = await supabase
         .from("order_items")
         .select("id, product_name, unit_price, quantity")
@@ -136,14 +179,60 @@ export default function ReceiptScreen() {
     }
   }
 
+  async function onShareReceipt() {
+    if (!remoteData) return;
+    const sym = remoteData.currency === "USD" ? "$" : remoteData.currency === "NGN" ? "₦" : "₵";
+    const subtotal = remoteData.lines.reduce((s, x) => s + x.price * x.quantity, 0);
+    const discount = remoteData.discountMode === "percentage" ? subtotal * (remoteData.discountValue / 100) : remoteData.discountValue;
+    const total = Math.max(0, subtotal - discount);
+
+    const linesFormatted = remoteData.lines.map((l) => `${l.name} x${l.quantity} - ${sym}${(l.price * l.quantity).toFixed(2)}`).join("\n");
+
+    const text = `
+=================================
+       ${shopName.toUpperCase()}
+=================================
+Order #: ${orderNumber}
+Date: ${dateLabel ?? new Date().toLocaleString()}
+Customer: ${remoteData.customerName || "Guest"}
+---------------------------------
+${linesFormatted}
+---------------------------------
+Subtotal: ${sym}${subtotal.toFixed(2)}
+Discount: -${sym}${discount.toFixed(2)}
+Total: ${sym}${total.toFixed(2)}
+Amount Paid: ${sym}${remoteData.amountPaid.toFixed(2)}
+---------------------------------
+Thank you for shopping with us!
+=================================
+`.trim();
+
+    try {
+      const fileUri = `${FileSystem.cacheDirectory}receipt_${orderNumber}.txt`;
+      await FileSystem.writeAsStringAsync(fileUri, text, { encoding: FileSystem.EncodingType.UTF8 });
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: "text/plain",
+          dialogTitle: `Receipt ${orderNumber}`,
+          UTI: "public.plain-text",
+        });
+      } else {
+        Alert.alert("Sharing unavailable", "Sharing is not supported on this device.");
+      }
+    } catch (shareErr) {
+      Alert.alert("Share failed", toErrorMessage(shareErr, "Could not share receipt."));
+    }
+  }
+
   return (
     <AppScrollScreen
       showBack
       title="Order Receipt"
       subtitle={`Reference · ${ref}`}
       right={
-        <Pressable hitSlop={8}>
-          <Ionicons name="qr-code-outline" size={24} color={Colors.textSecondary} />
+        <Pressable hitSlop={8} onPress={() => void onShareReceipt()}>
+          <Ionicons name="share-outline" size={24} color={Colors.primaryBlue} />
         </Pressable>
       }
     >
@@ -169,7 +258,7 @@ export default function ReceiptScreen() {
           }}
           data={remoteData}
           onPrint={() => void onPrintReceipt()}
-          onShare={() => {}}
+          onShare={() => void onShareReceipt()}
         />
       )}
     </AppScrollScreen>

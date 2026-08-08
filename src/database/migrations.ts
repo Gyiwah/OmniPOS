@@ -1,4 +1,4 @@
-import { schemaMigrations, addColumns } from "@nozbe/watermelondb/Schema/migrations";
+import { schemaMigrations, addColumns, createTable } from "@nozbe/watermelondb/Schema/migrations";
 
 export default schemaMigrations({
   migrations: [
@@ -8,6 +8,66 @@ export default schemaMigrations({
         addColumns({
           table: "products",
           columns: [{ name: "image_url", type: "string", isOptional: true }],
+        }),
+      ],
+    },
+    {
+      toVersion: 3,
+      steps: [
+        addColumns({
+          table: "products",
+          columns: [{ name: "reorder_level", type: "number", isOptional: true }],
+        }),
+        createTable({
+          name: "orders",
+          columns: [
+            { name: "store_id", type: "string", isIndexed: true },
+            { name: "remote_id", type: "string", isOptional: true, isIndexed: true },
+            { name: "cashier_user_id", type: "string" },
+            { name: "order_number", type: "string", isIndexed: true },
+            { name: "status", type: "string" },
+            { name: "subtotal", type: "number" },
+            { name: "tax", type: "number" },
+            { name: "discount", type: "number" },
+            { name: "total", type: "number" },
+            { name: "amount_paid", type: "number" },
+            { name: "change_due", type: "number" },
+            { name: "payment_method", type: "string" },
+            { name: "customer_name", type: "string", isOptional: true },
+            { name: "customer_phone", type: "string", isOptional: true },
+            { name: "customer_id", type: "string", isOptional: true },
+            { name: "created_at", type: "number", isIndexed: true },
+            { name: "dirty", type: "boolean" },
+          ],
+        }),
+        createTable({
+          name: "order_items",
+          columns: [
+            { name: "order_id", type: "string", isIndexed: true },
+            { name: "store_id", type: "string", isIndexed: true },
+            { name: "product_id", type: "string", isOptional: true },
+            { name: "product_name", type: "string" },
+            { name: "sku", type: "string", isOptional: true },
+            { name: "barcode", type: "string", isOptional: true },
+            { name: "unit_price", type: "number" },
+            { name: "quantity", type: "number" },
+            { name: "line_total", type: "number" },
+          ],
+        }),
+        createTable({
+          name: "customers",
+          columns: [
+            { name: "store_id", type: "string", isIndexed: true },
+            { name: "remote_id", type: "string", isOptional: true, isIndexed: true },
+            { name: "name", type: "string" },
+            { name: "phone", type: "string", isOptional: true },
+            { name: "email", type: "string", isOptional: true },
+            { name: "total_spend", type: "number" },
+            { name: "outstanding_balance", type: "number" },
+            { name: "notes", type: "string", isOptional: true },
+            { name: "updated_at", type: "number", isIndexed: true },
+            { name: "dirty", type: "boolean" },
+          ],
         }),
       ],
     },

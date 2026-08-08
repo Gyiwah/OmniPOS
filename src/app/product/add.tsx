@@ -34,6 +34,7 @@ export default function AddProductScreen() {
   const [quantity, setQuantity] = useState("");
   const [costPrice, setCostPrice] = useState("");
   const [sellPrice, setSellPrice] = useState("");
+  const [reorderLevel, setReorderLevel] = useState("5");
   const [tags, setTags] = useState("");
   const [showScanner, setShowScanner] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -167,6 +168,7 @@ export default function AddProductScreen() {
           r.stock = Math.floor(stock);
           r.sellPrice = sell;
           r.costPrice = cost;
+          r.reorderLevel = Number(reorderLevel) || 5;
           r.imageUrl = imageUri ?? undefined;
           r.updatedAt = now;
           r.dirty = true;
@@ -330,6 +332,13 @@ export default function AddProductScreen() {
           placeholder="0.00"
           error={errors.sellPrice}
           keyboardType="decimal-pad"
+        />
+        <TextInput
+          label="Reorder level / Low stock threshold"
+          value={reorderLevel}
+          onChangeText={setReorderLevel}
+          placeholder="5"
+          keyboardType="number-pad"
         />
       </SectionCard>
 

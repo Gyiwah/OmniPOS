@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from "react-native";
 
@@ -17,6 +18,7 @@ import { toErrorMessage } from "@/src/utils/errors";
 export default function SettingsStoresScreen() {
   const globalActiveStore = useStoreSlice((s) => s.activeStoreId);
   const setActiveStore = useStoreSlice((s) => s.setActiveStore);
+  const queryClient = useQueryClient();
   const { data: stores = [], isLoading, isError, error, refetch } = useStores();
   const createStore = useCreateStore();
 
@@ -24,20 +26,27 @@ export default function SettingsStoresScreen() {
   const [name, setName] = useState("");
 
   useEffect(() => {
-    if (globalActiveStore) {
-      setActiveId(globalActiveStore);
-      return;
+    if (!activeId) {
+      if (globalActiveStore) {
+        setActiveId(globalActiveStore);
+      } else if (stores.length > 0) {
+        setActiveId(stores[0].id);
+      }
     }
-    if (stores.length > 0 && !activeId) {
-      setActiveId(stores[0].id);
-    }
-  }, [globalActiveStore, stores, activeId]);
+  }, [globalActiveStore, stores]);
 
-  async function applyStoreSwitch() {
-    if (!activeId) return;
-    setActiveStore(activeId);
-    await AsyncStorage.setItem(SYNC_STORAGE.activeStoreId, activeId);
-    Alert.alert("Store switched", "Active store updated for sales, sync, and inventory views.");
+  async function applyStoreSwitch(targetId?: string) {
+    const selectedId = targetId ?? activeId;
+    if (!selectedId) return;
+
+    setActiveId(selectedId);
+    setActiveStore(selectedId);
+    await AsyncStorage.setItem(SYNC_STORAGE.activeStoreId, selectedId);
+    await queryClient.invalidateQueries();
+
+    const selectedStore = stores.find((s) => s.id === selectedId);
+    const storeName = selectedStore?.name ?? "Selected store";
+    Alert.alert("Store switched", `${storeName} is now active for sales, sync, and inventory.`);
   }
 
   async function addStore() {
@@ -47,9 +56,8 @@ export default function SettingsStoresScreen() {
     try {
       const created = await createStore.mutateAsync(trimmed);
       setName("");
-      setActiveId(created.id);
       await refetch();
-      Alert.alert("Store added", `${created.name} is ready. Apply the switch to activate it.`);
+      await applyStoreSwitch(created.id);
     } catch (err) {
       Alert.alert("Could not add store", toErrorMessage(err, "Store creation failed."));
     }
@@ -64,7 +72,7 @@ export default function SettingsStoresScreen() {
         {!isLoading && stores.length === 0 ? (
           <Text style={styles.helper}>No stores found for this account yet.</Text>
         ) : (
-          <StoreSwitcher stores={stores} activeId={activeId} onSwitch={setActiveId} />
+          <StoreSwitcher stores={stores} activeId={activeId} onSwitch={(id) => setActiveId(id)} />
         )}
       </SectionCard>
 
@@ -79,7 +87,11 @@ export default function SettingsStoresScreen() {
         />
       </SectionCard>
 
-      <PrimaryButton label="Apply store switch" disabled={!activeId} onPress={() => void applyStoreSwitch()} />
+      <PrimaryButton
+        label={activeId === globalActiveStore ? "Current store active" : "Apply store switch"}
+        disabled={!activeId || activeId === globalActiveStore}
+        onPress={() => void applyStoreSwitch()}
+      />
     </AppScrollScreen>
   );
 }

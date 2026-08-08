@@ -22,11 +22,12 @@ import { formatRelativeSyncTime } from "@/src/utils/date";
 
 const SHORTCUTS: {
   label: string;
-  href: "/inventory" | "/product/add" | "/pos/add-order" | "/analytics" | "/returns";
+  href: "/inventory" | "/product/add" | "/pos/add-order" | "/analytics" | "/returns" | "/customers";
 }[] = [
   { label: "Inventory", href: "/inventory" },
   { label: "Add product", href: "/product/add" },
   { label: "Create order", href: "/pos/add-order" },
+  { label: "Customers", href: "/customers" },
   { label: "Returns", href: "/returns" },
   { label: "Analytics", href: "/analytics" },
 ];
@@ -79,10 +80,27 @@ export default function HomeScreen() {
     return `${pendingLabel} · ${syncedLabel} · ${language} · ${currencySymbol}`;
   }, [currencySymbol, language, lastSyncedAt, pendingCount]);
 
+  const [lowStockCount, setLowStockCount] = useState(0);
+
   useEffect(() => {
     let mounted = true;
     async function loadDashboard() {
       if (!activeStoreId) return;
+
+      // Low stock check from WatermelonDB SQLite
+      try {
+        const { database } = await import("@/src/database");
+        const { Q } = await import("@ Nozbe/watermelondb" as any).catch(() => ({ Q: null }));
+        const ProductModel = (await import("@/src/database/models/Product")).default;
+        const allProducts = await database.get<Product>("products").query().fetch();
+        const lowStockItems = allProducts.filter(
+          (p) => p.storeId === activeStoreId && Number(p.stock ?? 0) <= Number(p.reorderLevel ?? 5),
+        );
+        if (mounted) setLowStockCount(lowStockItems.length);
+      } catch {
+        // ignore
+      }
+
       const since = new Date();
       since.setDate(since.getDate() - 6);
 
@@ -197,6 +215,23 @@ export default function HomeScreen() {
             <Text style={styles.syncError}>{lastError}</Text>
           ) : null}
         </SectionCard>
+
+        {lowStockCount > 0 ? (
+          <Pressable onPress={() => router.push("/inventory")}>
+            <SectionCard style={styles.lowStockCard}>
+              <View style={styles.lowStockRow}>
+                <Ionicons name="warning-outline" size={22} color="#d97706" />
+                <View style={styles.lowStockTextWrap}>
+                  <Text style={styles.lowStockTitle}>Low Stock Warning</Text>
+                  <Text style={styles.lowStockSub}>
+                    {lowStockCount} product{lowStockCount > 1 ? "s are" : " is"} at or below reorder level.
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+              </View>
+            </SectionCard>
+          </Pressable>
+        ) : null}
 
         <View style={styles.kpiRow}>
           {kpis.map((k) => (
@@ -324,6 +359,19 @@ const styles = StyleSheet.create({
     color: Colors.accentOrange,
     marginTop: Spacing.xs,
   },
+  lowStockCard: {
+    backgroundColor: "#fffbeb",
+    borderColor: "#fde68a",
+    borderWidth: 1,
+  },
+  lowStockRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  lowStockTextWrap: { flex: 1 },
+  lowStockTitle: { fontSize: 15, fontWeight: "700", color: "#92400e" },
+  lowStockSub: { fontSize: 13, color: "#b45309" },
   kpiRow: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.sm },
   kpiCell: { flexGrow: 1, flexBasis: "30%", minWidth: 100 },
   sectionTitle: { ...Typography.title, color: Colors.textPrimary },

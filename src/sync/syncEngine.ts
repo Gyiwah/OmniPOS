@@ -15,6 +15,11 @@ import {
 } from "./productRow";
 import { refreshPendingSyncCount } from "./syncCounters";
 
+import { buildOrderRowForSupabase, type OrderInsertPayload } from "./orderRow";
+import { buildCustomerRowForSupabase, type CustomerUpsertPayload } from "./customerRow";
+import type Order from "@/src/database/models/Order";
+import type Customer from "@/src/database/models/Customer";
+
 type RemoteProduct = {
   id: string;
   store_id: string;
@@ -27,6 +32,18 @@ type RemoteProduct = {
   image_url: string | null;
   tags: string[] | null;
   is_active: boolean;
+  updated_at: string;
+};
+
+type RemoteCustomer = {
+  id: string;
+  store_id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  total_spend: number;
+  outstanding_balance: number;
+  notes: string | null;
   updated_at: string;
 };
 
@@ -45,7 +62,7 @@ async function ensureSupabaseSession(): Promise<void> {
   }
 }
 
-/** Push outbound queue + pull Postgres products into SQLite */
+/** Push outbound queue + pull Postgres products & customers into SQLite */
 export async function runSyncCycle(storeIdHint?: string | null): Promise<SyncCycleResult> {
   const fromStorage = await AsyncStorage.getItem(SYNC_STORAGE.activeStoreId);
   const storeId = storeIdHint ?? fromStorage ?? null;
@@ -60,8 +77,19 @@ export async function runSyncCycle(storeIdHint?: string | null): Promise<SyncCyc
 
   try {
     await ensureSupabaseSession();
-    flushResult = await flushProductQueue(storeId);
+    const pRes = await flushProductQueue(storeId);
+    const oRes = await flushOrderQueue(storeId);
+    const cRes = await flushCustomerQueue(storeId);
+    
+    flushResult = {
+      ok: pRes.ok && oRes.ok && cRes.ok,
+      pushed: pRes.pushed + oRes.pushed + cRes.pushed,
+      failed: pRes.failed + oRes.failed + cRes.failed,
+      lastError: pRes.lastError || oRes.lastError || cRes.lastError,
+    };
+
     await pullProducts(storeId);
+    await pullCustomers(storeId);
     useSyncStore.getState().markSynced(new Date().toISOString());
     useSyncStore.getState().setSyncStatus(flushResult.ok ? "idle" : "error");
     if (!flushResult.ok && flushResult.lastError) {
@@ -273,6 +301,212 @@ async function pullProducts(storeId: string): Promise<void> {
           rec.costPrice = row.cost_price == null ? undefined : Number(row.cost_price);
           rec.barcode = row.barcode ?? undefined;
           rec.imageUrl = row.image_url ?? undefined;
+        });
+      }
+    }
+  });
+
+  const newest = rows.reduce((m, row) => (row.updated_at > m ? row.updated_at : m), rows[0].updated_at);
+  await AsyncStorage.setItem(cursorKey, newest);
+}
+
+async function flushOrderQueue(storeId: string): Promise<SyncCycleResult> {
+  const pending = await database
+    .get<SyncQueueItem>("sync_queue")
+    .query(Q.where("store_id", storeId), Q.where("entity", "orders"), Q.where("status", "pending"))
+    .fetch();
+
+  let pushed = 0;
+  let failed = 0;
+  let lastError: string | undefined;
+
+  for (const item of pending.slice(0, 20)) {
+    try {
+      if (item.operation === "upsert" || item.operation === "insert") {
+        const payload = JSON.parse(item.payload) as OrderInsertPayload;
+        const row = buildOrderRowForSupabase(payload);
+
+        const { data: inserted, error: orderErr } = await supabase
+          .from("orders")
+          .upsert(row, { onConflict: "store_id,order_number" })
+          .select("id")
+          .single();
+
+        if (orderErr) throw new Error(orderErr.message);
+        const orderId = inserted?.id ?? payload.id;
+
+        if (orderId && Array.isArray(payload.items) && payload.items.length > 0) {
+          const linesPayload = payload.items.map((line) => ({
+            order_id: orderId,
+            store_id: storeId,
+            product_id: line.product_id ?? null,
+            sku: line.sku ?? null,
+            barcode: line.barcode ?? null,
+            product_name: line.product_name,
+            unit_price: line.unit_price,
+            quantity: line.quantity,
+            line_total: line.line_total,
+          }));
+
+          const { error: lineErr } = await supabase.from("order_items").insert(linesPayload);
+          if (lineErr && !lineErr.message.toLowerCase().includes("order_items")) {
+            // ignore duplicate line errors if already inserted
+            if (__DEV__) console.warn(`[OmniPOS] order_items sync notice: ${lineErr.message}`);
+          }
+        }
+
+        if (item.recordId) {
+          try {
+            const localOrder = await database.get<Order>("orders").find(item.recordId);
+            await database.write(async () => {
+              await localOrder.update((rec) => {
+                rec.remoteId = orderId;
+                rec.dirty = false;
+              });
+            });
+          } catch {
+            // local record may be gone
+          }
+        }
+      }
+
+      await database.write(async () => {
+        await item.update((record) => {
+          record.status = "completed";
+          record.lastError = undefined;
+        });
+      });
+      pushed += 1;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "order sync failed";
+      lastError = message;
+      failed += 1;
+      await database.write(async () => {
+        await item.update((record) => {
+          record.attempts = record.attempts + 1;
+          record.lastError = message;
+          record.status = record.attempts >= 10 ? "error" : "pending";
+        });
+      });
+    }
+  }
+
+  return { ok: failed === 0, pushed, failed, lastError };
+}
+
+async function flushCustomerQueue(storeId: string): Promise<SyncCycleResult> {
+  const pending = await database
+    .get<SyncQueueItem>("sync_queue")
+    .query(Q.where("store_id", storeId), Q.where("entity", "customers"), Q.where("status", "pending"))
+    .fetch();
+
+  let pushed = 0;
+  let failed = 0;
+  let lastError: string | undefined;
+
+  for (const item of pending.slice(0, 20)) {
+    try {
+      if (item.operation === "upsert" || item.operation === "insert") {
+        const payload = JSON.parse(item.payload) as CustomerUpsertPayload;
+        const row = buildCustomerRowForSupabase(payload);
+
+        const { data: inserted, error: custErr } = await supabase
+          .from("customers")
+          .upsert(row)
+          .select("id")
+          .single();
+
+        if (custErr) throw new Error(custErr.message);
+        const remoteId = inserted?.id ?? payload.id;
+
+        if (item.recordId && remoteId) {
+          try {
+            const localCust = await database.get<Customer>("customers").find(item.recordId);
+            await database.write(async () => {
+              await localCust.update((rec) => {
+                rec.remoteId = remoteId;
+                rec.dirty = false;
+              });
+            });
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      await database.write(async () => {
+        await item.update((record) => {
+          record.status = "completed";
+          record.lastError = undefined;
+        });
+      });
+      pushed += 1;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "customer sync failed";
+      lastError = message;
+      failed += 1;
+      await database.write(async () => {
+        await item.update((record) => {
+          record.attempts = record.attempts + 1;
+          record.lastError = message;
+          record.status = record.attempts >= 10 ? "error" : "pending";
+        });
+      });
+    }
+  }
+
+  return { ok: failed === 0, pushed, failed, lastError };
+}
+
+async function pullCustomers(storeId: string): Promise<void> {
+  const cursorKey = `omnipos:cursor:customers:${storeId}`;
+  const localCount = await database.get<Customer>("customers").query(Q.where("store_id", storeId)).fetchCount();
+  const useFullPull = localCount === 0;
+  const cursor = useFullPull ? null : await AsyncStorage.getItem(cursorKey);
+
+  let qb = supabase.from("customers").select("*").eq("store_id", storeId);
+  if (cursor) {
+    qb = qb.gte("updated_at", cursor);
+  }
+  const { data, error } = await qb;
+  if (error) return; // fallback silently if table not deployed yet
+
+  const rows = data as RemoteCustomer[] | null;
+  if (!rows?.length) return;
+
+  await database.write(async () => {
+    const custCol = database.get<Customer>("customers");
+    for (const row of rows) {
+      const ts = Date.parse(row.updated_at);
+      const resolvedTs = Number.isFinite(ts) ? ts : Date.now();
+      const match = await custCol.query(Q.where("store_id", row.store_id), Q.where("name", row.name)).fetch();
+
+      const found = match[0];
+      if (found) {
+        await found.update((rec) => {
+          rec.remoteId = row.id;
+          rec.name = row.name;
+          rec.phone = row.phone ?? undefined;
+          rec.email = row.email ?? undefined;
+          rec.totalSpend = Number(row.total_spend ?? 0);
+          rec.outstandingBalance = Number(row.outstanding_balance ?? 0);
+          rec.notes = row.notes ?? undefined;
+          rec.updatedAt = resolvedTs;
+          rec.dirty = false;
+        });
+      } else {
+        await custCol.create((rec) => {
+          rec._raw.id = row.id;
+          rec.storeId = row.store_id;
+          rec.remoteId = row.id;
+          rec.name = row.name;
+          rec.phone = row.phone ?? undefined;
+          rec.email = row.email ?? undefined;
+          rec.totalSpend = Number(row.total_spend ?? 0);
+          rec.outstandingBalance = Number(row.outstanding_balance ?? 0);
+          rec.notes = row.notes ?? undefined;
+          rec.updatedAt = resolvedTs;
+          rec.dirty = false;
         });
       }
     }

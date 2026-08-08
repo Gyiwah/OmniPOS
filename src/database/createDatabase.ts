@@ -3,7 +3,7 @@ import LokiJSAdapter from "@nozbe/watermelondb/adapters/lokijs";
 import SQLiteAdapter from "@nozbe/watermelondb/adapters/sqlite";
 import { NativeModules, Platform } from "react-native";
 
-import { Product, SyncQueueItem } from "./models";
+import { Product, Order, OrderItem, Customer, SyncQueueItem } from "./models";
 import migrations from "./migrations";
 import wmSchema from "./wmSchema";
 let warnedMissingBridge = false;
@@ -64,6 +64,6 @@ function createAdapter() {
 export function createWatermelonDb() {
   return new Database({
     adapter: createAdapter(),
-    modelClasses: [Product, SyncQueueItem],
+    modelClasses: [Product, Order, OrderItem, Customer, SyncQueueItem],
   });
 }

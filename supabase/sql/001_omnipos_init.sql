@@ -117,6 +117,12 @@ as $$
     from public.store_members sm
     where sm.store_id = target_store_id
       and sm.user_id = auth.uid()
+  )
+  or exists (
+    select 1
+    from public.stores s
+    where s.id = target_store_id
+      and s.owner_user_id = auth.uid()
   );
 $$;
 

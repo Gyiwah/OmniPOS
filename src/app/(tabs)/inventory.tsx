@@ -79,7 +79,7 @@ export default function InventoryScreen() {
               id: p.id,
               name: p.name,
               stockCount: Number(p.stock ?? 0),
-              lowStockThreshold: 10,
+              lowStockThreshold: Number(p.reorderLevel ?? 5),
               imageUrl: await resolveProductImageUrl(rawImage),
             };
           }),
