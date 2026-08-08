@@ -10,6 +10,7 @@ type InviteBody = {
   email?: string;
   role?: "admin" | "manager" | "cashier";
   resend?: boolean;
+  redirectTo?: string;
 };
 
 Deno.serve(async (req) => {

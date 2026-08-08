@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
     if (createAuthError) {
       // If user exists, look up user ID
       const { data: listData } = await adminClient.auth.admin.listUsers();
-      const existingUser = listData.users.find((u) => u.email?.toLowerCase() === adminEmail);
+      const existingUser = listData.users.find((u: { email?: string; id: string }) => u.email?.toLowerCase() === adminEmail);
 
       if (existingUser) {
         adminUserId = existingUser.id;

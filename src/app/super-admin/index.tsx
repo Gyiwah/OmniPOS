@@ -21,18 +21,20 @@ export default function SuperAdminDashboardScreen() {
       title="Super Admin Portal"
       subtitle="System-wide store provisioning and store admin overview."
     >
-      <SectionCard style={styles.headerCard}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerTextWrap}>
-            <Text style={styles.cardTitle}>Store Provisioning</Text>
-            <Text style={styles.cardSub}>Create stores and assign initial Store Admin login credentials.</Text>
+      <SectionCard>
+        <View style={styles.headerCardInner}>
+          <View style={styles.headerRow}>
+            <View style={styles.headerTextWrap}>
+              <Text style={styles.cardTitle}>Store Provisioning</Text>
+              <Text style={styles.cardSub}>Create stores and assign initial Store Admin login credentials.</Text>
+            </View>
+            <Ionicons name="shield-checkmark" size={32} color={Colors.primaryBlue} />
           </View>
-          <Ionicons name="shield-checkmark" size={32} color={Colors.primaryBlue} />
+          <PrimaryButton
+            label="Provision New Store & Admin"
+            onPress={() => router.push("/super-admin/create-store")}
+          />
         </View>
-        <PrimaryButton
-          label="Provision New Store & Admin"
-          onPress={() => router.push("/super-admin/create-store")}
-        />
       </SectionCard>
 
       <SectionCard>
@@ -83,9 +85,10 @@ export default function SuperAdminDashboardScreen() {
 }
 
 const styles = StyleSheet.create({
-  headerCard: {
+  headerCardInner: {
     backgroundColor: Colors.primaryBluePale,
-    borderColor: Colors.primaryBlue,
+    borderRadius: Radius.input,
+    padding: Spacing.sm,
   },
   headerRow: {
     flexDirection: "row",
@@ -140,7 +143,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   badge: {
-    backgroundColor: Colors.surfaceHighlight,
+    backgroundColor: Colors.border,
     paddingHorizontal: Spacing.xs + 4,
     paddingVertical: 2,
     borderRadius: Radius.pill,

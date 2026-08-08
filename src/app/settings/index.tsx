@@ -145,10 +145,17 @@ export default function SettingsScreen() {
       ) : null}
 
       {isSuperAdmin ? (
-        <SectionCard style={{ backgroundColor: Colors.primaryBluePale, borderColor: Colors.primaryBlue }}>
+        <SectionCard>
           <Pressable
             onPress={() => router.push("/super-admin" as never)}
-            style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              backgroundColor: Colors.primaryBluePale,
+              padding: Spacing.sm,
+              borderRadius: Radius.input,
+            }}
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: Spacing.sm, flex: 1 }}>
               <Ionicons name="shield-checkmark" size={24} color={Colors.primaryBlue} />
