@@ -37,12 +37,9 @@ import {
 import { isLocalImageUri, resolveProductImageUrl } from "@/src/services/storage";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
-<<<<<<< HEAD
 import { isNonNegativeNumber, isPositiveNumber, isRequired } from "@/src/utils/validators";
-=======
 import { enqueueChange } from "@/src/sync/enqueue";
 import { runSyncCycle } from "@/src/sync/syncEngine";
->>>>>>> e5e341a (feat: complete inventory improvements, batch tracking, price history, date picker, dropdown filters, Expo Go scripts, and session persistence)
 
 export default function EditProductScreen() {
   const { id } = useLocalSearchParams<{ id?: string | string[] }>();
