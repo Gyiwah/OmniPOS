@@ -1,10 +1,9 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
-import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { TextInput } from "@/src/components/atoms/TextInput";
 import { BarcodeScanner } from "@/src/components/organisms/BarcodeScanner";
 import { Colors } from "@/src/constants/colors";
@@ -33,6 +32,7 @@ export default function AddReturnScreen() {
   const activeStoreId = useStoreSlice((s) => s.activeStoreId);
   const userId = useAuthStore((s) => s.userId);
   const currency = useSettingsStore((s) => s.currency);
+  const sym = currency === "USD" ? "$" : currency === "NGN" ? "₦" : "₵";
 
   const [orderRef, setOrderRef] = useState("");
   const [showScanner, setShowScanner] = useState(false);
@@ -59,12 +59,12 @@ export default function AddReturnScreen() {
 
   async function loadOrder() {
     if (!activeStoreId) {
-      Alert.alert("Store missing", "Select an active store before processing returns.");
+      Alert.alert("Store Missing", "Select an active store before processing returns.");
       return;
     }
     const cleanRef = orderRef.trim();
     if (!cleanRef) {
-      Alert.alert("Order required", "Enter or scan a receipt / order number.");
+      Alert.alert("Order Required", "Enter or scan a receipt or order number.");
       return;
     }
 
@@ -72,13 +72,13 @@ export default function AddReturnScreen() {
     try {
       const found = await lookupOrderForReturn(activeStoreId, cleanRef);
       if (!found) {
-        Alert.alert("Order not found", "No matching order was found for this store.");
+        Alert.alert("Order Not Found", "No matching order was found for this store.");
         setOrder(null);
         setCounts({});
         return;
       }
       if (found.items.length === 0) {
-        Alert.alert("No items", "This order has no line items to return.");
+        Alert.alert("No Items", "This order has no line items available for return.");
         setOrder(null);
         setCounts({});
         return;
@@ -88,7 +88,7 @@ export default function AddReturnScreen() {
       setCounts(Object.fromEntries(found.items.map((item) => [item.id, 0])));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to load order";
-      Alert.alert("Load failed", message);
+      Alert.alert("Load Failed", message);
     } finally {
       setLoadingOrder(false);
     }
@@ -110,200 +110,382 @@ export default function AddReturnScreen() {
       const fallbackUser = (await supabase.auth.getUser()).data.user?.id ?? null;
       const processedByUserId = userId ?? fallbackUser;
       if (!processedByUserId) {
-        Alert.alert("Not signed in", "Sign in again before processing a return.");
+        Alert.alert("Not Signed In", "Sign in again before processing a return.");
         return;
       }
 
       const returnId = await processReturn({
         storeId: activeStoreId,
         orderId: order.id,
-        reason,
+        reason: reason.trim() || "Customer return",
         lines,
         processedByUserId,
       });
 
-      Alert.alert("Return processed", `Refund ${money(calculateRefundAmount(lines), currency)} recorded.`);
+      Alert.alert("Return Processed", `Refund of ${money(calculateRefundAmount(lines), currency)} recorded successfully.`);
       router.replace(`/pos/return/${returnId}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to process return";
-      Alert.alert("Return failed", message);
+      Alert.alert("Return Failed", message);
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <AppScrollScreen showBack title="Process return" subtitle="Match receipt/order and select item counts.">
+    <AppScrollScreen
+      showBack
+      title="Process Return"
+      subtitle="Lookup receipt, select returned units, and compute refunds."
+    >
+      {/* Lookup Order Card */}
       <SectionCard>
         <TextInput
-          label="Receipt / order #"
+          label="Order Number or Barcode"
           value={orderRef}
           onChangeText={setOrderRef}
-          placeholder="ORD-1042 or order UUID"
+          placeholder="e.g. ORD-123456"
+          leftIcon={<Ionicons name="receipt-outline" size={18} color={Colors.textMuted} />}
           rightIcon={
-            <Pressable onPress={() => setShowScanner((v) => !v)} hitSlop={10}>
+            <Pressable
+              onPress={() => setShowScanner((v) => !v)}
+              hitSlop={10}
+              style={{ padding: 4 }}
+            >
               <Ionicons
-                name={showScanner ? "close-circle-outline" : "scan-outline"}
+                name={showScanner ? "close-circle" : "barcode-outline"}
                 size={22}
                 color={Colors.primaryBlue}
               />
             </Pressable>
           }
         />
+
         {showScanner ? (
-          <BarcodeScanner
-            label="Align receipt or order barcode inside frame"
-            onScan={(payload) => {
-              setOrderRef(payload);
-              setShowScanner(false);
-            }}
-          />
+          <View style={styles.scannerWrapper}>
+            <BarcodeScanner
+              label="Scan receipt barcode"
+              onScan={(payload) => {
+                setOrderRef(payload);
+                setShowScanner(false);
+              }}
+            />
+          </View>
         ) : null}
-        <PrimaryButton
-          label={loadingOrder ? "Loading order..." : "Load order"}
-          variant="outline"
-          loading={loadingOrder}
-          disabled={loadingOrder || submitting}
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.lookupBtn,
+            loadingOrder && { opacity: 0.7 },
+            pressed && { opacity: 0.9 },
+          ]}
+          disabled={loadingOrder}
           onPress={() => void loadOrder()}
+        >
+          {loadingOrder ? (
+            <ActivityIndicator size="small" color={Colors.white} />
+          ) : (
+            <Ionicons name="search-outline" size={18} color={Colors.white} />
+          )}
+          <Text style={styles.lookupBtnText}>{loadingOrder ? "Locating Order..." : "Find Order"}</Text>
+        </Pressable>
+
+        <TextInput
+          label="Return Reason"
+          value={reason}
+          onChangeText={setReason}
+          placeholder="e.g. Defective item, wrong size, or customer change of mind..."
+          leftIcon={<Ionicons name="help-circle-outline" size={18} color={Colors.textMuted} />}
         />
-        <TextInput label="Reason" value={reason} onChangeText={setReason} placeholder="Damaged, wrong item, …" />
       </SectionCard>
 
+      {/* Loaded Order Items */}
       {order ? (
         <SectionCard>
-          <Text style={styles.sectionTitle}>Order {order.orderNumber}</Text>
-          <Text style={styles.orderMeta}>
-            {new Date(order.createdAt).toLocaleString()}
-            {order.customerName ? ` · ${order.customerName}` : ""}
-          </Text>
-          <Text style={styles.sectionTitle}>Items to refund</Text>
-          <View style={styles.itemsWrap}>
+          {/* Order Header Summary */}
+          <View style={styles.orderSummaryCard}>
+            <View>
+              <Text style={styles.orderNumberLabel}>Order #{order.orderNumber}</Text>
+              <Text style={styles.orderDateLabel}>
+                {new Date(order.createdAt).toLocaleString()} {order.customerName ? `· ${order.customerName}` : ""}
+              </Text>
+            </View>
+            <View style={styles.matchedBadge}>
+              <Text style={styles.matchedBadgeText}>Matched</Text>
+            </View>
+          </View>
+
+          <Text style={styles.sectionSubtitle}>Select Items & Quantities to Return</Text>
+
+          <View style={styles.itemsList}>
             {order.items.map((line) => {
               const remaining = line.purchasedQty - line.returnedQty;
               const current = counts[line.id] ?? 0;
+              const isFullyReturned = remaining <= 0;
+
               return (
-                <View key={line.id} style={styles.returnRow}>
-                  <View style={styles.meta}>
-                    <Text style={styles.name}>{line.name}</Text>
-                    <Text style={styles.sub}>
-                      Purchased {line.purchasedQty}
-                      {line.returnedQty > 0 ? ` · Returned ${line.returnedQty}` : ""} · {money(line.unitPrice, currency)}
+                <View key={line.id} style={[styles.itemRow, isFullyReturned && styles.itemRowDisabled]}>
+                  <View style={styles.itemMeta}>
+                    <Text style={styles.itemName}>{line.name}</Text>
+                    <Text style={styles.itemSubText}>
+                      Purchased: {line.purchasedQty} {line.returnedQty > 0 ? `· Prev. Returned: ${line.returnedQty}` : ""}
                     </Text>
-                    <Text style={styles.sub}>Remaining {remaining}</Text>
+                    <Text style={styles.unitPriceText}>
+                      {money(line.unitPrice, currency)} / unit · Eligible: {remaining}
+                    </Text>
                   </View>
-                  <View style={styles.counter}>
+
+                  {/* Quantity Stepper */}
+                  <View style={styles.stepperBox}>
                     <Pressable
+                      style={({ pressed }) => [styles.stepBtn, pressed && { backgroundColor: "#e2e8f0" }]}
                       onPress={() => updateCount(line.id, remaining, current - 1)}
-                      style={styles.counterBtn}
-                      disabled={remaining <= 0}
+                      disabled={isFullyReturned || current === 0}
                     >
-                      <Text style={styles.counterBtnText}>-</Text>
+                      <Ionicons name="remove" size={16} color={current === 0 ? Colors.textMuted : Colors.danger} />
                     </Pressable>
-                    <Text style={styles.counterVal}>{current}</Text>
+                    <Text style={styles.stepValue}>{current}</Text>
                     <Pressable
+                      style={({ pressed }) => [
+                        styles.stepBtn,
+                        (isFullyReturned || current >= remaining) && styles.stepBtnDisabled,
+                        pressed && { backgroundColor: "#e2e8f0" },
+                      ]}
                       onPress={() => updateCount(line.id, remaining, current + 1)}
-                      style={[styles.counterBtn, (remaining <= 0 || current >= remaining) && styles.counterBtnDisabled]}
-                      disabled={remaining <= 0 || current >= remaining}
+                      disabled={isFullyReturned || current >= remaining}
                     >
-                      <Text style={styles.counterBtnText}>+</Text>
+                      <Ionicons name="add" size={16} color={current >= remaining ? Colors.textMuted : Colors.primaryBlue} />
                     </Pressable>
                   </View>
                 </View>
               );
             })}
           </View>
-          <Text style={styles.total}>Total return items: {totalItems}</Text>
-          <Text style={styles.refundTotal}>Refund total: {money(refundTotal, currency)}</Text>
+
+          {/* Refund Calculation Box */}
+          <View style={styles.refundTotalBox}>
+            <View style={styles.refundRow}>
+              <Text style={styles.refundRowLabel}>Units to Return</Text>
+              <Text style={styles.refundRowValue}>{totalItems} units</Text>
+            </View>
+            <View style={styles.refundRow}>
+              <Text style={styles.refundTotalLabel}>Total Refund Amount</Text>
+              <Text style={styles.refundTotalValue}>{money(refundTotal, currency)}</Text>
+            </View>
+          </View>
         </SectionCard>
       ) : null}
 
-      <PrimaryButton
-        label={submitting ? "Processing..." : "Confirm return"}
-        loading={submitting}
-        disabled={!order || submitting || totalItems === 0}
-        onPress={() => void confirmReturn()}
-      />
+      {/* Confirm Return Primary Action */}
+      {order ? (
+        <View style={styles.submitContainer}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.confirmButton,
+              (!order || submitting || totalItems === 0) && styles.confirmButtonDisabled,
+              pressed && styles.confirmButtonPressed,
+            ]}
+            disabled={!order || submitting || totalItems === 0}
+            onPress={() => void confirmReturn()}
+          >
+            {submitting ? (
+              <ActivityIndicator size="small" color={Colors.white} />
+            ) : (
+              <Ionicons name="return-down-back-outline" size={20} color={Colors.white} />
+            )}
+            <Text style={styles.confirmButtonText}>
+              {submitting ? "Processing Refund..." : `Confirm Return & Refund (${money(refundTotal, currency)})`}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
     </AppScrollScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  sectionTitle: {
-    ...Typography.title,
+  scannerWrapper: {
+    marginTop: Spacing.xs,
+    borderRadius: Radius.card,
+    overflow: "hidden",
+  },
+  lookupBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: Colors.primaryBlue,
+    paddingVertical: 12,
+    borderRadius: Radius.input,
+    marginTop: Spacing.xs,
+  },
+  lookupBtnText: {
+    color: Colors.white,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  orderSummaryCard: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: Colors.primaryBluePale,
+    borderRadius: Radius.input,
+    padding: Spacing.sm + 2,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+  },
+  orderNumberLabel: {
+    fontSize: 15,
+    fontWeight: "800",
     color: Colors.textPrimary,
+  },
+  orderDateLabel: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  matchedBadge: {
+    backgroundColor: Colors.primaryBlue,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  matchedBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: Colors.white,
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.textMuted,
+    textTransform: "uppercase",
+    marginTop: Spacing.md,
     marginBottom: Spacing.xs,
   },
-  orderMeta: {
-    color: Colors.textMuted,
-    marginBottom: Spacing.sm,
+  itemsList: {
+    gap: Spacing.xs,
   },
-  itemsWrap: {
-    gap: Spacing.sm,
-  },
-  returnRow: {
+  itemRow: {
     flexDirection: "row",
     alignItems: "center",
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.input,
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
     gap: Spacing.sm,
-    paddingVertical: Spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.border,
   },
-  meta: {
+  itemRowDisabled: {
+    opacity: 0.5,
+  },
+  itemMeta: {
     flex: 1,
+    gap: 2,
   },
-  name: {
-    fontSize: 15,
-    fontWeight: "600",
+  itemName: {
+    fontSize: 14,
+    fontWeight: "700",
     color: Colors.textPrimary,
   },
-  sub: {
-    marginTop: 4,
-    fontSize: 12,
+  itemSubText: {
+    fontSize: 11,
     color: Colors.textMuted,
   },
-  counter: {
+  unitPriceText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: Colors.primaryBlue,
+  },
+  stepperBox: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.sm,
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.background,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: Radius.pill,
-    paddingHorizontal: Spacing.xs,
-    paddingVertical: 4,
+    padding: 2,
   },
-  counterBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.primaryBluePale,
+  stepBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 6,
+    backgroundColor: Colors.surface,
     alignItems: "center",
     justifyContent: "center",
   },
-  counterBtnDisabled: {
-    opacity: 0.4,
+  stepBtnDisabled: {
+    opacity: 0.3,
   },
-  counterBtnText: {
-    color: Colors.primaryBlue,
-    fontSize: 18,
-    fontWeight: "700",
-    lineHeight: 20,
-  },
-  counterVal: {
-    minWidth: 26,
+  stepValue: {
+    minWidth: 28,
     textAlign: "center",
+    fontSize: 14,
+    fontWeight: "800",
     color: Colors.textPrimary,
-    fontWeight: "700",
   },
-  total: {
-    marginTop: Spacing.sm,
-    color: Colors.textSecondary,
+  refundTotalBox: {
+    marginTop: Spacing.md,
+    backgroundColor: "#fff1f2",
+    borderRadius: Radius.card,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: "#fecdd3",
+    gap: 6,
+  },
+  refundRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  refundRowLabel: {
+    fontSize: 13,
+    color: "#881337",
     fontWeight: "600",
   },
-  refundTotal: {
-    marginTop: Spacing.xs,
-    color: Colors.accentOrange,
+  refundRowValue: {
+    fontSize: 14,
     fontWeight: "800",
-    fontSize: 16,
+    color: "#881337",
+  },
+  refundTotalLabel: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: Colors.danger,
+  },
+  refundTotalValue: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: Colors.danger,
+  },
+  submitContainer: {
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.xl,
+  },
+  confirmButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.danger,
+    paddingVertical: 16,
+    borderRadius: Radius.pill,
+    shadowColor: Colors.danger,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  confirmButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
+  },
+  confirmButtonDisabled: {
+    opacity: 0.5,
+  },
+  confirmButtonText: {
+    color: Colors.white,
+    fontSize: 15,
+    fontWeight: "800",
   },
 });

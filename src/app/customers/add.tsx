@@ -1,17 +1,18 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { TextInput } from "@/src/components/atoms/TextInput";
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
 import { Colors } from "@/src/constants/colors";
+import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
+import { Typography } from "@/src/constants/typography";
 import { database } from "@/src/database";
 import type Customer from "@/src/database/models/Customer";
 import { useStoreSlice } from "@/src/store/storeSlice";
-import { enqueueSyncItem } from "@/src/sync/enqueue";
+import { enqueueChange } from "@/src/sync/enqueue";
 
 export default function AddCustomerScreen() {
   const router = useRouter();
@@ -24,11 +25,11 @@ export default function AddCustomerScreen() {
 
   async function handleSave() {
     if (!activeStoreId) {
-      Alert.alert("Store missing", "Select an active store before creating customers.");
+      Alert.alert("Store Missing", "Select an active store before creating customers.");
       return;
     }
     if (!name.trim()) {
-      Alert.alert("Name required", "Please enter the customer's name.");
+      Alert.alert("Name Required", "Please enter the customer's full name.");
       return;
     }
 
@@ -53,10 +54,11 @@ export default function AddCustomerScreen() {
         recordId = created.id;
       });
 
-      await enqueueSyncItem({
+      await enqueueChange({
         storeId: activeStoreId,
         entity: "customers",
         operation: "upsert",
+        recordId,
         payload: {
           id: recordId,
           store_id: activeStoreId,
@@ -67,60 +69,142 @@ export default function AddCustomerScreen() {
           total_spend: 0,
           outstanding_balance: 0,
         },
-        recordId,
       });
 
-      Alert.alert("Customer added", `"${name}" was saved successfully.`);
+      Alert.alert("Customer Registered", `"${name}" was successfully added to your store database.`);
       router.back();
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not create customer";
-      Alert.alert("Error", message);
+      const message = err instanceof Error ? err.message : "Could not create customer profile";
+      Alert.alert("Registration Error", message);
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <AppScrollScreen showBack title="New Customer" subtitle="Register customer details for order tracking.">
-      <SectionCard style={styles.card}>
+    <AppScrollScreen
+      showBack
+      title="Register Customer"
+      subtitle="Add customer contact info to assign orders and track sales."
+    >
+      {/* Identity Card */}
+      <SectionCard>
+        <View style={styles.cardHeader}>
+          <Ionicons name="person-circle-outline" size={20} color={Colors.primaryBlue} />
+          <Text style={styles.sectionTitle}>Personal Details</Text>
+        </View>
+
         <TextInput
+          label="Full Name *"
           value={name}
           onChangeText={setName}
-          placeholder="Customer Name *"
+          placeholder="e.g. Ama Serwaa"
           leftIcon={<Ionicons name="person-outline" size={18} color={Colors.textMuted} />}
         />
+
         <TextInput
+          label="Phone Number"
           value={phone}
           onChangeText={setPhone}
-          placeholder="Phone Number"
+          placeholder="e.g. 0244123456"
           keyboardType="phone-pad"
           leftIcon={<Ionicons name="call-outline" size={18} color={Colors.textMuted} />}
         />
+
         <TextInput
+          label="Email Address"
           value={email}
           onChangeText={setEmail}
-          placeholder="Email Address"
+          placeholder="client@email.com"
+          autoCapitalize="none"
           keyboardType="email-address"
           leftIcon={<Ionicons name="mail-outline" size={18} color={Colors.textMuted} />}
         />
+      </SectionCard>
+
+      {/* Notes / Preferences Card */}
+      <SectionCard>
+        <View style={styles.cardHeader}>
+          <Ionicons name="clipboard-outline" size={20} color={Colors.primaryBlue} />
+          <Text style={styles.sectionTitle}>Notes & Special Instructions</Text>
+        </View>
+
         <TextInput
+          label="Customer Notes"
           value={notes}
           onChangeText={setNotes}
-          placeholder="Notes (optional)"
+          placeholder="e.g. Prefers WhatsApp invoices or weekend deliveries..."
+          multiline
+          numberOfLines={3}
           leftIcon={<Ionicons name="document-text-outline" size={18} color={Colors.textMuted} />}
         />
       </SectionCard>
 
-      <PrimaryButton
-        label={submitting ? "Saving..." : "Save Customer"}
-        loading={submitting}
-        disabled={submitting}
-        onPress={() => void handleSave()}
-      />
+      {/* Save Action */}
+      <View style={styles.submitContainer}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.saveButton,
+            submitting && styles.saveButtonDisabled,
+            pressed && styles.saveButtonPressed,
+          ]}
+          disabled={submitting}
+          onPress={() => void handleSave()}
+        >
+          {submitting ? (
+            <ActivityIndicator size="small" color={Colors.white} />
+          ) : (
+            <Ionicons name="checkmark-circle-outline" size={20} color={Colors.white} />
+          )}
+          <Text style={styles.saveButtonText}>
+            {submitting ? "Saving Profile..." : "Save Customer Profile"}
+          </Text>
+        </Pressable>
+      </View>
     </AppScrollScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { gap: Spacing.sm },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: Spacing.sm,
+  },
+  sectionTitle: {
+    ...Typography.title,
+    fontSize: 16,
+    color: Colors.textPrimary,
+  },
+  submitContainer: {
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.xl,
+  },
+  saveButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.primaryBlue,
+    paddingVertical: 16,
+    borderRadius: Radius.pill,
+    shadowColor: Colors.primaryBlue,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  saveButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
+  },
+  saveButtonText: {
+    color: Colors.white,
+    fontSize: 16,
+    fontWeight: "800",
+  },
 });

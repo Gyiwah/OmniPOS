@@ -1,8 +1,8 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Avatar } from "@/src/components/atoms/Avatar";
-import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { TextInput } from "@/src/components/atoms/TextInput";
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
 import { Colors } from "@/src/constants/colors";
@@ -12,6 +12,12 @@ import { Typography } from "@/src/constants/typography";
 import { usePendingInvites, useRevokeInvite, useSendInvite, useStoreTeamMembers } from "@/src/features/settings/hooks";
 import type { InviteRole } from "@/src/features/settings/types";
 import { toErrorMessage } from "@/src/utils/errors";
+
+const ROLE_CONFIG: Record<InviteRole, { label: string; desc: string; icon: keyof typeof Ionicons.glyphMap; color: string; bg: string }> = {
+  cashier: { label: "Cashier", desc: "Process sales, receipts, and returns", icon: "cart-outline", color: "#2563eb", bg: "#eff6ff" },
+  manager: { label: "Manager", desc: "Manage catalog, batches, and sales", icon: "shield-outline", color: "#059669", bg: "#ecfdf5" },
+  admin: { label: "Store Admin", desc: "Full control of store settings & team", icon: "key-outline", color: "#7c3aed", bg: "#f5f3ff" },
+};
 
 export default function SettingsUsersScreen() {
   const { data: members = [], isLoading, isError, error } = useStoreTeamMembers();
@@ -25,7 +31,7 @@ export default function SettingsUsersScreen() {
   async function onSendInvite(resend = false, emailOverride?: string) {
     const email = (emailOverride ?? inviteEmail).trim().toLowerCase();
     if (!email || !email.includes("@")) {
-      Alert.alert("Invalid email", "Enter a valid email address for the invite.");
+      Alert.alert("Invalid Email", "Please enter a valid email address.");
       return;
     }
 
@@ -34,29 +40,29 @@ export default function SettingsUsersScreen() {
       if (!emailOverride) setInviteEmail("");
 
       if (result.emailSent) {
-        Alert.alert("Invite sent", `An invite email was sent to ${email}.`);
+        Alert.alert("Invitation Sent", `An invite link has been dispatched to ${email}.`);
         return;
       }
 
       Alert.alert(
-        "Invite saved",
+        "Invite Registered",
         result.warning ??
-          `${email} was added as a pending invite. They can sign in (or create an account) with this email to join.`,
+          `${email} was added as a pending team member. When they log in with this email, they will join the store automatically.`,
       );
     } catch (err) {
-      Alert.alert("Invite failed", toErrorMessage(err, "Could not send invite."));
+      Alert.alert("Invite Failed", toErrorMessage(err, "Could not send invite."));
     }
   }
 
   function onRevoke(inviteId: string, email: string) {
-    Alert.alert("Revoke invite?", `Remove the pending invite for ${email}?`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert("Revoke Invitation?", `Are you sure you want to cancel the invite for ${email}?`, [
+      { text: "Keep Invite", style: "cancel" },
       {
         text: "Revoke",
         style: "destructive",
         onPress: () => {
           void revokeInvite.mutateAsync(inviteId).catch((err) => {
-            Alert.alert("Revoke failed", toErrorMessage(err, "Could not revoke invite."));
+            Alert.alert("Revoke Failed", toErrorMessage(err, "Could not revoke invitation."));
           });
         },
       },
@@ -64,93 +70,165 @@ export default function SettingsUsersScreen() {
   }
 
   return (
-    <AppScrollScreen showBack title="Users" subtitle="Invite staff and manage roles across locations.">
+    <AppScrollScreen
+      showBack
+      title="Team & Access"
+      subtitle="Invite cashiers, managers, and store administrators."
+    >
+      {/* Active Team Members Card */}
       <SectionCard>
-        <Text style={styles.sectionTitle}>Team members</Text>
-        {isLoading ? <ActivityIndicator color={Colors.primaryBlue} /> : null}
-        {isError ? <Text style={styles.error}>{toErrorMessage(error, "Failed to load team members.")}</Text> : null}
-        <View style={styles.list}>
-          {members.map((member) => (
-            <View key={member.userId} style={styles.row}>
-              <View style={styles.left}>
-                <Avatar uri={member.avatarUrl} fallbackInitials={member.fullName} />
-                <View>
-                  <Text style={styles.name}>{member.fullName}</Text>
-                  <Text style={styles.meta}>
-                    Joined {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString() : "—"}
+        <View style={styles.cardHeader}>
+          <Ionicons name="people-outline" size={20} color={Colors.primaryBlue} />
+          <Text style={styles.sectionTitle}>Active Team ({members.length})</Text>
+        </View>
+
+        {isLoading ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="small" color={Colors.primaryBlue} />
+            <Text style={styles.loadingText}>Loading team profiles...</Text>
+          </View>
+        ) : null}
+
+        {isError ? <Text style={styles.error}>{toErrorMessage(error, "Failed to load team.")}</Text> : null}
+
+        <View style={styles.membersList}>
+          {members.map((member) => {
+            const roleConfig = ROLE_CONFIG[member.role as InviteRole] ?? ROLE_CONFIG.cashier;
+            return (
+              <View key={member.userId} style={styles.memberCard}>
+                <View style={styles.memberLeft}>
+                  <Avatar uri={member.avatarUrl} fallbackInitials={member.fullName} size={44} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.memberName}>{member.fullName}</Text>
+                    <Text style={styles.memberJoined}>
+                      Active · Joined {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString([], { month: "short", year: "numeric" }) : "Recently"}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={[styles.roleBadge, { backgroundColor: roleConfig.bg }]}>
+                  <Text style={[styles.roleBadgeText, { color: roleConfig.color }]}>
+                    {roleConfig.label}
                   </Text>
                 </View>
               </View>
-              <Text style={styles.role}>{member.role}</Text>
-            </View>
-          ))}
-          {!isLoading && members.length === 0 ? <Text style={styles.empty}>No team members found.</Text> : null}
+            );
+          })}
+
+          {!isLoading && members.length === 0 ? (
+            <Text style={styles.emptyNotice}>No team members found for this store.</Text>
+          ) : null}
         </View>
       </SectionCard>
 
+      {/* Send Invite Form Card */}
       <SectionCard>
-        <Text style={styles.sectionTitle}>Multi-user invite</Text>
+        <View style={styles.cardHeader}>
+          <Ionicons name="mail-unread-outline" size={20} color={Colors.primaryBlue} />
+          <Text style={styles.sectionTitle}>Invite Staff Member</Text>
+        </View>
+
         <TextInput
-          label="Email address"
+          label="Staff Email Address"
           value={inviteEmail}
           onChangeText={setInviteEmail}
-          placeholder="staff@example.com"
+          placeholder="e.g. cashier@store.com"
           keyboardType="email-address"
           autoCapitalize="none"
+          leftIcon={<Ionicons name="mail-outline" size={18} color={Colors.textMuted} />}
         />
-        <View style={styles.roleRow}>
-          {(["cashier", "manager", "admin"] as InviteRole[]).map((option) => (
-            <Pressable
-              key={option}
-              onPress={() => setRole(option)}
-              style={[styles.rolePill, role === option && styles.rolePillActive]}
-            >
-              <Text style={[styles.roleText, role === option && styles.roleTextActive]}>{option}</Text>
-            </Pressable>
-          ))}
+
+        {/* Role Selector Grid */}
+        <Text style={styles.roleHeaderLabel}>Assign Store Role</Text>
+        <View style={styles.roleGrid}>
+          {(["cashier", "manager", "admin"] as InviteRole[]).map((r) => {
+            const cfg = ROLE_CONFIG[r];
+            const active = role === r;
+            return (
+              <Pressable
+                key={r}
+                style={({ pressed }) => [
+                  styles.roleCard,
+                  active && styles.roleCardActive,
+                  pressed && { opacity: 0.8 },
+                ]}
+                onPress={() => setRole(r)}
+              >
+                <View style={[styles.roleIconWrap, active && { backgroundColor: Colors.primaryBlue }]}>
+                  <Ionicons name={cfg.icon} size={18} color={active ? Colors.white : Colors.primaryBlue} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.roleTitle, active && styles.roleTitleActive]}>{cfg.label}</Text>
+                  <Text style={styles.roleDesc}>{cfg.desc}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
         </View>
-        <PrimaryButton
-          label={sendInvite.isPending ? "Sending…" : "Send invite"}
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.sendInviteBtn,
+            sendInvite.isPending && { opacity: 0.6 },
+            pressed && { opacity: 0.9 },
+          ]}
           disabled={sendInvite.isPending}
           onPress={() => void onSendInvite(false)}
-        />
+        >
+          {sendInvite.isPending ? (
+            <ActivityIndicator size="small" color={Colors.white} />
+          ) : (
+            <Ionicons name="paper-plane-outline" size={18} color={Colors.white} />
+          )}
+          <Text style={styles.sendInviteText}>
+            {sendInvite.isPending ? "Sending Invitation..." : "Send Staff Invite"}
+          </Text>
+        </Pressable>
       </SectionCard>
 
+      {/* Pending Invites Card */}
       <SectionCard>
-        <Text style={styles.sectionTitle}>Pending invites</Text>
-        {invitesLoading ? <ActivityIndicator color={Colors.primaryBlue} /> : null}
-        <View style={styles.list}>
-          {invites.map((invite) => (
-            <View key={invite.id} style={styles.inviteRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{invite.email}</Text>
-                <Text style={styles.meta}>
-                  {invite.role.toUpperCase()} ·{" "}
-                  {invite.sentAt ? new Date(invite.sentAt).toLocaleString() : "—"}
-                  {invite.expiresAt ? ` · expires ${new Date(invite.expiresAt).toLocaleDateString()}` : ""}
+        <View style={styles.cardHeader}>
+          <Ionicons name="time-outline" size={20} color={Colors.accentOrange} />
+          <Text style={styles.sectionTitle}>Pending Invitations ({invites.length})</Text>
+        </View>
+
+        {invitesLoading ? (
+          <ActivityIndicator size="small" color={Colors.primaryBlue} />
+        ) : null}
+
+        <View style={styles.invitesList}>
+          {invites.map((inv) => (
+            <View key={inv.id} style={styles.inviteCard}>
+              <View style={styles.inviteInfo}>
+                <Text style={styles.inviteEmail}>{inv.email}</Text>
+                <Text style={styles.inviteMeta}>
+                  Role: {inv.role.toUpperCase()} · Sent {inv.sentAt ? new Date(inv.sentAt).toLocaleDateString() : "Recently"}
                 </Text>
               </View>
-              <View style={styles.inviteActions}>
-                <PrimaryButton
-                  label="Resend"
-                  variant="outline"
-                  fullWidth={false}
-                  style={styles.actionBtn}
+
+              <View style={styles.inviteActionsRow}>
+                <Pressable
+                  style={styles.resendBtn}
                   disabled={sendInvite.isPending}
-                  onPress={() => void onSendInvite(true, invite.email)}
-                />
-                <PrimaryButton
-                  label="Revoke"
-                  variant="outline"
-                  fullWidth={false}
-                  style={styles.actionBtn}
+                  onPress={() => void onSendInvite(true, inv.email)}
+                >
+                  <Text style={styles.resendText}>Resend</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.revokeBtn}
                   disabled={revokeInvite.isPending}
-                  onPress={() => onRevoke(invite.id, invite.email)}
-                />
+                  onPress={() => onRevoke(inv.id, inv.email)}
+                >
+                  <Text style={styles.revokeText}>Revoke</Text>
+                </Pressable>
               </View>
             </View>
           ))}
-          {!invitesLoading && invites.length === 0 ? <Text style={styles.empty}>No invites yet.</Text> : null}
+
+          {!invitesLoading && invites.length === 0 ? (
+            <Text style={styles.emptyNotice}>No pending staff invitations.</Text>
+          ) : null}
         </View>
       </SectionCard>
     </AppScrollScreen>
@@ -158,92 +236,187 @@ export default function SettingsUsersScreen() {
 }
 
 const styles = StyleSheet.create({
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: Spacing.sm,
+  },
   sectionTitle: {
     ...Typography.title,
+    fontSize: 16,
     color: Colors.textPrimary,
+  },
+  loadingBox: {
+    paddingVertical: Spacing.md,
+    alignItems: "center",
+    gap: 6,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: Colors.textMuted,
+  },
+  error: {
+    color: Colors.danger,
+    fontSize: 13,
     marginBottom: Spacing.xs,
   },
-  list: {
-    gap: Spacing.sm,
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.input,
-    backgroundColor: Colors.surface,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.sm,
-  },
-  inviteRow: {
-    gap: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.input,
-    backgroundColor: Colors.surface,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.sm,
-  },
-  inviteActions: {
-    flexDirection: "row",
+  membersList: {
     gap: Spacing.xs,
   },
-  left: {
+  memberCard: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.input,
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  memberLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.sm,
+    flex: 1,
   },
-  name: {
-    ...Typography.body,
+  memberName: {
+    fontSize: 14,
+    fontWeight: "700",
     color: Colors.textPrimary,
-    fontWeight: "700",
   },
-  meta: {
-    ...Typography.caption,
+  memberJoined: {
+    fontSize: 11,
     color: Colors.textMuted,
-    marginTop: 2,
+    marginTop: 1,
   },
-  role: {
-    ...Typography.caption,
-    color: Colors.primaryBlue,
-    fontWeight: "700",
+  roleBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: Radius.pill,
+  },
+  roleBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
     textTransform: "uppercase",
   },
-  roleRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+  roleHeaderLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.textSecondary,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  roleGrid: {
     gap: Spacing.xs,
   },
-  rolePill: {
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.pill,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 6,
+  roleCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.input,
+    padding: Spacing.sm,
+    borderWidth: 1.5,
+    borderColor: "#e2e8f0",
+    gap: Spacing.sm,
   },
-  rolePillActive: {
+  roleCardActive: {
     borderColor: Colors.primaryBlue,
     backgroundColor: Colors.primaryBluePale,
   },
-  roleText: {
-    color: Colors.textSecondary,
-    fontWeight: "600",
+  roleIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.primaryBluePale,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  roleTextActive: {
+  roleTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  roleTitleActive: {
+    color: Colors.primaryBlue,
+    fontWeight: "800",
+  },
+  roleDesc: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 1,
+  },
+  sendInviteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.primaryBlue,
+    borderRadius: Radius.pill,
+    paddingVertical: 14,
+    marginTop: Spacing.md,
+  },
+  sendInviteText: {
+    color: Colors.white,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  invitesList: {
+    gap: Spacing.xs,
+  },
+  inviteCard: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.input,
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  inviteInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  inviteEmail: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  inviteMeta: {
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
+  inviteActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  resendBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: Colors.primaryBluePale,
+  },
+  resendText: {
+    fontSize: 11,
+    fontWeight: "700",
     color: Colors.primaryBlue,
   },
-  actionBtn: {
-    minWidth: 78,
+  revokeBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: "#fff1f2",
   },
-  empty: {
-    color: Colors.textMuted,
+  revokeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: Colors.danger,
+  },
+  emptyNotice: {
     textAlign: "center",
-  },
-  error: {
-    ...Typography.body,
-    color: Colors.accentOrange,
-    marginBottom: Spacing.xs,
+    color: Colors.textMuted,
+    paddingVertical: Spacing.sm,
   },
 });

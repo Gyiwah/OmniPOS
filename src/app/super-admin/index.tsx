@@ -3,7 +3,6 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
-import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { Colors } from "@/src/constants/colors";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
@@ -19,161 +18,247 @@ export default function SuperAdminDashboardScreen() {
     <AppScrollScreen
       showBack
       title="Super Admin Portal"
-      subtitle="System-wide store provisioning and store admin overview."
+      subtitle="System-wide store provisioning and administrative management."
     >
-      <SectionCard>
-        <View style={styles.headerCardInner}>
-          <View style={styles.headerRow}>
-            <View style={styles.headerTextWrap}>
-              <Text style={styles.cardTitle}>Store Provisioning</Text>
-              <Text style={styles.cardSub}>Create stores and assign initial Store Admin login credentials.</Text>
-            </View>
-            <Ionicons name="shield-checkmark" size={32} color={Colors.primaryBlue} />
+      {/* Hero Provisioning Card */}
+      <View style={styles.heroCard}>
+        <View style={styles.heroHeader}>
+          <View style={styles.shieldIconWrap}>
+            <Ionicons name="shield-checkmark" size={28} color={Colors.primaryBlue} />
           </View>
-          <PrimaryButton
-            label="Provision New Store & Admin"
-            onPress={() => router.push("/super-admin/create-store")}
-          />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.heroTitle}>Master Provisioning Engine</Text>
+            <Text style={styles.heroSub}>
+              Create new tenant stores and establish initial store administrator credentials.
+            </Text>
+          </View>
         </View>
-      </SectionCard>
 
+        <Pressable
+          style={({ pressed }) => [styles.provisionBtn, pressed && { opacity: 0.9 }]}
+          onPress={() => router.push("/super-admin/create-store")}
+        >
+          <Ionicons name="add-circle-outline" size={20} color={Colors.white} />
+          <Text style={styles.provisionBtnText}>Provision Store & Admin Account</Text>
+        </Pressable>
+      </View>
+
+      {/* System Stores List */}
       <SectionCard>
-        <View style={styles.titleRow}>
-          <Text style={styles.sectionTitle}>System Stores ({stores.length})</Text>
-          <Pressable onPress={() => void refetch()} hitSlop={10}>
+        <View style={styles.listHeader}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Ionicons name="business-outline" size={20} color={Colors.primaryBlue} />
+            <Text style={styles.sectionTitle}>System Stores ({stores.length})</Text>
+          </View>
+          <Pressable onPress={() => void refetch()} hitSlop={10} style={{ padding: 4 }}>
             <Ionicons name="refresh-outline" size={20} color={Colors.primaryBlue} />
           </Pressable>
         </View>
 
-        {isLoading ? <ActivityIndicator color={Colors.primaryBlue} style={{ marginVertical: Spacing.md }} /> : null}
+        {isLoading ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator color={Colors.primaryBlue} />
+            <Text style={styles.loadingText}>Fetching system stores...</Text>
+          </View>
+        ) : null}
 
         {isError ? (
           <Text style={styles.error}>{toErrorMessage(error, "Could not load system stores.")}</Text>
         ) : null}
 
-        {!isLoading && stores.length === 0 ? (
-          <Text style={styles.helper}>No stores provisioned yet. Use the button above to create one.</Text>
-        ) : (
-          <View style={styles.list}>
-            {stores.map((store) => (
-              <View key={store.id} style={styles.storeItem}>
-                <View style={styles.storeTopRow}>
-                  <Text style={styles.storeName}>{store.name}</Text>
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{store.currency}</Text>
+        <View style={styles.storesList}>
+          {stores.map((store) => (
+            <View key={store.id} style={styles.storeCard}>
+              <View style={styles.storeCardHeader}>
+                <View style={styles.storeLeft}>
+                  <View style={styles.storeIconWrap}>
+                    <Ionicons name="storefront" size={20} color={Colors.primaryBlue} />
+                  </View>
+                  <View>
+                    <Text style={styles.storeName}>{store.name}</Text>
+                    <Text style={styles.storeId}>ID: {store.id.slice(0, 14)}...</Text>
                   </View>
                 </View>
-                <View style={styles.detailRow}>
+
+                <View style={styles.currencyBadge}>
+                  <Text style={styles.currencyBadgeText}>{store.currency}</Text>
+                </View>
+              </View>
+
+              <View style={styles.storeMetaGrid}>
+                <View style={styles.metaRow}>
                   <Ionicons name="person-circle-outline" size={16} color={Colors.textMuted} />
-                  <Text style={styles.detailText}>
-                    Store Admin: <Text style={styles.detailBold}>{store.ownerName ?? "Assigned"}</Text>
+                  <Text style={styles.metaLabel}>
+                    Store Admin: <Text style={styles.metaBold}>{store.ownerName ?? "Assigned"}</Text>
                   </Text>
                 </View>
-                <View style={styles.detailRow}>
+                <View style={styles.metaRow}>
                   <Ionicons name="calendar-outline" size={16} color={Colors.textMuted} />
-                  <Text style={styles.detailText}>
-                    Created: {new Date(store.createdAt).toLocaleDateString()}
+                  <Text style={styles.metaLabel}>
+                    Created: {new Date(store.createdAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}
                   </Text>
                 </View>
               </View>
-            ))}
-          </View>
-        )}
+            </View>
+          ))}
+
+          {!isLoading && stores.length === 0 ? (
+            <Text style={styles.emptyNotice}>No tenant stores registered yet.</Text>
+          ) : null}
+        </View>
       </SectionCard>
     </AppScrollScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  headerCardInner: {
+  heroCard: {
     backgroundColor: Colors.primaryBluePale,
-    borderRadius: Radius.input,
-    padding: Spacing.sm,
+    borderRadius: Radius.card,
+    padding: Spacing.md,
+    borderWidth: 1.5,
+    borderColor: "#bfdbfe",
+    gap: Spacing.md,
   },
-  headerRow: {
+  heroHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  shieldIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: Colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: Colors.primaryBlue,
+  },
+  heroSub: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  provisionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.primaryBlue,
+    paddingVertical: 14,
+    borderRadius: Radius.pill,
+  },
+  provisionBtnText: {
+    color: Colors.white,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  listHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: Spacing.sm,
   },
-  headerTextWrap: {
-    flex: 1,
-    paddingRight: Spacing.sm,
-  },
-  cardTitle: {
-    ...Typography.title,
-    color: Colors.primaryBlue,
-    marginBottom: 2,
-  },
-  cardSub: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-  },
-  titleRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: Spacing.xs,
-  },
   sectionTitle: {
     ...Typography.title,
+    fontSize: 16,
     color: Colors.textPrimary,
   },
-  list: {
-    gap: Spacing.sm,
-    marginTop: Spacing.xs,
-  },
-  storeItem: {
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.input,
-    padding: Spacing.md,
-    backgroundColor: Colors.surface,
+  loadingBox: {
+    paddingVertical: Spacing.md,
+    alignItems: "center",
     gap: 6,
   },
-  storeTopRow: {
+  loadingText: {
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  error: {
+    color: Colors.danger,
+    fontSize: 13,
+    marginBottom: Spacing.xs,
+  },
+  storesList: {
+    gap: Spacing.xs,
+  },
+  storeCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.input,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    gap: Spacing.xs,
+  },
+  storeCardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
+  storeLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    flex: 1,
+  },
+  storeIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: Colors.primaryBluePale,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   storeName: {
-    ...Typography.body,
+    fontSize: 15,
     fontWeight: "700",
     color: Colors.textPrimary,
-    fontSize: 16,
   },
-  badge: {
-    backgroundColor: Colors.border,
-    paddingHorizontal: Spacing.xs + 4,
-    paddingVertical: 2,
+  storeId: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 1,
+  },
+  currencyBadge: {
+    backgroundColor: Colors.background,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
-  badgeText: {
-    ...Typography.caption,
-    fontWeight: "700",
+  currencyBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
     color: Colors.textSecondary,
   },
-  detailRow: {
+  storeMetaGrid: {
+    gap: 4,
+    marginTop: Spacing.xs,
+    paddingTop: Spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+  },
+  metaRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
   },
-  detailText: {
-    ...Typography.caption,
+  metaLabel: {
+    fontSize: 12,
     color: Colors.textMuted,
   },
-  detailBold: {
+  metaBold: {
     color: Colors.textPrimary,
-    fontWeight: "600",
+    fontWeight: "700",
   },
-  helper: {
-    ...Typography.caption,
+  emptyNotice: {
+    textAlign: "center",
     color: Colors.textMuted,
-    marginTop: Spacing.xs,
-  },
-  error: {
-    ...Typography.body,
-    color: Colors.accentOrange,
-    marginTop: Spacing.xs,
+    paddingVertical: Spacing.md,
   },
 });

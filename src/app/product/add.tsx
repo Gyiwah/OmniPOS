@@ -4,7 +4,7 @@ import * as ImagePicker from "expo-image-picker";
 import { Q } from "@nozbe/watermelondb";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import NetInfo from "@react-native-community/netinfo";
 
 import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
@@ -267,15 +267,24 @@ export default function AddProductScreen() {
     }
   }
 
+  const costNum = Number(costPrice) || 0;
+  const sellNum = Number(sellPrice) || 0;
+  const marginPct = sellNum > 0 && costNum > 0 ? Math.round(((sellNum - costNum) / sellNum) * 100) : null;
+
   return (
     <AppScrollScreen
       showBack
       fixedHeader
-      title="Add Product"
-      subtitle="Create a catalog item with optional barcode scan."
+      title="Create Product"
+      subtitle="Register a new item, assign prices, barcodes, and batches."
     >
+      {/* Product Image Card */}
       <SectionCard>
-        <Text style={styles.sectionTitle}>Product image</Text>
+        <View style={styles.cardHeader}>
+          <Ionicons name="image-outline" size={20} color={Colors.primaryBlue} />
+          <Text style={styles.sectionTitle}>Product Photo</Text>
+        </View>
+
         <View style={styles.imageRow}>
           <View style={styles.imageWrap}>
             {imageUri ? (
@@ -288,31 +297,42 @@ export default function AddProductScreen() {
                 accessibilityRole="button"
                 style={[styles.image, styles.imagePlaceholder]}
               >
-                <Ionicons name="image-outline" size={34} color={Colors.primaryBlue} />
+                <Ionicons name="cube-outline" size={40} color={Colors.primaryBlue} />
+                <Text style={styles.uploadPhotoText}>Add Photo</Text>
               </Pressable>
             )}
             <Pressable style={styles.imageFab} onPress={takePhoto} accessibilityRole="button">
-              <Ionicons name="camera" size={22} color={Colors.textWhite} />
+              <Ionicons name="camera" size={20} color={Colors.textWhite} />
             </Pressable>
+          </View>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={styles.photoHintTitle}>High-Resolution Photo</Text>
+            <Text style={styles.photoHintSub}>Displayed in POS search, receipt documents, and inventory lists.</Text>
           </View>
         </View>
       </SectionCard>
 
+      {/* Identity Card */}
       <SectionCard>
-        <Text style={styles.sectionTitle}>Identity</Text>
+        <View style={styles.cardHeader}>
+          <Ionicons name="barcode-outline" size={20} color={Colors.primaryBlue} />
+          <Text style={styles.sectionTitle}>Identification & Barcode</Text>
+        </View>
+
         <TextInput
-          label="Product code / SKU"
+          label="Product Code / SKU / Barcode *"
           value={sku}
           onChangeText={(value) => {
             setSku(value);
             setErrors((prev) => ({ ...prev, sku: "" }));
           }}
-          placeholder="Scan barcode or enter SKU"
+          placeholder="Scan barcode or type SKU..."
           error={errors.sku}
+          leftIcon={<Ionicons name="qr-code-outline" size={18} color={Colors.textMuted} />}
           rightIcon={
-            <Pressable onPress={() => setShowScanner((v) => !v)} hitSlop={10}>
+            <Pressable onPress={() => setShowScanner((v) => !v)} hitSlop={10} style={{ padding: 4 }}>
               <Ionicons
-                name={showScanner ? "close-circle-outline" : "scan-outline"}
+                name={showScanner ? "close-circle" : "barcode-outline"}
                 size={22}
                 color={Colors.primaryBlue}
               />
@@ -323,82 +343,118 @@ export default function AddProductScreen() {
         {showScanner ? (
           <View style={styles.scannerWrap}>
             <BarcodeScanner
-              label="Align barcode inside frame to autofill SKU"
-              onScan={(payload) => setSku(payload)}
+              label="Point camera at product barcode to autofill SKU"
+              onScan={(payload) => {
+                setSku(payload);
+                setShowScanner(false);
+              }}
             />
           </View>
         ) : null}
 
         <TextInput
-          label="Product name"
+          label="Product Name *"
           value={name}
           onChangeText={(value) => {
             setName(value);
             setErrors((prev) => ({ ...prev, name: "" }));
           }}
-          placeholder="e.g. Sawyer Picaridin Insect Repellent"
+          placeholder="e.g. Cerelac Wheat 400g"
           error={errors.name}
-          multiline
+          leftIcon={<Ionicons name="cube-outline" size={18} color={Colors.textMuted} />}
         />
       </SectionCard>
 
+      {/* Pricing & Stock Card */}
       <SectionCard>
-        <Text style={styles.sectionTitle}>Stock & pricing</Text>
-        <TextInput
-          label="Stock / Quantity"
-          value={quantity}
-          onChangeText={(value) => {
-            setQuantity(value);
-            setErrors((prev) => ({ ...prev, quantity: "" }));
-          }}
-          placeholder="0"
-          error={errors.quantity}
-          keyboardType="number-pad"
-        />
-        <TextInput
-          label="Cost price (optional)"
-          value={costPrice}
-          onChangeText={(value) => {
-            setCostPrice(value);
-            setErrors((prev) => ({ ...prev, costPrice: "" }));
-          }}
-          placeholder="Optional (e.g. 15.00)"
-          error={errors.costPrice}
-          keyboardType="decimal-pad"
-        />
-        <TextInput
-          label="Sell price"
-          value={sellPrice}
-          onChangeText={(value) => {
-            setSellPrice(value);
-            setErrors((prev) => ({ ...prev, sellPrice: "" }));
-          }}
-          placeholder="0.00"
-          error={errors.sellPrice}
-          keyboardType="decimal-pad"
-        />
-        <TextInput
-          label="Reorder / Pre-order level (Optional)"
-          value={reorderLevel}
-          onChangeText={setReorderLevel}
-          placeholder="5 (default threshold)"
-          keyboardType="number-pad"
-        />
-        <Text style={styles.fieldHelper}>
-          Threshold to trigger low stock & pre-order alerts (defaults to 5 if left blank).
-        </Text>
+        <View style={styles.cardHeader}>
+          <Ionicons name="pricetags-outline" size={20} color={Colors.primaryBlue} />
+          <Text style={styles.sectionTitle}>Stock & Pricing Structure</Text>
+        </View>
+
+        <View style={styles.formGrid}>
+          <View style={styles.gridCell}>
+            <TextInput
+              label="Initial Stock *"
+              value={quantity}
+              onChangeText={(value) => {
+                setQuantity(value);
+                setErrors((prev) => ({ ...prev, quantity: "" }));
+              }}
+              placeholder="0"
+              error={errors.quantity}
+              keyboardType="number-pad"
+            />
+          </View>
+
+          <View style={styles.gridCell}>
+            <TextInput
+              label="Reorder Alert Level"
+              value={reorderLevel}
+              onChangeText={setReorderLevel}
+              placeholder="5"
+              keyboardType="number-pad"
+            />
+          </View>
+        </View>
+
+        <View style={styles.formGrid}>
+          <View style={styles.gridCell}>
+            <TextInput
+              label="Cost Price (Optional)"
+              value={costPrice}
+              onChangeText={(value) => {
+                setCostPrice(value);
+                setErrors((prev) => ({ ...prev, costPrice: "" }));
+              }}
+              placeholder="0.00"
+              error={errors.costPrice}
+              keyboardType="decimal-pad"
+            />
+          </View>
+
+          <View style={styles.gridCell}>
+            <TextInput
+              label="Sell Price *"
+              value={sellPrice}
+              onChangeText={(value) => {
+                setSellPrice(value);
+                setErrors((prev) => ({ ...prev, sellPrice: "" }));
+              }}
+              placeholder="0.00"
+              error={errors.sellPrice}
+              keyboardType="decimal-pad"
+            />
+          </View>
+        </View>
+
+        {marginPct !== null ? (
+          <View style={styles.marginPill}>
+            <Ionicons name="trending-up" size={14} color="#15803d" />
+            <Text style={styles.marginText}>
+              Estimated Gross Margin: {marginPct}% ({toMoney(sellNum - costNum, "GHS")} profit/unit)
+            </Text>
+          </View>
+        ) : null}
       </SectionCard>
 
+      {/* Batch & Expiry Card */}
       <SectionCard>
-        <Text style={styles.sectionTitle}>Batch & Expiry (Optional)</Text>
+        <View style={styles.cardHeader}>
+          <Ionicons name="calendar-outline" size={20} color={Colors.primaryBlue} />
+          <Text style={styles.sectionTitle}>Batch & Expiry Tracking (Optional)</Text>
+        </View>
+
         <TextInput
-          label="Batch / Lot Number (Optional)"
+          label="Batch / Lot Number"
           value={batchNumber}
           onChangeText={setBatchNumber}
-          placeholder="e.g. LOT-2026A"
+          placeholder="e.g. BATCH-2026-08"
+          leftIcon={<Ionicons name="layers-outline" size={18} color={Colors.textMuted} />}
         />
+
         <DatePickerField
-          label="Expiry Date (Optional)"
+          label="Expiry Date"
           value={expiryDate}
           onChange={(val) => setExpiryDate(val ?? "")}
           placeholder="Select expiry date"
@@ -406,67 +462,170 @@ export default function AddProductScreen() {
         />
       </SectionCard>
 
+      {/* Tags Card */}
       <SectionCard>
-        <Text style={styles.sectionTitle}>Tags</Text>
+        <View style={styles.cardHeader}>
+          <Ionicons name="bookmark-outline" size={20} color={Colors.primaryBlue} />
+          <Text style={styles.sectionTitle}>Tags & Categorization</Text>
+        </View>
+
         <TextInput
           value={tags}
           onChangeText={setTags}
-          placeholder="e.g. brand, large, best seller"
+          placeholder="e.g. Beverages, Dairy, Best Seller, Promotion"
           leftIcon={<Ionicons name="pricetag-outline" size={18} color={Colors.textMuted} />}
         />
       </SectionCard>
 
-      <PrimaryButton label={saving ? "Saving..." : "Save product"} loading={saving} disabled={saving} onPress={() => void saveProduct()} />
+      {/* Save Button */}
+      <View style={styles.saveActionContainer}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.saveProductBtn,
+            saving && styles.saveProductBtnDisabled,
+            pressed && styles.saveProductBtnPressed,
+          ]}
+          disabled={saving}
+          onPress={() => void saveProduct()}
+        >
+          {saving ? (
+            <ActivityIndicator size="small" color={Colors.white} />
+          ) : (
+            <Ionicons name="checkmark-circle-outline" size={20} color={Colors.white} />
+          )}
+          <Text style={styles.saveProductText}>{saving ? "Saving to Catalog..." : "Save Product to Catalog"}</Text>
+        </Pressable>
+      </View>
     </AppScrollScreen>
   );
 }
 
+function toMoney(value: number, currency: string) {
+  const symbol = currency === "USD" ? "$" : currency === "NGN" ? "₦" : "₵";
+  return `${symbol} ${value.toFixed(2)}`;
+}
+
 const styles = StyleSheet.create({
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: Spacing.sm,
+  },
   sectionTitle: {
     ...Typography.title,
+    fontSize: 16,
     color: Colors.textPrimary,
-    marginBottom: Spacing.xs,
   },
   imageRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: Spacing.md,
   },
   imageWrap: {
     position: "relative",
   },
   image: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
+    width: 100,
+    height: 100,
+    borderRadius: 20,
   },
   imagePlaceholder: {
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: Colors.primaryBluePale,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderWidth: 1.5,
+    borderColor: "#bfdbfe",
+    borderStyle: "dashed",
+    gap: 4,
+  },
+  uploadPhotoText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: Colors.primaryBlue,
   },
   imageFab: {
     position: "absolute",
     right: -6,
     bottom: -6,
     backgroundColor: Colors.primaryBlue,
-    borderRadius: Radius.pill,
-    width: 44,
-    height: 44,
+    borderRadius: 18,
+    width: 36,
+    height: 36,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
     borderColor: Colors.surface,
   },
+  photoHintTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  photoHintSub: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: 2,
+    lineHeight: 16,
+  },
   scannerWrap: {
+    marginTop: Spacing.xs,
+    borderRadius: Radius.card,
+    overflow: "hidden",
+  },
+  formGrid: {
+    flexDirection: "row",
     gap: Spacing.sm,
   },
-  fieldHelper: {
-    ...Typography.caption,
-    color: Colors.textMuted,
-    marginTop: -2,
-    marginBottom: Spacing.xs,
+  gridCell: {
+    flex: 1,
+  },
+  marginPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#f0fdf4",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    marginTop: Spacing.xs,
+  },
+  marginText: {
     fontSize: 12,
+    fontWeight: "700",
+    color: "#15803d",
+  },
+  saveActionContainer: {
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.xl,
+  },
+  saveProductBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.primaryBlue,
+    paddingVertical: 16,
+    borderRadius: Radius.pill,
+    shadowColor: Colors.primaryBlue,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  saveProductBtnPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
+  },
+  saveProductBtnDisabled: {
+    opacity: 0.6,
+  },
+  saveProductText: {
+    color: Colors.white,
+    fontSize: 16,
+    fontWeight: "800",
   },
 });
+
