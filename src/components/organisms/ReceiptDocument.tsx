@@ -61,23 +61,21 @@ function BarcodeVisual() {
 
 export function ReceiptDocument({ order, store, data, onPrint, onShare }: ReceiptDocumentProps) {
   const draft = useOrderDraftStore();
+  const settings = useSettingsStore();
   const { connected, deviceName } = usePrinter();
-  const { lines, discountMode, discountValue, amountPaid, customerName, customerPhone, shippingAddress } =
-    useOrderDraftStore();
-  const { currency, taxRate, vatRate, serviceRate } = useSettingsStore();
-  const sourceLines = data?.lines ?? lines;
+  const sourceLines: ReceiptLine[] = (data?.lines ?? draft.lines) || [];
   const sourceDiscountMode = data?.discountMode ?? draft.discountMode;
   const sourceDiscountValue = data?.discountValue ?? draft.discountValue;
   const sourceAmountPaid = data?.amountPaid ?? draft.amountPaid;
   const sourceCustomerName = data?.customerName ?? draft.customerName;
   const sourceCustomerPhone = data?.customerPhone ?? draft.customerPhone;
   const sourceShippingAddress = data?.shippingAddress ?? draft.shippingAddress;
-  const sourceTaxRate = data?.taxRate ?? taxRate;
-  const sourceVatRate = data?.vatRate ?? vatRate;
-  const sourceServiceRate = data?.serviceRate ?? serviceRate;
-  const sourceCurrency = data?.currency ?? currency;
+  const sourceTaxRate = data?.taxRate ?? settings.taxRate;
+  const sourceVatRate = data?.vatRate ?? settings.vatRate;
+  const sourceServiceRate = data?.serviceRate ?? settings.serviceRate;
+  const sourceCurrency = data?.currency ?? settings.currency;
   const sym = currencySymbol(sourceCurrency);
-  const subtotal = sourceLines.reduce((sum, line) => sum + line.price * line.quantity, 0);
+  const subtotal = sourceLines.reduce((sum: number, line: ReceiptLine) => sum + (Number(line.price) || 0) * (Number(line.quantity) || 0), 0);
   const discount = sourceDiscountMode === "percentage" ? subtotal * (sourceDiscountValue / 100) : sourceDiscountValue;
   const base = Math.max(0, subtotal - discount);
   const tax = base * (sourceTaxRate / 100);

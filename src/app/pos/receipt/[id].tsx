@@ -71,7 +71,7 @@ export default function ReceiptScreen() {
         )
         .eq("store_id", activeStoreId)
         .eq("id", ref)
-        .single<OrderRow>();
+        .maybeSingle<OrderRow>();
 
       if (error || !order) {
         // Fallback: Check WatermelonDB SQLite for offline order
