@@ -3,7 +3,6 @@ import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { TextInput } from "@/src/components/atoms/TextInput";
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
 import { Colors } from "@/src/constants/colors";
@@ -23,7 +22,7 @@ import { useOrderDraftStore } from "@/src/store/orderDraftStore";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
 
-import { enqueueSyncItem } from "@/src/sync/enqueue";
+import { enqueueChange } from "@/src/sync/enqueue";
 import { database } from "@/src/database";
 import type Order from "@/src/database/models/Order";
 import type OrderItem from "@/src/database/models/OrderItem";
@@ -57,7 +56,7 @@ export default function OrderInfoScreen() {
     clearDraft,
   } = useOrderDraftStore();
   const { currency, taxRate, vatRate, serviceRate } = useSettingsStore();
-  const [customerOpen, setCustomerOpen] = useState(true);
+  const [customerOpen, setCustomerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const subtotal = useMemo(() => lines.reduce((sum, line) => sum + line.price * line.quantity, 0), [lines]);
@@ -118,83 +117,70 @@ export default function OrderInfoScreen() {
       }
     });
 
-    const orderPayload = {
-      id: localOrderId,
-      store_id: activeStoreId,
-      cashier_user_id: cashierUserId,
-      order_number: orderNumber,
-      status: "completed",
-      subtotal,
-      tax,
-      discount: discountAmount,
-      total,
-      tax_rate: taxRate,
-      vat_rate: vatRate,
-      service_rate: serviceRate,
-      discount_mode: discountMode,
-      discount_value: discountValue,
-      amount_paid: amountPaid,
-      change_due: change,
-      payment_method: paymentMethod,
-      customer_name: customerName || null,
-      customer_phone: customerPhone || null,
-      customer_id: customerId || null,
-      shipping_address: shippingAddress || null,
-      items: lines.map((line) => ({
-        product_id: line.remoteId ?? line.id,
-        sku: line.sku ?? line.barcode ?? null,
-        barcode: line.barcode ?? null,
-        product_name: line.name,
-        unit_price: line.price,
-        quantity: line.quantity,
-        line_total: line.price * line.quantity,
-      })),
-    };
-
-    await enqueueSyncItem({
-      storeId: activeStoreId,
-      entity: "orders",
-      operation: "upsert",
-      payload: orderPayload,
-      recordId: localOrderId,
-    });
+    try {
+      await enqueueChange({
+        storeId: activeStoreId,
+        entity: "orders",
+        operation: "upsert",
+        recordId: localOrderId,
+        payload: {
+          id: localOrderId,
+          order_number: orderNumber,
+          store_id: activeStoreId,
+          cashier_user_id: cashierUserId,
+          status: "completed",
+          subtotal,
+          tax_rate: taxRate,
+          vat_rate: vatRate,
+          service_rate: serviceRate,
+          discount_mode: discountMode,
+          discount_value: discountValue,
+          total,
+          amount_paid: amountPaid,
+          change_due: change,
+          payment_method: paymentMethod,
+          customer_name: customerName || null,
+          customer_phone: customerPhone || null,
+          customer_id: customerId || null,
+          shipping_address: shippingAddress || null,
+        },
+      });
+    } catch {
+      // offline fallback
+    }
 
     clearDraft();
-    Alert.alert("Order saved offline", "Network connection unavailable. Order queued to sync automatically.");
     router.push(`/pos/receipt/${localOrderId}`);
   }
 
   async function createReceipt() {
     if (!activeStoreId) {
-      Alert.alert("Store missing", "Select an active store before creating receipts.");
+      Alert.alert("Store missing", "Active store is required to create an order.");
       return;
     }
     if (lines.length === 0) {
-      Alert.alert("No items", "Add at least one item to create an order.");
+      Alert.alert("No items", "Add items to your cart before proceeding to checkout.");
       return;
     }
 
-    const orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     setSubmitting(true);
     let stockAdjusted = false;
 
     try {
-      const stockById = await fetchStockByProductId(
-        activeStoreId,
-        lines.map((line) => line.id),
-      );
-      validateCartQuantities(lines, stockById);
+      const orderNumber = `ORD-${Date.now().toString().slice(-6)}`;
+      const cashierUserId = userId ?? "00000000-0000-0000-0000-000000000000";
 
-      const fallbackUser = (await supabase.auth.getUser()).data.user?.id ?? null;
-      const cashierUserId = userId ?? fallbackUser ?? "local-cashier-id";
+      const freshStock = await fetchStockByProductId(
+        activeStoreId,
+        lines.map((l) => l.id),
+      );
+      validateCartQuantities(lines, freshStock);
 
       await decrementStockForOrder(activeStoreId, lines);
       stockAdjusted = true;
 
       try {
-        await supabase.from("profiles").upsert({ id: cashierUserId }, { onConflict: "id" });
-
-        const { data: inserted, error } = await supabase
+        const { data: inserted, error: orderError } = await supabase
           .from("orders")
           .insert({
             store_id: activeStoreId,
@@ -202,14 +188,12 @@ export default function OrderInfoScreen() {
             order_number: orderNumber,
             status: "completed",
             subtotal,
-            tax,
-            discount: discountAmount,
-            total,
             tax_rate: taxRate,
             vat_rate: vatRate,
             service_rate: serviceRate,
             discount_mode: discountMode,
             discount_value: discountValue,
+            total,
             amount_paid: amountPaid,
             change_due: change,
             payment_method: paymentMethod,
@@ -221,26 +205,30 @@ export default function OrderInfoScreen() {
           .select("id")
           .single();
 
-        if (error) throw error;
-        if (!inserted?.id) throw new Error("Order created but missing id.");
+        if (orderError || !inserted) {
+          throw orderError ?? new Error("Cloud order creation failed.");
+        }
 
-        const linesPayload = lines.map((line) => ({
+        const itemsPayload = lines.map((line) => ({
           order_id: inserted.id,
           store_id: activeStoreId,
-          product_id: line.remoteId ?? null,
-          sku: line.sku ?? line.barcode ?? null,
-          barcode: line.barcode ?? null,
+          product_id: line.remoteId || line.id,
           product_name: line.name,
+          sku: line.sku,
+          barcode: line.barcode,
           unit_price: line.price,
           quantity: line.quantity,
           line_total: line.price * line.quantity,
         }));
-        await supabase.from("order_items").insert(linesPayload);
+
+        const { error: itemsError } = await supabase.from("order_items").insert(itemsPayload);
+        if (itemsError) {
+          throw itemsError;
+        }
 
         clearDraft();
         router.push(`/pos/receipt/${inserted.id}`);
       } catch (cloudErr) {
-        // Network/cloud fail -> Save offline to WatermelonDB SQLite & sync queue
         if (__DEV__) console.warn(`[OmniPOS] Cloud checkout failed, using offline fallback: ${cloudErr}`);
         await saveOrderOffline(orderNumber, cashierUserId);
       }
@@ -258,7 +246,7 @@ export default function OrderInfoScreen() {
           : error instanceof Error
             ? error.message
             : "Failed to create order";
-      Alert.alert(error instanceof InsufficientStockError ? "Insufficient stock" : "Create order failed", message);
+      Alert.alert(error instanceof InsufficientStockError ? "Insufficient Stock" : "Order Creation Failed", message);
     } finally {
       setSubmitting(false);
     }
@@ -272,216 +260,444 @@ export default function OrderInfoScreen() {
   ];
 
   return (
-    <AppScrollScreen showBack title="Order info" subtitle="Select payment method, apply discounts, and capture customer info.">
-      <SectionCard>
-        <Text style={styles.totalLabel}>Total price</Text>
-        <Text style={styles.totalValue}>
-          {sym} {total.toFixed(2)}
-        </Text>
-      </SectionCard>
+    <AppScrollScreen showBack title="Order Checkout" subtitle="Complete payment, apply discounts, and assign customer.">
+      {/* Total Due Hero Card */}
+      <View style={styles.totalHeroCard}>
+        <View style={styles.totalHeroHeader}>
+          <View style={styles.orderPill}>
+            <Text style={styles.orderPillText}>{lines.length} {lines.length === 1 ? "Item" : "Items"} in Cart</Text>
+          </View>
+          <Text style={styles.totalHeroCurrency}>{currency}</Text>
+        </View>
 
+        <Text style={styles.totalHeroLabel}>TOTAL AMOUNT DUE</Text>
+        <Text style={styles.totalHeroValue}>{sym} {total.toFixed(2)}</Text>
+
+        <View style={styles.totalHeroBreakdown}>
+          <Text style={styles.totalHeroBreakdownText}>
+            Subtotal: {sym}{subtotal.toFixed(2)}
+            {discountAmount > 0 ? ` · Disc: -${sym}${discountAmount.toFixed(2)}` : ""}
+            {tax > 0 ? ` · Tax: ${sym}${tax.toFixed(2)}` : ""}
+            {vat > 0 ? ` · VAT: ${sym}${vat.toFixed(2)}` : ""}
+          </Text>
+        </View>
+      </View>
+
+      {/* Payment Method Selector */}
       <SectionCard>
-        <Text style={styles.sectionHeaderTitle}>Payment Method</Text>
-        <View style={styles.paymentMethodRow}>
+        <Text style={styles.cardSectionTitle}>Select Payment Method</Text>
+        <View style={styles.paymentMethodGrid}>
           {paymentMethods.map((m) => {
             const active = paymentMethod === m.key;
             return (
               <Pressable
                 key={m.key}
-                style={[styles.paymentMethodPill, active && styles.paymentMethodPillActive]}
+                style={({ pressed }) => [
+                  styles.paymentMethodCard,
+                  active && styles.paymentMethodCardActive,
+                  pressed && { opacity: 0.8 },
+                ]}
                 onPress={() => setPaymentMethod(m.key)}
               >
-                <Ionicons name={m.icon as any} size={18} color={active ? Colors.white : Colors.textSecondary} />
-                <Text style={[styles.paymentMethodText, active && styles.paymentMethodTextActive]}>{m.label}</Text>
+                <View style={[styles.methodIconWrap, active && styles.methodIconWrapActive]}>
+                  <Ionicons name={m.icon as any} size={22} color={active ? Colors.white : Colors.primaryBlue} />
+                </View>
+                <Text style={[styles.paymentMethodLabel, active && styles.paymentMethodLabelActive]}>
+                  {m.label}
+                </Text>
               </Pressable>
             );
           })}
         </View>
       </SectionCard>
 
+      {/* Discount & Tendered Amount */}
       <SectionCard>
+        <Text style={styles.cardSectionTitle}>Discount & Tendered Amount</Text>
+
+        {/* Discount Row */}
         <View style={styles.discountRow}>
-          <Text style={styles.discountLabel}>Discount</Text>
-          <TextInput
-            value={discountValue ? String(discountValue) : ""}
-            onChangeText={(v) => setDiscountValue(Number(v) || 0)}
-            placeholder="Enter"
-            keyboardType="decimal-pad"
-            containerStyle={styles.discountInput}
-          />
-          <Pressable
-            style={styles.modePill}
-            onPress={() => setDiscountMode(discountMode === "percentage" ? "amount" : "percentage")}
-          >
-            <Text style={styles.modeText}>{discountMode === "percentage" ? "Percentage" : "Amount"}</Text>
-            <Ionicons name="chevron-down" size={16} color={Colors.primaryBlue} />
-          </Pressable>
+          <View style={styles.fieldFlex}>
+            <TextInput
+              label="Discount Value"
+              value={discountValue ? String(discountValue) : ""}
+              onChangeText={(v) => setDiscountValue(Number(v) || 0)}
+              placeholder="0"
+              keyboardType="decimal-pad"
+            />
+          </View>
+
+          <View style={{ marginTop: 24 }}>
+            <Pressable
+              style={styles.discountToggleBtn}
+              onPress={() => setDiscountMode(discountMode === "percentage" ? "amount" : "percentage")}
+            >
+              <Text style={styles.discountToggleText}>
+                {discountMode === "percentage" ? "% Percent" : `${sym} Flat`}
+              </Text>
+              <Ionicons name="swap-horizontal" size={14} color={Colors.primaryBlue} />
+            </Pressable>
+          </View>
         </View>
-        <View style={styles.amountRow}>
-          <Text style={styles.amountLabel}>Amount</Text>
+
+        {/* Amount Tendered Input */}
+        <View style={{ marginTop: Spacing.xs }}>
           <TextInput
+            label="Amount Paid by Customer"
             value={amountPaid ? String(amountPaid) : ""}
             onChangeText={(v) => setAmountPaid(Number(v) || 0)}
-            placeholder="0"
+            placeholder={`${sym} ${total.toFixed(2)}`}
             keyboardType="decimal-pad"
-            containerStyle={styles.amountInput}
+            leftIcon={<Text style={styles.inputPrefix}>{sym}</Text>}
           />
         </View>
-        <View style={styles.changeBox}>
-          <View style={styles.amountSplitRow}>
-            <Text style={styles.changeLabel}>Change</Text>
-            <Text style={styles.changeVal}>
+
+        {/* Quick Amount Suggestion Chips */}
+        <View style={styles.quickCashRow}>
+          <Pressable
+            style={({ pressed }) => [styles.quickCashChip, pressed && { opacity: 0.7 }]}
+            onPress={() => setAmountPaid(Number(total.toFixed(2)))}
+          >
+            <Text style={styles.quickCashText}>Exact ({sym}{total.toFixed(2)})</Text>
+          </Pressable>
+          {[10, 20, 50, 100].map((step) => {
+            const suggested = Math.ceil(total / step) * step;
+            if (suggested <= total) return null;
+            return (
+              <Pressable
+                key={`step-${step}`}
+                style={({ pressed }) => [styles.quickCashChip, pressed && { opacity: 0.7 }]}
+                onPress={() => setAmountPaid(suggested)}
+              >
+                <Text style={styles.quickCashText}>{sym}{suggested}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* Change & Balance Indicator */}
+        <View style={styles.changeOverviewBox}>
+          <View style={styles.changeRowItem}>
+            <Text style={styles.changeRowLabel}>Change to Return</Text>
+            <Text style={[styles.changeRowValue, { color: Colors.success }]}>
               {sym} {change.toFixed(2)}
             </Text>
           </View>
-          <View style={styles.amountSplitRow}>
-            <Text style={styles.changeLabel}>Balance</Text>
-            <Text style={[styles.changeVal, balance > 0 && styles.balanceVal]}>
-              {sym} {balance.toFixed(2)}
-            </Text>
-          </View>
+          {balance > 0 ? (
+            <View style={styles.changeRowItem}>
+              <Text style={styles.changeRowLabel}>Balance Remaining</Text>
+              <Text style={[styles.changeRowValue, { color: Colors.accentOrange }]}>
+                {sym} {balance.toFixed(2)}
+              </Text>
+            </View>
+          ) : null}
         </View>
-        <Text style={styles.breakdown}>
-          Subtotal {sym}
-          {subtotal.toFixed(2)} · Tax {taxRate}% {sym}
-          {tax.toFixed(2)} · VAT {vatRate}% {sym}
-          {vat.toFixed(2)} · Service {serviceRate}% {sym}
-          {service.toFixed(2)}
-        </Text>
       </SectionCard>
 
+      {/* Customer Information (Collapsible) */}
       <SectionCard>
-        <Pressable style={styles.customerHeader} onPress={() => setCustomerOpen((v) => !v)}>
-          <Text style={styles.customerTitle}>Customer Info</Text>
-          <Ionicons name={customerOpen ? "chevron-up" : "chevron-down"} size={20} color={Colors.primaryBlue} />
+        <Pressable
+          style={styles.customerHeaderRow}
+          onPress={() => setCustomerOpen((v) => !v)}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Ionicons name="person-circle-outline" size={22} color={Colors.primaryBlue} />
+            <Text style={styles.cardSectionTitle}>Customer Information</Text>
+            <Text style={styles.optionalTag}>(Optional)</Text>
+          </View>
+          <Ionicons
+            name={customerOpen ? "chevron-up" : "chevron-down"}
+            size={20}
+            color={Colors.textMuted}
+          />
         </Pressable>
+
         {customerOpen ? (
-          <View style={styles.customerInputs}>
+          <View style={styles.customerFields}>
             <TextInput
+              label="Customer Full Name"
               value={customerName}
               onChangeText={(name) => setCustomer({ name })}
-              placeholder="Optional"
+              placeholder="e.g. John Mensah"
               leftIcon={<Ionicons name="person-outline" size={18} color={Colors.textMuted} />}
             />
             <TextInput
+              label="Phone Number"
               value={customerPhone}
               onChangeText={(phone) => setCustomer({ phone })}
-              placeholder="0240000000"
+              placeholder="e.g. 0244000000"
               keyboardType="phone-pad"
               leftIcon={<Ionicons name="call-outline" size={18} color={Colors.textMuted} />}
             />
             <TextInput
+              label="Delivery / Shipping Address"
               value={shippingAddress}
               onChangeText={(value) => setCustomer({ shippingAddress: value })}
-              placeholder="Optional"
-              leftIcon={<Ionicons name="car-outline" size={18} color={Colors.textMuted} />}
+              placeholder="e.g. House No. 12, Osu, Accra"
+              leftIcon={<Ionicons name="location-outline" size={18} color={Colors.textMuted} />}
             />
           </View>
-        ) : null}
+        ) : (
+          <Text style={styles.customerClosedHint}>
+            {customerName ? `Assigned to: ${customerName}` : "Tap to record customer name, phone, or address."}
+          </Text>
+        )}
       </SectionCard>
 
-      <PrimaryButton
-        label={submitting ? "Creating..." : "Create Receipt"}
-        loading={submitting}
-        disabled={submitting}
-        onPress={() => void createReceipt()}
-      />
+      {/* Complete Order Primary Button */}
+      <View style={styles.bottomActionContainer}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.submitOrderButton,
+            submitting && styles.submitOrderButtonDisabled,
+            pressed && styles.submitOrderButtonPressed,
+          ]}
+          disabled={submitting}
+          onPress={() => void createReceipt()}
+        >
+          <View style={styles.submitLeft}>
+            <Ionicons name="receipt-outline" size={22} color={Colors.white} />
+            <Text style={styles.submitButtonText}>
+              {submitting ? "Processing Sale..." : "Complete & Generate Receipt"}
+            </Text>
+          </View>
+          <Text style={styles.submitButtonTotal}>{sym} {total.toFixed(2)}</Text>
+        </Pressable>
+      </View>
     </AppScrollScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  totalLabel: { fontSize: 22, color: Colors.textPrimary, fontWeight: "600" },
-  totalValue: { fontSize: 34, color: Colors.textPrimary, fontWeight: "800", marginTop: 6 },
-  sectionHeaderTitle: { fontSize: 16, fontWeight: "700", color: Colors.textPrimary, marginBottom: Spacing.xs },
-  paymentMethodRow: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.xs },
-  paymentMethodPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 10,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.primaryBluePale,
-    borderWidth: 1,
-    borderColor: "transparent",
+  totalHeroCard: {
+    backgroundColor: "#0f172a",
+    borderRadius: Radius.card,
+    padding: Spacing.lg,
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 4,
   },
-  paymentMethodPillActive: {
+  totalHeroHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: Spacing.xs,
+  },
+  orderPill: {
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  orderPillText: {
+    color: "#e2e8f0",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  totalHeroCurrency: {
+    color: "#94a3b8",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  totalHeroLabel: {
+    color: "#94a3b8",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    marginTop: Spacing.xs,
+  },
+  totalHeroValue: {
+    color: "#ffffff",
+    fontSize: 34,
+    fontWeight: "900",
+    marginTop: 2,
+    letterSpacing: -0.5,
+  },
+  totalHeroBreakdown: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.12)",
+    marginTop: Spacing.sm,
+    paddingTop: Spacing.xs,
+  },
+  totalHeroBreakdownText: {
+    color: "#94a3b8",
+    fontSize: 12,
+  },
+  cardSectionTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: Colors.textPrimary,
+  },
+  paymentMethodGrid: {
+    flexDirection: "row",
+    gap: Spacing.xs,
+    marginTop: Spacing.xs,
+  },
+  paymentMethodCard: {
+    flex: 1,
+    alignItems: "center",
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.card,
+    paddingVertical: Spacing.md,
+    borderWidth: 1.5,
+    borderColor: "#e2e8f0",
+    gap: 6,
+  },
+  paymentMethodCardActive: {
     backgroundColor: Colors.primaryBlue,
     borderColor: Colors.primaryBlue,
   },
-  paymentMethodText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: Colors.textSecondary,
+  methodIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: Colors.primaryBluePale,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  paymentMethodTextActive: {
+  methodIconWrapActive: {
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+  },
+  paymentMethodLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  paymentMethodLabelActive: {
     color: Colors.white,
   },
   discountRow: {
     flexDirection: "row",
-    gap: Spacing.xs,
     alignItems: "center",
+    gap: Spacing.sm,
   },
-  discountLabel: {
-    backgroundColor: Colors.primaryBluePale,
-    borderRadius: Radius.pill,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 10,
-    fontWeight: "700",
-    color: Colors.textPrimary,
+  fieldFlex: {
+    flex: 1,
   },
-  discountInput: { flex: 1 },
-  modePill: {
+  discountToggleBtn: {
     flexDirection: "row",
-    gap: 4,
     alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: Radius.input,
+    backgroundColor: Colors.primaryBluePale,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: Radius.input,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 11,
-    backgroundColor: Colors.surface,
   },
-  modeText: { color: Colors.textSecondary, fontWeight: "600" },
-  amountRow: {
+  discountToggleText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.primaryBlue,
+  },
+  inputPrefix: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: Colors.primaryBlue,
+    paddingHorizontal: 4,
+  },
+  quickCashRow: {
     flexDirection: "row",
-    alignItems: "center",
+    flexWrap: "wrap",
     gap: Spacing.xs,
     marginTop: Spacing.xs,
   },
-  amountLabel: {
-    backgroundColor: Colors.primaryBluePale,
+  quickCashChip: {
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
     borderRadius: Radius.pill,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  quickCashText: {
+    fontSize: 12,
     fontWeight: "700",
-    color: Colors.textPrimary,
-    minWidth: 90,
+    color: Colors.textSecondary,
   },
-  amountInput: { flex: 1 },
-  changeBox: {
-    marginTop: Spacing.xs,
-    borderRadius: Radius.card,
-    backgroundColor: Colors.primaryBluePale,
+  changeOverviewBox: {
+    backgroundColor: Colors.background,
+    borderRadius: Radius.input,
     padding: Spacing.md,
-    gap: 4,
+    marginTop: Spacing.sm,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
-  amountSplitRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  changeLabel: { fontSize: 20, color: Colors.textPrimary, fontWeight: "600" },
-  changeVal: { fontSize: 28, color: "#e05757", fontWeight: "800" },
-  balanceVal: { color: Colors.danger },
-  breakdown: {
-    marginTop: Spacing.xs,
-    color: Colors.textMuted,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  customerHeader: {
+  changeRowItem: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  customerTitle: { ...Typography.title, color: Colors.textPrimary },
-  customerInputs: { gap: Spacing.sm, marginTop: Spacing.xs },
+  changeRowLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: Colors.textSecondary,
+  },
+  changeRowValue: {
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  customerHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  optionalTag: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontWeight: "400",
+  },
+  customerClosedHint: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    marginTop: Spacing.xs,
+  },
+  customerFields: {
+    gap: Spacing.xs,
+    marginTop: Spacing.sm,
+  },
+  bottomActionContainer: {
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.xl,
+  },
+  submitOrderButton: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: Colors.primaryBlue,
+    borderRadius: Radius.pill,
+    paddingVertical: 16,
+    paddingHorizontal: Spacing.lg,
+    shadowColor: Colors.primaryBlue,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  submitOrderButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
+  },
+  submitOrderButtonDisabled: {
+    opacity: 0.6,
+  },
+  submitLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  submitButtonText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: Colors.white,
+  },
+  submitButtonTotal: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: Colors.white,
+  },
 });

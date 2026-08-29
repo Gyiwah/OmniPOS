@@ -6,7 +6,6 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Avatar } from "@/src/components/atoms/Avatar";
-import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { TextInput } from "@/src/components/atoms/TextInput";
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
 import { Colors } from "@/src/constants/colors";
@@ -23,10 +22,10 @@ import { useStoreSlice } from "@/src/store/storeSlice";
 import { toErrorMessage } from "@/src/utils/errors";
 
 const MENU = [
-  { label: "Store switching", route: "/settings/stores", icon: "business-outline" as const },
-  { label: "Multi-user invites", route: "/settings/users", icon: "people-outline" as const },
-  { label: "Printer", route: "/settings/printer", icon: "print-outline" as const },
-  { label: "Backup + CSV export", route: "/settings/backup", icon: "cloud-upload-outline" as const },
+  { label: "Switch & Manage Stores", subtitle: "Manage multi-store locations", route: "/settings/stores", icon: "business-outline" as const },
+  { label: "Team & Staff Access", subtitle: "Invite cashiers and store admins", route: "/settings/users", icon: "people-outline" as const },
+  { label: "Thermal Receipt Printer", subtitle: "Configure ESC/POS & Bluetooth", route: "/settings/printer", icon: "print-outline" as const },
+  { label: "Backup & CSV Export", subtitle: "Export sales and product reports", route: "/settings/backup", icon: "cloud-upload-outline" as const },
 ];
 
 const LANGUAGES = ["English", "French", "Spanish"] as const;
@@ -115,9 +114,9 @@ export default function SettingsScreen() {
         serviceRate: Number(service) || 0,
         localLogoUri: pendingLogoUri && isLocalImageUri(pendingLogoUri) ? pendingLogoUri : undefined,
       });
-      Alert.alert("Settings saved", "Shop profile and charge settings were synced to your store.");
+      Alert.alert("Settings Saved", "Store profile, charges, and localization settings were synced.");
     } catch (err) {
-      Alert.alert("Save failed", toErrorMessage(err, "Could not update store settings."));
+      Alert.alert("Save Failed", toErrorMessage(err, "Could not update store settings."));
     }
   }
 
@@ -147,20 +146,27 @@ export default function SettingsScreen() {
       <AppScrollScreen showBack title="Settings" subtitle="Select a store to manage settings.">
         <SectionCard>
           <Text style={styles.helper}>No active store. Complete onboarding or switch stores first.</Text>
-          <PrimaryButton label="Manage stores" onPress={() => router.push("/settings/stores")} />
+          <Pressable style={styles.manageStoresBtn} onPress={() => router.push("/settings/stores")}>
+            <Ionicons name="business" size={18} color={Colors.white} />
+            <Text style={styles.manageStoresBtnText}>Manage Stores</Text>
+          </Pressable>
         </SectionCard>
-        <PrimaryButton
-          label="Sign Out"
-          variant="outline"
-          style={styles.signOutBtn}
-          onPress={() => void handleSignOut()}
-        />
+        <View style={styles.signOutWrapper}>
+          <Pressable style={styles.signOutButton} onPress={() => void handleSignOut()}>
+            <Ionicons name="log-out-outline" size={20} color={Colors.danger} />
+            <Text style={styles.signOutText}>Sign Out of OmniPOS</Text>
+          </Pressable>
+        </View>
       </AppScrollScreen>
     );
   }
 
   return (
-    <AppScrollScreen showBack title="Settings" subtitle="Shop profile, language, currency, and charges setup.">
+    <AppScrollScreen
+      showBack
+      title="Store Settings"
+      subtitle="Branding, tax rates, localization, and system preferences."
+    >
       {isLoading ? (
         <SectionCard>
           <ActivityIndicator color={Colors.primaryBlue} />
@@ -174,50 +180,106 @@ export default function SettingsScreen() {
         </SectionCard>
       ) : null}
 
+      {/* Super Admin Portal Banner */}
       {isSuperAdmin ? (
-        <SectionCard>
-          <Pressable
-            onPress={() => router.push("/super-admin" as never)}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              backgroundColor: Colors.primaryBluePale,
-              padding: Spacing.sm,
-              borderRadius: Radius.input,
-              borderWidth: 1,
-              borderColor: Colors.primaryBlue,
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: Spacing.sm, flex: 1 }}>
+        <Pressable
+          onPress={() => router.push("/super-admin" as never)}
+          style={({ pressed }) => [styles.superAdminBanner, pressed && { opacity: 0.9 }]}
+        >
+          <View style={styles.superAdminLeft}>
+            <View style={styles.shieldIconWrap}>
               <Ionicons name="shield-checkmark" size={24} color={Colors.primaryBlue} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ ...Typography.title, color: Colors.primaryBlue, fontSize: 16 }}>Super Admin Portal</Text>
-                <Text style={{ ...Typography.caption, color: Colors.textSecondary }}>Provision system stores & store admin credentials</Text>
-              </View>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={Colors.primaryBlue} />
-          </Pressable>
-        </SectionCard>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.superAdminTitle}>Super Admin Portal</Text>
+              <Text style={styles.superAdminSub}>Provision stores & manage system-wide administrators</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.primaryBlue} />
+        </Pressable>
       ) : null}
 
+      {/* Store Identity & Branding Card */}
       <SectionCard>
-        <Text style={styles.sectionTitle}>Shop branding</Text>
+        <View style={styles.cardHeaderRow}>
+          <Ionicons name="storefront-outline" size={20} color={Colors.primaryBlue} />
+          <Text style={styles.sectionTitle}>Store Identity & Branding</Text>
+        </View>
+
         <View style={styles.brandRow}>
-          <Pressable onPress={() => void pickLogo()} hitSlop={10}>
-            <Avatar uri={logoUri} fallbackInitials={name || shopName} size={64} />
+          <Pressable onPress={() => void pickLogo()} hitSlop={10} style={styles.avatarContainer}>
+            <Avatar uri={logoUri} fallbackInitials={name || shopName} size={68} />
+            <View style={styles.cameraBadge}>
+              <Ionicons name="camera" size={14} color={Colors.white} />
+            </View>
           </Pressable>
-          <View style={{ flex: 1, gap: Spacing.xs }}>
-            <TextInput label="Shop name" value={name} onChangeText={setName} placeholder="e.g. Osu Branch" />
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={styles.brandHintTitle}>Store Logo & Identity</Text>
+            <Text style={styles.brandHintSubtitle}>Tap the avatar to upload an image from your device photo library.</Text>
           </View>
         </View>
-        <TextInput label="Shop email" value={email} onChangeText={setEmail} placeholder="shop@email.com" autoCapitalize="none" keyboardType="email-address" />
+
+        <View style={{ marginTop: Spacing.sm, gap: Spacing.xs }}>
+          <TextInput
+            label="Store / Branch Name"
+            value={name}
+            onChangeText={setName}
+            placeholder="e.g. Accra Central Branch"
+            leftIcon={<Ionicons name="business-outline" size={18} color={Colors.textMuted} />}
+          />
+          <TextInput
+            label="Store Contact Email"
+            value={email}
+            onChangeText={setEmail}
+            placeholder="store@email.com"
+            autoCapitalize="none"
+            keyboardType="email-address"
+            leftIcon={<Ionicons name="mail-outline" size={18} color={Colors.textMuted} />}
+          />
+        </View>
       </SectionCard>
 
+      {/* Quick Navigation Menu Groups */}
       <SectionCard>
-        <Text style={styles.sectionTitle}>Localization</Text>
+        <View style={styles.cardHeaderRow}>
+          <Ionicons name="options-outline" size={20} color={Colors.primaryBlue} />
+          <Text style={styles.sectionTitle}>Store Management</Text>
+        </View>
+
+        <View style={styles.menuList}>
+          {MENU.map((item) => (
+            <Pressable
+              key={item.label}
+              onPress={() => router.push(item.route as never)}
+              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+            >
+              <View style={styles.menuRowLeft}>
+                <View style={styles.menuIconWrap}>
+                  <Ionicons name={item.icon} size={20} color={Colors.primaryBlue} />
+                </View>
+                <View>
+                  <Text style={styles.menuRowTitle}>{item.label}</Text>
+                  <Text style={styles.menuRowSub}>{item.subtitle}</Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+            </Pressable>
+          ))}
+        </View>
+      </SectionCard>
+
+      {/* Localization & Region */}
+      <SectionCard>
+        <View style={styles.cardHeaderRow}>
+          <Ionicons name="globe-outline" size={20} color={Colors.primaryBlue} />
+          <Text style={styles.sectionTitle}>Localization & Currency</Text>
+        </View>
+
         <View style={styles.selectRow}>
-          <Text style={styles.label}>Language</Text>
+          <View>
+            <Text style={styles.selectLabel}>Display Language</Text>
+            <Text style={styles.selectSub}>POS interface language</Text>
+          </View>
           <Pressable
             style={styles.selectPill}
             onPress={() => {
@@ -227,11 +289,15 @@ export default function SettingsScreen() {
             }}
           >
             <Text style={styles.selectValue}>{localLanguage}</Text>
-            <Ionicons name="chevron-down" size={16} color={Colors.textMuted} />
+            <Ionicons name="swap-vertical" size={16} color={Colors.primaryBlue} />
           </Pressable>
         </View>
-        <View style={styles.selectRow}>
-          <Text style={styles.label}>Currency</Text>
+
+        <View style={[styles.selectRow, { marginTop: Spacing.sm }]}>
+          <View>
+            <Text style={styles.selectLabel}>Primary Currency</Text>
+            <Text style={styles.selectSub}>Used across orders & receipts</Text>
+          </View>
           <Pressable
             style={styles.selectPill}
             onPress={() => {
@@ -241,44 +307,77 @@ export default function SettingsScreen() {
             }}
           >
             <Text style={styles.selectValue}>{localCurrency}</Text>
-            <Ionicons name="chevron-down" size={16} color={Colors.textMuted} />
+            <Ionicons name="swap-vertical" size={16} color={Colors.primaryBlue} />
           </Pressable>
         </View>
       </SectionCard>
 
+      {/* Rates, VAT & Service Charges */}
       <SectionCard>
-        <Text style={styles.sectionTitle}>Other charges (sales/receipt)</Text>
-        <TextInput label="Tax %" value={tax} onChangeText={setTax} keyboardType="decimal-pad" />
-        <TextInput label="VAT %" value={vat} onChangeText={setVat} keyboardType="decimal-pad" />
-        <TextInput label="Service charge %" value={service} onChangeText={setService} keyboardType="decimal-pad" />
-      </SectionCard>
+        <View style={styles.cardHeaderRow}>
+          <Ionicons name="calculator-outline" size={20} color={Colors.primaryBlue} />
+          <Text style={styles.sectionTitle}>Taxes & Charges (Applied at Checkout)</Text>
+        </View>
 
-      <SectionCard>
-        <View style={styles.menu}>
-          {MENU.map((item) => (
-            <Pressable key={item.label} onPress={() => router.push(item.route as never)} style={styles.row}>
-              <View style={styles.rowLeft}>
-                <Ionicons name={item.icon} size={18} color={Colors.primaryBlue} />
-                <Text style={styles.rowLabel}>{item.label}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
-            </Pressable>
-          ))}
+        <View style={styles.chargesGrid}>
+          <View style={styles.chargeFieldWrap}>
+            <TextInput
+              label="Standard Tax %"
+              value={tax}
+              onChangeText={setTax}
+              placeholder="0"
+              keyboardType="decimal-pad"
+            />
+          </View>
+          <View style={styles.chargeFieldWrap}>
+            <TextInput
+              label="VAT %"
+              value={vat}
+              onChangeText={setVat}
+              placeholder="0"
+              keyboardType="decimal-pad"
+            />
+          </View>
+        </View>
+
+        <View style={{ marginTop: Spacing.xs }}>
+          <TextInput
+            label="Service Charge %"
+            value={service}
+            onChangeText={setService}
+            placeholder="0"
+            keyboardType="decimal-pad"
+          />
         </View>
       </SectionCard>
 
-      <PrimaryButton
-        label={saveSettings.isPending ? "Saving…" : "Save settings"}
+      {/* Save Settings Primary Button */}
+      <Pressable
+        style={({ pressed }) => [
+          styles.saveButton,
+          saveSettings.isPending && styles.saveButtonDisabled,
+          pressed && styles.saveButtonPressed,
+        ]}
         disabled={saveSettings.isPending}
         onPress={() => void saveProfile()}
-      />
+      >
+        {saveSettings.isPending ? (
+          <ActivityIndicator size="small" color={Colors.white} />
+        ) : (
+          <Ionicons name="cloud-done-outline" size={20} color={Colors.white} />
+        )}
+        <Text style={styles.saveButtonText}>
+          {saveSettings.isPending ? "Syncing Settings..." : "Save Settings"}
+        </Text>
+      </Pressable>
 
+      {/* Sign Out Button */}
       <View style={styles.signOutWrapper}>
         <Pressable
           style={({ pressed }) => [styles.signOutButton, pressed && styles.signOutButtonPressed]}
           onPress={() => void handleSignOut()}
         >
-          <Ionicons name="log-out-outline" size={20} color={Colors.accentOrange} />
+          <Ionicons name="log-out-outline" size={20} color={Colors.danger} />
           <Text style={styles.signOutText}>Sign Out of OmniPOS</Text>
         </Pressable>
       </View>
@@ -287,66 +386,187 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
+  cardHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: Spacing.sm,
+  },
   sectionTitle: {
     ...Typography.title,
+    fontSize: 16,
     color: Colors.textPrimary,
-    marginBottom: Spacing.xs,
+  },
+  superAdminBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: Colors.primaryBluePale,
+    padding: Spacing.md,
+    borderRadius: Radius.card,
+    borderWidth: 1.5,
+    borderColor: Colors.primaryBlue,
+  },
+  superAdminLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    flex: 1,
+  },
+  shieldIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  superAdminTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: Colors.primaryBlue,
+  },
+  superAdminSub: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
   brandRow: {
     flexDirection: "row",
     alignItems: "center",
+    gap: Spacing.md,
+  },
+  avatarContainer: {
+    position: "relative",
+  },
+  cameraBadge: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    backgroundColor: Colors.primaryBlue,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: Colors.surface,
+  },
+  brandHintTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  brandHintSubtitle: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  menuList: {
+    gap: Spacing.xs,
+  },
+  menuRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.input,
+    padding: Spacing.sm + 2,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  menuRowPressed: {
+    backgroundColor: "#f8fafc",
+  },
+  menuRowLeft: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: Spacing.sm,
+    flex: 1,
+  },
+  menuIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: Colors.primaryBluePale,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  menuRowTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  menuRowSub: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 1,
   },
   selectRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: Spacing.sm,
   },
-  label: {
-    ...Typography.body,
+  selectLabel: {
+    fontSize: 14,
+    fontWeight: "700",
     color: Colors.textPrimary,
-    fontWeight: "600",
+  },
+  selectSub: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 1,
   },
   selectPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.xs,
+    gap: 8,
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: Radius.pill,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 7,
-    minWidth: 120,
-    justifyContent: "space-between",
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    backgroundColor: Colors.surface,
   },
   selectValue: {
-    color: Colors.textSecondary,
-    fontWeight: "600",
+    color: Colors.primaryBlue,
+    fontWeight: "800",
+    fontSize: 13,
   },
-  menu: { gap: Spacing.sm },
-  row: {
+  chargesGrid: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+  },
+  chargeFieldWrap: {
+    flex: 1,
+  },
+  saveButton: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.input,
-    backgroundColor: Colors.surface,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm + 2,
-  },
-  rowLeft: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
-  rowLabel: { ...Typography.body, color: Colors.textPrimary, fontWeight: "700" },
-  helper: {
-    ...Typography.caption,
-    color: Colors.textMuted,
-    textAlign: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.primaryBlue,
+    paddingVertical: 16,
+    borderRadius: Radius.pill,
     marginTop: Spacing.xs,
+    shadowColor: Colors.primaryBlue,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  error: {
-    ...Typography.body,
-    color: Colors.accentOrange,
+  saveButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
+  },
+  saveButtonText: {
+    color: Colors.white,
+    fontSize: 15,
+    fontWeight: "800",
   },
   signOutWrapper: {
     marginTop: Spacing.sm,
@@ -368,13 +588,32 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.99 }],
   },
   signOutText: {
-    ...Typography.body,
     color: Colors.danger,
-    fontWeight: "700",
-    fontSize: 15,
+    fontWeight: "800",
+    fontSize: 14,
   },
-  signOutBtn: {
-    marginTop: Spacing.md,
-    borderColor: "#fecaca",
+  manageStoresBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: Colors.primaryBlue,
+    paddingVertical: 12,
+    borderRadius: Radius.pill,
+    marginTop: Spacing.sm,
+  },
+  manageStoresBtnText: {
+    color: Colors.white,
+    fontWeight: "700",
+  },
+  helper: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+    textAlign: "center",
+    marginTop: Spacing.xs,
+  },
+  error: {
+    ...Typography.body,
+    color: Colors.accentOrange,
   },
 });

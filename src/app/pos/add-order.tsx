@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 
-import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { TextInput } from "@/src/components/atoms/TextInput";
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
 import { BarcodeScanner } from "@/src/components/organisms/BarcodeScanner";
@@ -78,6 +77,7 @@ export default function AddOrderScreen() {
   }, [refreshCatalog]);
 
   const total = useMemo(() => lines.reduce((sum, row) => sum + row.price * row.quantity, 0), [lines]);
+  const totalItemCount = useMemo(() => lines.reduce((sum, row) => sum + row.quantity, 0), [lines]);
 
   const matches = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -87,8 +87,8 @@ export default function AddOrderScreen() {
 
   function alertInsufficientStock(name: string, available: number) {
     Alert.alert(
-      "Insufficient stock",
-      available <= 0 ? `"${name}" is out of stock.` : `"${name}" only has ${available} in stock.`,
+      "Insufficient Stock",
+      available <= 0 ? `"${name}" is out of stock.` : `"${name}" only has ${available} units in stock.`,
     );
   }
 
@@ -115,6 +115,7 @@ export default function AddOrderScreen() {
       price: entry.price,
       barcode: entry.barcode,
     });
+    setSearch("");
   }
 
   async function tryChangeQuantity(lineId: string, nextQty: number) {
@@ -144,127 +145,223 @@ export default function AddOrderScreen() {
     const hit =
       catalog.find((item) => item.barcode === clean) ??
       catalog.find((item) => item.name.toLowerCase().includes(clean.toLowerCase()));
-    if (hit) void tryAddFromCatalog(hit);
+    if (hit) {
+      void tryAddFromCatalog(hit);
+    }
   }
 
   return (
-    <AppScrollScreen showBack title="Add Order" subtitle="Scan or search products to build cart.">
+    <AppScrollScreen showBack title="Add Order" subtitle="Scan barcodes or search products to build cart.">
+      {/* Search & Barcode Scanner Card */}
       <SectionCard>
         <TextInput
-          label="Scan / search"
+          label="Search Inventory"
           value={search}
           onChangeText={setSearch}
-          placeholder="Search product"
+          placeholder="Product name or barcode..."
+          leftIcon={<Ionicons name="search-outline" size={18} color={Colors.textMuted} />}
           rightIcon={
-            <Pressable onPress={() => setShowScanner((v) => !v)} hitSlop={10}>
+            <Pressable
+              onPress={() => setShowScanner((v) => !v)}
+              hitSlop={10}
+              style={({ pressed }) => [styles.scannerTrigger, pressed && { opacity: 0.7 }]}
+            >
               <Ionicons
-                name={showScanner ? "close-circle-outline" : "scan-outline"}
+                name={showScanner ? "close-circle" : "barcode-outline"}
                 size={22}
                 color={Colors.primaryBlue}
               />
             </Pressable>
           }
         />
-        {showScanner ? (
-          <BarcodeScanner
-            label="Scan Product Code"
-            onScan={(payload) => {
-              addFromSearchOrScan(payload);
-              setShowScanner(false);
-            }}
-          />
-        ) : null}
 
-        {matches.length > 0 ? (
-          <View style={styles.matches}>
-            {matches.map((item) => (
-              <Pressable
-                key={item.id}
-                onPress={() => void tryAddFromCatalog(item)}
-                style={[styles.matchRow, item.stock <= 0 && styles.matchRowDisabled]}
-                disabled={item.stock <= 0}
-              >
-                <View>
-                  <Text style={styles.matchName}>{item.name}</Text>
-                  <Text style={styles.matchMeta}>
-                    {item.barcode} · Stock {item.stock}
-                  </Text>
-                </View>
-                <Text style={styles.matchPrice}>{toMoney(item.price, currency)}</Text>
-              </Pressable>
-            ))}
+        {showScanner ? (
+          <View style={styles.scannerWrapper}>
+            <BarcodeScanner
+              label="Point camera at product barcode"
+              onScan={(payload) => {
+                addFromSearchOrScan(payload);
+                setShowScanner(false);
+              }}
+            />
           </View>
         ) : null}
+
+        {/* Live Search Suggestions Dropdown */}
+        {matches.length > 0 ? (
+          <View style={styles.matchesContainer}>
+            <Text style={styles.matchesTitle}>Matching Products ({matches.length})</Text>
+            {matches.map((item) => {
+              const isOut = item.stock <= 0;
+              return (
+                <Pressable
+                  key={item.id}
+                  onPress={() => void tryAddFromCatalog(item)}
+                  style={({ pressed }) => [
+                    styles.matchRow,
+                    isOut && styles.matchRowDisabled,
+                    pressed && !isOut && styles.matchRowPressed,
+                  ]}
+                  disabled={isOut}
+                >
+                  <View style={styles.matchThumb}>
+                    <Ionicons name="cube-outline" size={20} color={isOut ? Colors.textMuted : Colors.primaryBlue} />
+                  </View>
+                  <View style={styles.matchInfo}>
+                    <Text style={styles.matchName} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <View style={styles.matchMetaRow}>
+                      <Text style={styles.matchBarcode}>{item.barcode || item.sku}</Text>
+                      <View style={[styles.stockBadge, isOut ? styles.stockBadgeOut : styles.stockBadgeIn]}>
+                        <Text style={[styles.stockBadgeText, isOut ? styles.stockTextOut : styles.stockTextIn]}>
+                          {isOut ? "Out of stock" : `${item.stock} in stock`}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                  <View style={styles.matchPriceWrap}>
+                    <Text style={styles.matchPrice}>{toMoney(item.price, currency)}</Text>
+                    {!isOut ? (
+                      <View style={styles.addPill}>
+                        <Ionicons name="add" size={14} color={Colors.white} />
+                        <Text style={styles.addPillText}>Add</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+
         {!showScanner && catalog.length === 0 ? (
-          <Text style={styles.empty}>No inventory products found for this store.</Text>
+          <Text style={styles.emptyNotice}>No inventory products found for this store.</Text>
         ) : null}
       </SectionCard>
 
+      {/* Cart Items List */}
       <SectionCard>
-        <View style={styles.orderHeader}>
-          <Text style={styles.sectionTitle}>Order Items</Text>
-          <Text style={styles.itemCount}>{lines.length}</Text>
+        <View style={styles.cartHeader}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Ionicons name="cart" size={20} color={Colors.primaryBlue} />
+            <Text style={styles.sectionTitle}>Cart Items</Text>
+          </View>
+          <View style={styles.itemCountBadge}>
+            <Text style={styles.itemCountBadgeText}>
+              {totalItemCount} {totalItemCount === 1 ? "unit" : "units"} ({lines.length} items)
+            </Text>
+          </View>
         </View>
-        <View style={styles.cartList}>
-          {lines.map((line) => {
-            const available = stockById.get(line.id) ?? 0;
-            return (
-              <Swipeable
-                key={line.id}
-                renderLeftActions={() => <View style={styles.swipeBg} />}
-                renderRightActions={() => (
-                  <View style={[styles.swipeBg, { alignItems: "flex-end" }]}>
-                    <Text style={styles.swipeText}>Remove</Text>
-                  </View>
-                )}
-                onSwipeableOpen={() => removeLine(line.id)}
-              >
-                <View style={styles.cartRow}>
-                  <View style={styles.thumb} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.itemName} numberOfLines={1}>
-                      {line.name}
-                    </Text>
-                    <Text style={styles.itemPrice}>{toMoney(line.price, currency)}</Text>
-                    <Text style={styles.itemStock}>
-                      {line.quantity} of {available} in stock
-                    </Text>
-                  </View>
-                  <View style={styles.qtyBlock}>
-                    <Text style={styles.qtyVal}>{line.quantity}</Text>
-                  </View>
-                  <View style={styles.stepCol}>
-                    <Pressable
-                      style={[styles.stepBtn, line.quantity >= available && styles.stepBtnDisabled]}
-                      onPress={() => void tryChangeQuantity(line.id, line.quantity + 1)}
-                      disabled={line.quantity >= available}
-                    >
-                      <Text style={styles.stepText}>+</Text>
+
+        {lines.length > 0 ? (
+          <View style={styles.cartList}>
+            {lines.map((line) => {
+              const available = stockById.get(line.id) ?? 0;
+              const lineTotal = line.price * line.quantity;
+              return (
+                <Swipeable
+                  key={line.id}
+                  renderRightActions={() => (
+                    <Pressable style={styles.swipeDeleteAction} onPress={() => removeLine(line.id)}>
+                      <Ionicons name="trash-outline" size={20} color={Colors.white} />
+                      <Text style={styles.swipeDeleteText}>Delete</Text>
                     </Pressable>
-                    <Pressable style={styles.stepBtn} onPress={() => void tryChangeQuantity(line.id, line.quantity - 1)}>
-                      <Text style={styles.stepText}>-</Text>
-                    </Pressable>
+                  )}
+                  onSwipeableOpen={() => removeLine(line.id)}
+                >
+                  <View style={styles.cartCard}>
+                    <View style={styles.cartThumb}>
+                      <Ionicons name="bag-handle-outline" size={22} color={Colors.primaryBlue} />
+                    </View>
+
+                    <View style={styles.cartDetails}>
+                      <Text style={styles.itemName} numberOfLines={2}>
+                        {line.name}
+                      </Text>
+                      <Text style={styles.itemUnitPrice}>{toMoney(line.price, currency)} each</Text>
+                      <Text style={styles.itemStockNotice}>
+                        Max available: {available}
+                      </Text>
+                    </View>
+
+                    <View style={styles.cartRightSection}>
+                      <Text style={styles.cartLineTotal}>{toMoney(lineTotal, currency)}</Text>
+                      
+                      {/* Quantity Stepper */}
+                      <View style={styles.stepperContainer}>
+                        <Pressable
+                          style={({ pressed }) => [styles.stepBtn, pressed && styles.stepBtnPressed]}
+                          onPress={() => void tryChangeQuantity(line.id, line.quantity - 1)}
+                        >
+                          <Ionicons name={line.quantity === 1 ? "trash-outline" : "remove"} size={14} color={line.quantity === 1 ? Colors.danger : Colors.textPrimary} />
+                        </Pressable>
+                        <Text style={styles.stepCount}>{line.quantity}</Text>
+                        <Pressable
+                          style={({ pressed }) => [
+                            styles.stepBtn,
+                            line.quantity >= available && styles.stepBtnDisabled,
+                            pressed && styles.stepBtnPressed,
+                          ]}
+                          onPress={() => void tryChangeQuantity(line.id, line.quantity + 1)}
+                          disabled={line.quantity >= available}
+                        >
+                          <Ionicons name="add" size={14} color={line.quantity >= available ? Colors.textMuted : Colors.primaryBlue} />
+                        </Pressable>
+                      </View>
+                    </View>
                   </View>
-                </View>
-              </Swipeable>
-            );
-          })}
-          {lines.length === 0 ? <Text style={styles.empty}>No items yet. Scan/search to add products.</Text> : null}
-        </View>
-        <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Total price</Text>
-          <Text style={styles.totalValue}>{toMoney(total, currency)}</Text>
-        </View>
+                </Swipeable>
+              );
+            })}
+          </View>
+        ) : (
+          <View style={styles.emptyCartBox}>
+            <View style={styles.emptyCartIconWrap}>
+              <Ionicons name="cart-outline" size={36} color={Colors.textMuted} />
+            </View>
+            <Text style={styles.emptyCartTitle}>Your cart is empty</Text>
+            <Text style={styles.emptyCartSubtitle}>Search or scan product barcodes above to add items to this order.</Text>
+          </View>
+        )}
       </SectionCard>
 
-      <PrimaryButton
-        label="Create order"
-        onPress={() => {
-          if (lines.length === 0) return;
-          router.push("/pos/order-info");
-        }}
-      />
-      <PrimaryButton label="Clear order" variant="outline" onPress={clearDraft} />
+      {/* Floating / Bottom Checkout Bar */}
+      {lines.length > 0 ? (
+        <View style={styles.bottomBar}>
+          <View style={styles.totalPreviewBox}>
+            <View>
+              <Text style={styles.totalLabelSmall}>Order Total</Text>
+              <Text style={styles.totalValueLarge}>{toMoney(total, currency)}</Text>
+            </View>
+            <Pressable
+              style={styles.clearBtn}
+              onPress={() => {
+                Alert.alert("Clear Order", "Are you sure you want to remove all items from this order?", [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Clear", style: "destructive", onPress: clearDraft },
+                ]);
+              }}
+            >
+              <Ionicons name="trash-outline" size={16} color={Colors.danger} />
+              <Text style={styles.clearBtnText}>Clear</Text>
+            </Pressable>
+          </View>
+
+          <Pressable
+            style={({ pressed }) => [styles.checkoutButton, pressed && styles.checkoutButtonPressed]}
+            onPress={() => router.push("/pos/order-info")}
+          >
+            <View style={styles.checkoutLeft}>
+              <View style={styles.checkoutUnitBadge}>
+                <Text style={styles.checkoutUnitText}>{totalItemCount}</Text>
+              </View>
+              <Text style={styles.checkoutBtnText}>Proceed to Payment</Text>
+            </View>
+            <Ionicons name="arrow-forward" size={20} color={Colors.white} />
+          </Pressable>
+        </View>
+      ) : null}
     </AppScrollScreen>
   );
 }
@@ -272,79 +369,338 @@ export default function AddOrderScreen() {
 const styles = StyleSheet.create({
   sectionTitle: {
     ...Typography.title,
+    fontSize: 16,
     color: Colors.textPrimary,
-    marginBottom: Spacing.xs,
   },
-  matches: { gap: Spacing.xs },
-  matchRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  scannerTrigger: {
+    padding: 4,
+  },
+  scannerWrapper: {
+    marginTop: Spacing.sm,
+    borderRadius: Radius.card,
+    overflow: "hidden",
+  },
+  matchesContainer: {
+    marginTop: Spacing.sm,
+    gap: Spacing.xs,
+    backgroundColor: Colors.background,
+    borderRadius: Radius.card,
+    padding: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  matchesTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.textMuted,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  matchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.surface,
     borderRadius: Radius.input,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 7,
+    padding: Spacing.sm,
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+  },
+  matchRowPressed: {
+    backgroundColor: "#f8fafc",
   },
   matchRowDisabled: {
     opacity: 0.5,
   },
-  matchName: { color: Colors.textPrimary, fontWeight: "600" },
-  matchMeta: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
-  matchPrice: { color: Colors.primaryBlue, fontWeight: "700" },
-  orderHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  itemCount: { ...Typography.title, color: Colors.textSecondary },
-  cartList: {
+  matchThumb: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
     backgroundColor: Colors.primaryBluePale,
-    borderRadius: Radius.card,
-    padding: Spacing.sm,
-    gap: Spacing.xs,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  cartRow: {
+  matchInfo: {
+    flex: 1,
+  },
+  matchName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  matchMetaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.sm,
+    gap: 6,
+    marginTop: 2,
+  },
+  matchBarcode: {
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
+  stockBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  stockBadgeIn: {
+    backgroundColor: "#dcfce7",
+  },
+  stockBadgeOut: {
+    backgroundColor: "#fee2e2",
+  },
+  stockBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  stockTextIn: {
+    color: "#16a34a",
+  },
+  stockTextOut: {
+    color: "#dc2626",
+  },
+  matchPriceWrap: {
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  matchPrice: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: Colors.textPrimary,
+  },
+  addPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.primaryBlue,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    gap: 2,
+  },
+  addPillText: {
+    color: Colors.white,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  emptyNotice: {
+    textAlign: "center",
+    color: Colors.textMuted,
+    fontSize: 13,
+    paddingVertical: Spacing.sm,
+  },
+  cartHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: Spacing.xs,
+  },
+  itemCountBadge: {
+    backgroundColor: Colors.primaryBluePale,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  itemCountBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.primaryBlue,
+  },
+  cartList: {
+    gap: Spacing.xs,
+  },
+  cartCard: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: Colors.surface,
     borderRadius: Radius.input,
-    padding: Spacing.xs,
+    padding: Spacing.sm,
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
   },
-  thumb: { width: 48, height: 48, borderRadius: 10, backgroundColor: Colors.divider },
-  itemName: { color: Colors.textPrimary, fontSize: 15, fontWeight: "700" },
-  itemPrice: { color: Colors.textSecondary, marginTop: 3 },
-  itemStock: { color: Colors.textMuted, fontSize: 12, marginTop: 2 },
-  qtyBlock: {
-    minWidth: 36,
-    height: 44,
+  cartThumb: {
+    width: 42,
+    height: 42,
     borderRadius: 10,
+    backgroundColor: Colors.primaryBluePale,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cartDetails: {
+    flex: 1,
+  },
+  itemName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  itemUnitPrice: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  itemStockNotice: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 1,
+  },
+  cartRightSection: {
+    alignItems: "flex-end",
+    gap: 6,
+  },
+  cartLineTotal: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: Colors.textPrimary,
+  },
+  stepperContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 2,
+  },
+  stepBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: Colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepBtnPressed: {
+    backgroundColor: "#e2e8f0",
+  },
+  stepBtnDisabled: {
+    opacity: 0.3,
+  },
+  stepCount: {
+    paddingHorizontal: 8,
+    fontSize: 13,
+    fontWeight: "800",
+    color: Colors.textPrimary,
+    minWidth: 26,
+    textAlign: "center",
+  },
+  emptyCartBox: {
+    alignItems: "center",
+    paddingVertical: Spacing.lg,
+    gap: Spacing.xs,
+  },
+  emptyCartIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: Colors.background,
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: 4,
   },
-  qtyVal: { fontWeight: "700", color: Colors.textPrimary },
-  stepCol: { gap: 4 },
-  stepBtn: {
-    width: 34,
-    height: 20,
-    borderRadius: 6,
-    backgroundColor: "#18b5b4",
-    alignItems: "center",
-    justifyContent: "center",
+  emptyCartTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: Colors.textPrimary,
   },
-  stepBtnDisabled: {
-    opacity: 0.4,
+  emptyCartSubtitle: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    textAlign: "center",
+    paddingHorizontal: Spacing.lg,
   },
-  stepText: { color: Colors.textWhite, fontSize: 16, lineHeight: 18, fontWeight: "700" },
-  totalRow: { flexDirection: "row", justifyContent: "space-between", paddingTop: Spacing.sm },
-  totalLabel: { fontSize: 22, color: Colors.textPrimary, fontWeight: "600" },
-  totalValue: { fontSize: 30, color: Colors.textPrimary, fontWeight: "800" },
-  empty: { textAlign: "center", color: Colors.textMuted, paddingVertical: Spacing.sm },
-  swipeBg: {
-    flex: 1,
-    justifyContent: "center",
+  swipeDeleteAction: {
     backgroundColor: Colors.danger,
     borderRadius: Radius.input,
-    paddingHorizontal: Spacing.md,
+    justifyContent: "center",
+    alignItems: "center",
+    width: 72,
     marginVertical: 2,
+    gap: 2,
   },
-  swipeText: { color: Colors.textWhite, fontWeight: "700" },
+  swipeDeleteText: {
+    color: Colors.white,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  bottomBar: {
+    marginTop: Spacing.xs,
+    gap: Spacing.sm,
+    paddingBottom: Spacing.lg,
+  },
+  totalPreviewBox: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.card,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  totalLabelSmall: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: "600",
+  },
+  totalValueLarge: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: Colors.textPrimary,
+  },
+  clearBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#fef2f2",
+    borderWidth: 1,
+    borderColor: "#fecaca",
+  },
+  clearBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.danger,
+  },
+  checkoutButton: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: Colors.primaryBlue,
+    borderRadius: Radius.pill,
+    paddingVertical: 16,
+    paddingHorizontal: Spacing.lg,
+    shadowColor: Colors.primaryBlue,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  checkoutButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
+  },
+  checkoutLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  checkoutUnitBadge: {
+    backgroundColor: "rgba(255, 255, 255, 0.25)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  checkoutUnitText: {
+    color: Colors.white,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  checkoutBtnText: {
+    color: Colors.white,
+    fontSize: 16,
+    fontWeight: "800",
+  },
 });
