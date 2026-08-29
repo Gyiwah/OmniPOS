@@ -2,6 +2,7 @@ import { Q } from "@nozbe/watermelondb";
 
 import { database } from "@/src/database";
 import type Product from "@/src/database/models/Product";
+import { recordStockMovement } from "@/src/features/inventory/stockMovementService";
 import { supabase } from "@/src/services/supabase";
 import { enqueueChange } from "@/src/sync/enqueue";
 import type { DraftLine } from "@/src/store/orderDraftStore";
@@ -60,18 +61,39 @@ export async function restoreStockForOrder(storeId: string, lines: DraftLine[]):
 
   const now = Date.now();
   const updatedProducts: Product[] = [];
+  const movementLogs: { productId: string; qty: number; before: number; after: number }[] = [];
 
   await database.write(async () => {
     for (const line of lines) {
       const product = await database.get<Product>("products").find(line.id);
+      const currentStock = Number(product.stock ?? 0);
+      const nextStock = currentStock + line.quantity;
       await product.update((rec) => {
-        rec.stock = Number(rec.stock ?? 0) + line.quantity;
+        rec.stock = nextStock;
         rec.updatedAt = now;
         rec.dirty = true;
       });
       updatedProducts.push(product);
+      movementLogs.push({
+        productId: product.id,
+        qty: line.quantity,
+        before: currentStock,
+        after: nextStock,
+      });
     }
   });
+
+  for (const log of movementLogs) {
+    void recordStockMovement({
+      storeId,
+      productId: log.productId,
+      type: "RETURN",
+      quantity: log.qty,
+      quantityBefore: log.before,
+      quantityAfter: log.after,
+      reason: "Order Refund / Return",
+    }).catch(() => {});
+  }
 
   for (const product of updatedProducts) {
     await enqueueChange({
@@ -127,11 +149,13 @@ export async function decrementStockForOrder(storeId: string, lines: DraftLine[]
 
   const now = Date.now();
   const updatedProducts: Product[] = [];
+  const movementLogs: { productId: string; qty: number; before: number; after: number }[] = [];
 
   await database.write(async () => {
     for (const line of lines) {
       const product = await database.get<Product>("products").find(line.id);
-      const nextStock = Number(product.stock ?? 0) - line.quantity;
+      const currentStock = Number(product.stock ?? 0);
+      const nextStock = currentStock - line.quantity;
       if (nextStock < 0) {
         throw new InsufficientStockError(`"${line.name}" does not have enough stock.`);
       }
@@ -141,8 +165,26 @@ export async function decrementStockForOrder(storeId: string, lines: DraftLine[]
         rec.dirty = true;
       });
       updatedProducts.push(product);
+      movementLogs.push({
+        productId: product.id,
+        qty: line.quantity,
+        before: currentStock,
+        after: nextStock,
+      });
     }
   });
+
+  for (const log of movementLogs) {
+    void recordStockMovement({
+      storeId,
+      productId: log.productId,
+      type: "SALE",
+      quantity: -log.qty,
+      quantityBefore: log.before,
+      quantityAfter: log.after,
+      reason: "POS Sale Order",
+    }).catch(() => {});
+  }
 
   for (const product of updatedProducts) {
     await enqueueChange({

@@ -1,0 +1,7 @@
+
+Batch numbers with stock movement and stock history 
+Expiry alert system
+Optional :  Stock pre order level when adding product   
+Filter and print/export product list (out of stock, low stock, in stock ) based on inventory
+Stock out functionality (remove Product from  Inventory with a reason )
+Price history with a trend map

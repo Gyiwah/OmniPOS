@@ -54,14 +54,15 @@ function mapInvite(row: Record<string, unknown>): PendingInvite {
 }
 
 export const settingsService = {
-  async getByStoreId(storeId: string): Promise<StoreSettings> {
+  async getByStoreId(storeId: string): Promise<StoreSettings | null> {
     const { data, error } = await supabase
       .from("stores")
       .select(STORE_SETTINGS_SELECT)
       .eq("id", storeId)
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
+    if (!data) return null;
     return mapStoreSettings(data as Record<string, unknown>);
   },
 
@@ -84,9 +85,12 @@ export const settingsService = {
       .update(payload)
       .eq("id", storeId)
       .select(STORE_SETTINGS_SELECT)
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
+    if (!data) {
+      throw new Error("Store not found or update not permitted.");
+    }
     return mapStoreSettings(data as Record<string, unknown>);
   },
 

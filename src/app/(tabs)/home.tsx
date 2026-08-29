@@ -18,18 +18,65 @@ import { useManualSync } from "@/src/hooks/useManualSync";
 import { supabase } from "@/src/services/supabase";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
+import type Product from "@/src/database/models/Product";
 import { formatRelativeSyncTime } from "@/src/utils/date";
 
 const SHORTCUTS: {
   label: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  bg: string;
   href: "/inventory" | "/product/add" | "/pos/add-order" | "/analytics" | "/returns" | "/customers";
 }[] = [
-  { label: "Inventory", href: "/inventory" },
-  { label: "Add product", href: "/product/add" },
-  { label: "Create order", href: "/pos/add-order" },
-  { label: "Customers", href: "/customers" },
-  { label: "Returns", href: "/returns" },
-  { label: "Analytics", href: "/analytics" },
+  {
+    label: "Create Order",
+    subtitle: "POS sale & checkout",
+    icon: "cart-outline",
+    color: "#2563eb",
+    bg: "#eff6ff",
+    href: "/pos/add-order",
+  },
+  {
+    label: "Inventory",
+    subtitle: "Stock & batch tracking",
+    icon: "cube-outline",
+    color: "#059669",
+    bg: "#ecfdf5",
+    href: "/inventory",
+  },
+  {
+    label: "Add Product",
+    subtitle: "New catalog item",
+    icon: "add-circle-outline",
+    color: "#7c3aed",
+    bg: "#f5f3ff",
+    href: "/product/add",
+  },
+  {
+    label: "Customers",
+    subtitle: "Accounts & balance",
+    icon: "people-outline",
+    color: "#d97706",
+    bg: "#fffbeb",
+    href: "/customers",
+  },
+  {
+    label: "Returns",
+    subtitle: "Refund & restock",
+    icon: "refresh-outline",
+    color: "#e11d48",
+    bg: "#fff1f2",
+    href: "/returns",
+  },
+  {
+    label: "Analytics",
+    subtitle: "Sales & revenue charts",
+    icon: "trending-up-outline",
+    color: "#0891b2",
+    bg: "#ecfeff",
+    href: "/analytics",
+  },
 ];
 
 const LANGUAGES = ["English", "French", "Spanish"] as const;
@@ -81,6 +128,8 @@ export default function HomeScreen() {
   }, [currencySymbol, language, lastSyncedAt, pendingCount]);
 
   const [lowStockCount, setLowStockCount] = useState(0);
+  const [expiredBatchCount, setExpiredBatchCount] = useState(0);
+  const [expiringSoonBatchCount, setExpiringSoonBatchCount] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -90,13 +139,21 @@ export default function HomeScreen() {
       // Low stock check from WatermelonDB SQLite
       try {
         const { database } = await import("@/src/database");
-        const { Q } = await import("@ Nozbe/watermelondb" as any).catch(() => ({ Q: null }));
+        const { Q } = await import("@nozbe/watermelondb" as any).catch(() => ({ Q: null }));
         const ProductModel = (await import("@/src/database/models/Product")).default;
         const allProducts = await database.get<Product>("products").query().fetch();
         const lowStockItems = allProducts.filter(
           (p) => p.storeId === activeStoreId && Number(p.stock ?? 0) <= Number(p.reorderLevel ?? 5),
         );
         if (mounted) setLowStockCount(lowStockItems.length);
+
+        // Check expiring batches
+        const { getExpiringBatchesSummary } = await import("@/src/features/inventory/batchService");
+        const expSummary = await getExpiringBatchesSummary(activeStoreId, 30);
+        if (mounted) {
+          setExpiredBatchCount(expSummary.expiredCount);
+          setExpiringSoonBatchCount(expSummary.expiringSoonCount);
+        }
       } catch {
         // ignore
       }
@@ -216,6 +273,25 @@ export default function HomeScreen() {
           ) : null}
         </SectionCard>
 
+        {expiredBatchCount > 0 || expiringSoonBatchCount > 0 ? (
+          <Pressable onPress={() => router.push("/inventory")}>
+            <SectionCard style={styles.expiryAlertCard}>
+              <View style={styles.lowStockRow}>
+                <Ionicons name="time-outline" size={22} color="#dc2626" />
+                <View style={styles.lowStockTextWrap}>
+                  <Text style={styles.expiryAlertTitle}>Batch Expiry Alert</Text>
+                  <Text style={styles.expiryAlertSub}>
+                    {expiredBatchCount > 0 ? `${expiredBatchCount} batch(es) expired.` : ""}
+                    {expiredBatchCount > 0 && expiringSoonBatchCount > 0 ? " " : ""}
+                    {expiringSoonBatchCount > 0 ? `${expiringSoonBatchCount} batch(es) expiring soon (<30d).` : ""}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+              </View>
+            </SectionCard>
+          </Pressable>
+        ) : null}
+
         {lowStockCount > 0 ? (
           <Pressable onPress={() => router.push("/inventory")}>
             <SectionCard style={styles.lowStockCard}>
@@ -257,12 +333,32 @@ export default function HomeScreen() {
         </SectionCard>
 
         <SectionCard>
-          <Text style={styles.sectionTitle}>Quick actions</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Quick actions</Text>
+            <Text style={styles.sectionHeaderBadge}>6 tools</Text>
+          </View>
           <View style={styles.shortcutGrid}>
             {SHORTCUTS.map((s) => (
-              <View key={s.label} style={styles.shortcutCell}>
-                <PrimaryButton label={s.label} variant="outline" fullWidth onPress={() => router.push(s.href)} />
-              </View>
+              <Pressable
+                key={s.label}
+                style={({ pressed }) => [
+                  styles.shortcutCard,
+                  pressed && styles.shortcutCardPressed,
+                ]}
+                onPress={() => router.push(s.href)}
+                accessibilityRole="button"
+              >
+                <View style={[styles.shortcutIconWrap, { backgroundColor: s.bg }]}>
+                  <Ionicons name={s.icon} size={20} color={s.color} />
+                </View>
+                <View style={styles.shortcutTextWrap}>
+                  <Text style={styles.shortcutTitle}>{s.label}</Text>
+                  <Text style={styles.shortcutSubtitle} numberOfLines={1}>
+                    {s.subtitle}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} />
+              </Pressable>
             ))}
           </View>
         </SectionCard>
@@ -359,6 +455,14 @@ const styles = StyleSheet.create({
     color: Colors.accentOrange,
     marginTop: Spacing.xs,
   },
+  expiryAlertCard: {
+    backgroundColor: "#fef2f2",
+    borderColor: "#fecaca",
+    borderWidth: 1,
+    marginBottom: Spacing.xs,
+  },
+  expiryAlertTitle: { fontSize: 15, fontWeight: "700", color: "#b91c1c" },
+  expiryAlertSub: { fontSize: 13, color: "#dc2626" },
   lowStockCard: {
     backgroundColor: "#fffbeb",
     borderColor: "#fde68a",
@@ -374,9 +478,61 @@ const styles = StyleSheet.create({
   lowStockSub: { fontSize: 13, color: "#b45309" },
   kpiRow: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.sm },
   kpiCell: { flexGrow: 1, flexBasis: "30%", minWidth: 100 },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  sectionHeaderBadge: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontWeight: "600",
+  },
   sectionTitle: { ...Typography.title, color: Colors.textPrimary },
-  shortcutGrid: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.sm },
-  shortcutCell: { flexGrow: 1, flexBasis: "45%", minWidth: 140 },
+  shortcutGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.sm,
+    marginTop: Spacing.xs,
+  },
+  shortcutCard: {
+    flexGrow: 1,
+    flexBasis: "47%",
+    minWidth: 145,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.card,
+    padding: Spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  shortcutCardPressed: {
+    backgroundColor: Colors.background,
+    borderColor: Colors.primaryBlue,
+    transform: [{ scale: 0.98 }],
+  },
+  shortcutIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shortcutTextWrap: {
+    flex: 1,
+  },
+  shortcutTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  shortcutSubtitle: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
   syncPill: {
     backgroundColor: Colors.primaryBluePale,
     borderRadius: Radius.pill,

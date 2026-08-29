@@ -289,3 +289,11 @@ export async function getReturnDetail(storeId: string, returnId: string): Promis
     items: mappedItems,
   };
 }
+
+export const returnsService = {
+  list: listReturns,
+  getDetail: getReturnDetail,
+  create: processReturn,
+  searchOrder: lookupOrderForReturn,
+};
+

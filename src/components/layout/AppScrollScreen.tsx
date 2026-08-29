@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { ReactNode } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors } from "@/src/constants/colors";
 import { Elevation } from "@/src/constants/elevation";
@@ -70,8 +70,14 @@ export function AppScrollScreen({
   );
 }
 
-export function SectionCard({ children }: { children: ReactNode }) {
-  return <View style={styles.section}>{children}</View>;
+export function SectionCard({
+  children,
+  style,
+}: {
+  children: ReactNode;
+  style?: ViewStyle;
+}) {
+  return <View style={[styles.section, style]}>{children}</View>;
 }
 
 const styles = StyleSheet.create({

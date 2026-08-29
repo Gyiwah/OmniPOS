@@ -71,7 +71,7 @@ async function ensureMembershipAndBootstrap(options?: { storeName?: string; allo
     .from("stores")
     .insert({ name: storeName, owner_user_id: userId })
     .select("id")
-    .single();
+    .maybeSingle();
 
   if (storeError || !createdStore) {
     throw storeError ?? new Error("Store creation failed.");
@@ -136,7 +136,7 @@ export const authService = {
       throw error;
     }
 
-    const membership = await ensureMembershipAndBootstrap({ allowBootstrap: false });
+    const membership = await ensureMembershipAndBootstrap({ allowBootstrap: true });
     await AsyncStorage.setItem(SYNC_STORAGE.activeStoreId, membership.store_id);
 
     return {

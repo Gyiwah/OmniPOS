@@ -60,10 +60,13 @@ export const storesService = {
       })
       .eq("id", input.activeStoreId)
       .select("id, name, tax_profile, currency, timezone")
-      .single();
+      .maybeSingle();
 
     if (error) {
       throw error;
+    }
+    if (!data) {
+      throw new Error("Store profile update returned no data.");
     }
 
     return mapStore(data);

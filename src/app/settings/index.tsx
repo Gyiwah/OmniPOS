@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
@@ -12,8 +13,10 @@ import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
+import { authService } from "@/src/features/auth/service";
 import { useSaveStoreSettings, useStoreSettings } from "@/src/features/settings/hooks";
 import { isLocalImageUri, resolveStoreLogoUrl } from "@/src/services/storage";
+import { SYNC_STORAGE } from "@/src/sync/keys";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useAuthStore } from "@/src/store/authStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
@@ -118,6 +121,27 @@ export default function SettingsScreen() {
     }
   }
 
+  async function handleSignOut() {
+    Alert.alert("Sign Out", "Are you sure you want to sign out of OmniPOS?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await authService.signOut();
+            useAuthStore.getState().clearSession();
+            useStoreSlice.getState().setActiveStore(null);
+            await AsyncStorage.removeItem(SYNC_STORAGE.activeStoreId);
+            router.replace("/(auth)/sign-in");
+          } catch (err) {
+            Alert.alert("Sign Out Error", toErrorMessage(err, "Failed to sign out."));
+          }
+        },
+      },
+    ]);
+  }
+
   if (!activeStoreId) {
     return (
       <AppScrollScreen showBack title="Settings" subtitle="Select a store to manage settings.">
@@ -125,6 +149,12 @@ export default function SettingsScreen() {
           <Text style={styles.helper}>No active store. Complete onboarding or switch stores first.</Text>
           <PrimaryButton label="Manage stores" onPress={() => router.push("/settings/stores")} />
         </SectionCard>
+        <PrimaryButton
+          label="Sign Out"
+          variant="outline"
+          style={styles.signOutBtn}
+          onPress={() => void handleSignOut()}
+        />
       </AppScrollScreen>
     );
   }
@@ -155,12 +185,14 @@ export default function SettingsScreen() {
               backgroundColor: Colors.primaryBluePale,
               padding: Spacing.sm,
               borderRadius: Radius.input,
+              borderWidth: 1,
+              borderColor: Colors.primaryBlue,
             }}
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: Spacing.sm, flex: 1 }}>
               <Ionicons name="shield-checkmark" size={24} color={Colors.primaryBlue} />
               <View style={{ flex: 1 }}>
-                <Text style={{ ...Typography.title, color: Colors.primaryBlue }}>Super Admin Portal</Text>
+                <Text style={{ ...Typography.title, color: Colors.primaryBlue, fontSize: 16 }}>Super Admin Portal</Text>
                 <Text style={{ ...Typography.caption, color: Colors.textSecondary }}>Provision system stores & store admin credentials</Text>
               </View>
             </View>
@@ -173,13 +205,13 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>Shop branding</Text>
         <View style={styles.brandRow}>
           <Pressable onPress={() => void pickLogo()} hitSlop={10}>
-            <Avatar uri={logoUri} fallbackInitials={name || shopName} size={72} />
+            <Avatar uri={logoUri} fallbackInitials={name || shopName} size={64} />
           </Pressable>
           <View style={{ flex: 1, gap: Spacing.xs }}>
-            <TextInput label="Shop name" value={name} onChangeText={setName} placeholder="Shop name" />
-            <TextInput label="Shop email" value={email} onChangeText={setEmail} placeholder="shop@email.com" />
+            <TextInput label="Shop name" value={name} onChangeText={setName} placeholder="e.g. Osu Branch" />
           </View>
         </View>
+        <TextInput label="Shop email" value={email} onChangeText={setEmail} placeholder="shop@email.com" autoCapitalize="none" keyboardType="email-address" />
       </SectionCard>
 
       <SectionCard>
@@ -240,6 +272,16 @@ export default function SettingsScreen() {
         disabled={saveSettings.isPending}
         onPress={() => void saveProfile()}
       />
+
+      <View style={styles.signOutWrapper}>
+        <Pressable
+          style={({ pressed }) => [styles.signOutButton, pressed && styles.signOutButtonPressed]}
+          onPress={() => void handleSignOut()}
+        >
+          <Ionicons name="log-out-outline" size={20} color={Colors.accentOrange} />
+          <Text style={styles.signOutText}>Sign Out of OmniPOS</Text>
+        </Pressable>
+      </View>
     </AppScrollScreen>
   );
 }
@@ -305,5 +347,34 @@ const styles = StyleSheet.create({
   error: {
     ...Typography.body,
     color: Colors.accentOrange,
+  },
+  signOutWrapper: {
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xl,
+  },
+  signOutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.xs,
+    paddingVertical: Spacing.md,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    backgroundColor: "#fef2f2",
+  },
+  signOutButtonPressed: {
+    backgroundColor: "#fee2e2",
+    transform: [{ scale: 0.99 }],
+  },
+  signOutText: {
+    ...Typography.body,
+    color: Colors.danger,
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  signOutBtn: {
+    marginTop: Spacing.md,
+    borderColor: "#fecaca",
   },
 });

@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "start": "expo start --go",
+    "android": "expo start --android --go",
+    "ios": "expo start --ios --go",
     "web": "expo start --web",
     "dev:android": "expo run:android",
     "dev:ios": "expo run:ios",

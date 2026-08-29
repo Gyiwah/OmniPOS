@@ -4,8 +4,15 @@ import { refreshPendingSyncCount } from "./syncCounters";
 
 export type EnqueueInput = {
   storeId: string;
-  entity: "products";
-  operation: "upsert" | "delete";
+  entity:
+    | "products"
+    | "orders"
+    | "customers"
+    | "product_batches"
+    | "stock_movements"
+    | "price_history"
+    | string;
+  operation: "upsert" | "delete" | "insert" | string;
   payload: Record<string, unknown>;
   recordId?: string;
   remoteId?: string;
@@ -29,3 +36,6 @@ export async function enqueueChange(input: EnqueueInput): Promise<void> {
 
   await refreshPendingSyncCount();
 }
+
+export const enqueueSyncItem = enqueueChange;
+

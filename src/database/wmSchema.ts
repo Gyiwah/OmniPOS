@@ -1,6 +1,6 @@
 import { appSchema, tableSchema } from "@nozbe/watermelondb";
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export default appSchema({
   version: SCHEMA_VERSION,
@@ -70,6 +70,53 @@ export default appSchema({
         { name: "outstanding_balance", type: "number" },
         { name: "notes", type: "string", isOptional: true },
         { name: "updated_at", type: "number", isIndexed: true },
+        { name: "dirty", type: "boolean" },
+      ],
+    }),
+    tableSchema({
+      name: "product_batches",
+      columns: [
+        { name: "store_id", type: "string", isIndexed: true },
+        { name: "remote_id", type: "string", isOptional: true, isIndexed: true },
+        { name: "product_id", type: "string", isIndexed: true },
+        { name: "batch_number", type: "string", isIndexed: true },
+        { name: "quantity", type: "number" },
+        { name: "cost_price", type: "number", isOptional: true },
+        { name: "expiry_date", type: "string", isOptional: true, isIndexed: true },
+        { name: "created_at", type: "number", isIndexed: true },
+        { name: "updated_at", type: "number", isIndexed: true },
+        { name: "dirty", type: "boolean" },
+      ],
+    }),
+    tableSchema({
+      name: "stock_movements",
+      columns: [
+        { name: "store_id", type: "string", isIndexed: true },
+        { name: "remote_id", type: "string", isOptional: true, isIndexed: true },
+        { name: "product_id", type: "string", isIndexed: true },
+        { name: "batch_id", type: "string", isOptional: true, isIndexed: true },
+        { name: "type", type: "string", isIndexed: true },
+        { name: "quantity", type: "number" },
+        { name: "quantity_before", type: "number" },
+        { name: "quantity_after", type: "number" },
+        { name: "reason", type: "string" },
+        { name: "notes", type: "string", isOptional: true },
+        { name: "created_at", type: "number", isIndexed: true },
+        { name: "dirty", type: "boolean" },
+      ],
+    }),
+    tableSchema({
+      name: "price_history",
+      columns: [
+        { name: "store_id", type: "string", isIndexed: true },
+        { name: "remote_id", type: "string", isOptional: true, isIndexed: true },
+        { name: "product_id", type: "string", isIndexed: true },
+        { name: "old_sell_price", type: "number" },
+        { name: "new_sell_price", type: "number" },
+        { name: "old_cost_price", type: "number", isOptional: true },
+        { name: "new_cost_price", type: "number", isOptional: true },
+        { name: "reason", type: "string", isOptional: true },
+        { name: "created_at", type: "number", isIndexed: true },
         { name: "dirty", type: "boolean" },
       ],
     }),

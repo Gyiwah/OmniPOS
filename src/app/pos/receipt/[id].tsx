@@ -13,7 +13,7 @@ import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
 import { toErrorMessage } from "@/src/utils/errors";
 
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { Q } from "@nozbe/watermelondb";
 

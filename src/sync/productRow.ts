@@ -12,6 +12,8 @@ export type ProductUpsertPayload = {
   price?: number;
   cost_price?: number | null;
   stock?: number;
+  reorder_level?: number | null;
+  expiry_date?: string | null;
   image_url?: string | null;
   local_image_uri?: string | null;
   local_image_mime?: string | null;
@@ -54,6 +56,8 @@ export function buildProductRowForSupabase(
     price: Number(body.price ?? body.sell_price ?? 0),
     cost_price: body.cost_price == null ? null : Number(body.cost_price),
     stock: Number(body.stock ?? 0),
+    reorder_level: body.reorder_level != null ? Number(body.reorder_level) : 5,
+    expiry_date: body.expiry_date ? String(body.expiry_date).slice(0, 10) : null,
     image_url: storedImageRef(body.image_url),
     tags: Array.isArray(body.tags) ? body.tags : [],
     is_active: body.is_active ?? true,

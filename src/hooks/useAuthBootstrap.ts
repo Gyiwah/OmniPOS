@@ -57,6 +57,12 @@ export function useAuthBootstrap(): void {
           if (resolvedStoreId && !useStoreSlice.getState().activeStoreId) {
             useStoreSlice.getState().setActiveStore(resolvedStoreId);
           }
+        } else {
+          // Offline / local start: restore stored store ID if available
+          const storedStoreId = await AsyncStorage.getItem(SYNC_STORAGE.activeStoreId);
+          if (storedStoreId && !useStoreSlice.getState().activeStoreId) {
+            useStoreSlice.getState().setActiveStore(storedStoreId);
+          }
         }
       } catch (error) {
         if (__DEV__) {

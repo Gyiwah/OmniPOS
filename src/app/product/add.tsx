@@ -9,6 +9,7 @@ import NetInfo from "@react-native-community/netinfo";
 
 import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { TextInput } from "@/src/components/atoms/TextInput";
+import { DatePickerField } from "@/src/components/atoms/DatePickerField";
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
 import { BarcodeScanner } from "@/src/components/organisms/BarcodeScanner";
 import { Colors } from "@/src/constants/colors";
@@ -17,6 +18,9 @@ import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
 import { database } from "@/src/database";
 import type Product from "@/src/database/models/Product";
+import { createProductBatch } from "@/src/features/inventory/batchService";
+import { recordPriceChange } from "@/src/features/inventory/priceHistoryService";
+import { recordStockMovement } from "@/src/features/inventory/stockMovementService";
 import { enqueueChange } from "@/src/sync/enqueue";
 import { remoteImageUrlOnly } from "@/src/sync/productRow";
 import { isLocalImageUri } from "@/src/services/storage";
@@ -34,7 +38,9 @@ export default function AddProductScreen() {
   const [quantity, setQuantity] = useState("");
   const [costPrice, setCostPrice] = useState("");
   const [sellPrice, setSellPrice] = useState("");
-  const [reorderLevel, setReorderLevel] = useState("5");
+  const [reorderLevel, setReorderLevel] = useState("");
+  const [batchNumber, setBatchNumber] = useState("");
+  const [expiryDate, setExpiryDate] = useState("");
   const [tags, setTags] = useState("");
   const [showScanner, setShowScanner] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -138,6 +144,7 @@ export default function AddProductScreen() {
     const sell = Number(sellPrice.trim());
     const cost = costPrice.trim().length ? Number(costPrice.trim()) : undefined;
     const barcode = cleanSku;
+    const reorderVal = reorderLevel.trim().length ? Number(reorderLevel) : 5;
 
     setSaving(true);
     try {
@@ -168,12 +175,49 @@ export default function AddProductScreen() {
           r.stock = Math.floor(stock);
           r.sellPrice = sell;
           r.costPrice = cost;
-          r.reorderLevel = Number(reorderLevel) || 5;
+          r.reorderLevel = Number.isFinite(reorderVal) ? reorderVal : 5;
           r.imageUrl = imageUri ?? undefined;
           r.updatedAt = now;
           r.dirty = true;
         });
       });
+
+      // Record initial price history
+      void recordPriceChange({
+        storeId: activeStoreId,
+        productId,
+        oldSellPrice: 0,
+        newSellPrice: sell,
+        oldCostPrice: 0,
+        newCostPrice: cost,
+        reason: "Initial Product Creation",
+      }).catch(() => {});
+
+      // Record initial stock movement if stock > 0
+      if (stock > 0) {
+        void recordStockMovement({
+          storeId: activeStoreId,
+          productId,
+          type: "STOCK_IN",
+          quantity: Math.floor(stock),
+          quantityBefore: 0,
+          quantityAfter: Math.floor(stock),
+          reason: "Initial Stock on Creation",
+          notes: batchNumber.trim() ? `Batch #${batchNumber.trim()}` : undefined,
+        }).catch(() => {});
+      }
+
+      // Create initial batch if batch number is provided
+      if (batchNumber.trim()) {
+        void createProductBatch({
+          storeId: activeStoreId,
+          productId,
+          batchNumber: batchNumber.trim(),
+          quantity: Math.floor(stock),
+          costPrice: cost,
+          expiryDate: expiryDate.trim() || undefined,
+        }).catch(() => {});
+      }
 
       await enqueueChange({
         storeId: activeStoreId,
@@ -318,7 +362,7 @@ export default function AddProductScreen() {
             setCostPrice(value);
             setErrors((prev) => ({ ...prev, costPrice: "" }));
           }}
-          placeholder="Optional"
+          placeholder="Optional (e.g. 15.00)"
           error={errors.costPrice}
           keyboardType="decimal-pad"
         />
@@ -334,11 +378,31 @@ export default function AddProductScreen() {
           keyboardType="decimal-pad"
         />
         <TextInput
-          label="Reorder level / Low stock threshold"
+          label="Reorder / Pre-order level (Optional)"
           value={reorderLevel}
           onChangeText={setReorderLevel}
-          placeholder="5"
+          placeholder="5 (default threshold)"
           keyboardType="number-pad"
+        />
+        <Text style={styles.fieldHelper}>
+          Threshold to trigger low stock & pre-order alerts (defaults to 5 if left blank).
+        </Text>
+      </SectionCard>
+
+      <SectionCard>
+        <Text style={styles.sectionTitle}>Batch & Expiry (Optional)</Text>
+        <TextInput
+          label="Batch / Lot Number (Optional)"
+          value={batchNumber}
+          onChangeText={setBatchNumber}
+          placeholder="e.g. LOT-2026A"
+        />
+        <DatePickerField
+          label="Expiry Date (Optional)"
+          value={expiryDate}
+          onChange={(val) => setExpiryDate(val ?? "")}
+          placeholder="Select expiry date"
+          modalTitle="Select Product Expiry Date"
         />
       </SectionCard>
 
@@ -397,5 +461,12 @@ const styles = StyleSheet.create({
   },
   scannerWrap: {
     gap: Spacing.sm,
+  },
+  fieldHelper: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+    marginTop: -2,
+    marginBottom: Spacing.xs,
+    fontSize: 12,
   },
 });

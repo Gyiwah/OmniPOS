@@ -1,9 +1,17 @@
 import { Database } from "@nozbe/watermelondb";
 import LokiJSAdapter from "@nozbe/watermelondb/adapters/lokijs";
-import SQLiteAdapter from "@nozbe/watermelondb/adapters/sqlite";
 import { NativeModules, Platform } from "react-native";
 
-import { Product, Order, OrderItem, Customer, SyncQueueItem } from "./models";
+import {
+  Product,
+  Order,
+  OrderItem,
+  Customer,
+  SyncQueueItem,
+  ProductBatch,
+  StockMovement,
+  PriceHistory,
+} from "./models";
 import migrations from "./migrations";
 import wmSchema from "./wmSchema";
 let warnedMissingBridge = false;
@@ -30,6 +38,7 @@ function createAdapter() {
   }
 
   if (hasWatermelonNativeBridge()) {
+    const SQLiteAdapter = require("@nozbe/watermelondb/adapters/sqlite").default;
     return new SQLiteAdapter({
       schema: wmSchema,
       migrations,
@@ -38,8 +47,9 @@ function createAdapter() {
     });
   }
 
-  if (__DEV__) {
-    if (!warnedMissingBridge) {
+  const isDevOrTest = typeof __DEV__ === "undefined" || __DEV__ || process.env.NODE_ENV === "test";
+  if (isDevOrTest) {
+    if (!warnedMissingBridge && process.env.NODE_ENV !== "test") {
       warnedMissingBridge = true;
       // eslint-disable-next-line no-console -- intentional operator-facing warning
       console.warn(
@@ -51,8 +61,7 @@ function createAdapter() {
       migrations,
       dbName: "omnipos",
       useWebWorker: false,
-      // `false` is deprecated in WatermelonDB; RN has no IndexedDB, so Loki still uses memory.
-      useIncrementalIndexedDB: true,
+      useIncrementalIndexedDB: false,
     });
   }
 
@@ -64,6 +73,15 @@ function createAdapter() {
 export function createWatermelonDb() {
   return new Database({
     adapter: createAdapter(),
-    modelClasses: [Product, Order, OrderItem, Customer, SyncQueueItem],
+    modelClasses: [
+      Product,
+      Order,
+      OrderItem,
+      Customer,
+      SyncQueueItem,
+      ProductBatch,
+      StockMovement,
+      PriceHistory,
+    ],
   });
 }
