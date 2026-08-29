@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useState } from "react";
 import { Link, router } from "expo-router";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { TextInput } from "@/src/components/atoms/TextInput";
@@ -49,7 +49,11 @@ export default function SignInScreen() {
         {/* Branding Hero */}
         <View style={styles.brandHero}>
           <View style={styles.logoWrap}>
-            <Ionicons name="storefront" size={32} color={Colors.white} />
+            <Image
+              source={require("@/assets/logo.png")}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
           </View>
           <Text style={styles.brandTitle}>OmniPOS</Text>
           <Text style={styles.brandSubtitle}>Intelligent Cloud & Offline Point of Sale</Text>
@@ -147,17 +151,22 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   logoWrap: {
-    width: 64,
-    height: 64,
+    width: 68,
+    height: 68,
     borderRadius: 20,
-    backgroundColor: Colors.primaryBlue,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: Colors.primaryBlue,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.25,
     shadowRadius: 10,
     elevation: 6,
+  },
+  logoImage: {
+    width: 68,
+    height: 68,
+    borderRadius: 20,
   },
   brandTitle: {
     fontSize: 28,

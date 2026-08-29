@@ -191,7 +191,7 @@ export default function AddProductScreen() {
         oldCostPrice: 0,
         newCostPrice: cost,
         reason: "Initial Product Creation",
-      }).catch(() => {});
+      }).catch(() => { });
 
       // Record initial stock movement if stock > 0
       if (stock > 0) {
@@ -204,7 +204,7 @@ export default function AddProductScreen() {
           quantityAfter: Math.floor(stock),
           reason: "Initial Stock on Creation",
           notes: batchNumber.trim() ? `Batch #${batchNumber.trim()}` : undefined,
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       // Create initial batch if batch number is provided
@@ -216,7 +216,7 @@ export default function AddProductScreen() {
           quantity: Math.floor(stock),
           costPrice: cost,
           expiryDate: expiryDate.trim() || undefined,
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       await enqueueChange({
@@ -326,7 +326,7 @@ export default function AddProductScreen() {
             setSku(value);
             setErrors((prev) => ({ ...prev, sku: "" }));
           }}
-          placeholder="Scan barcode or type SKU..."
+          placeholder="Scan barcode or type SKU"
           error={errors.sku}
           leftIcon={<Ionicons name="qr-code-outline" size={18} color={Colors.textMuted} />}
           rightIcon={
@@ -389,7 +389,7 @@ export default function AddProductScreen() {
 
           <View style={styles.gridCell}>
             <TextInput
-              label="Reorder Alert Level"
+              label="Reorder Level"
               value={reorderLevel}
               onChangeText={setReorderLevel}
               placeholder="5"
@@ -401,7 +401,7 @@ export default function AddProductScreen() {
         <View style={styles.formGrid}>
           <View style={styles.gridCell}>
             <TextInput
-              label="Cost Price (Optional)"
+              label="Cost Price"
               value={costPrice}
               onChangeText={(value) => {
                 setCostPrice(value);
@@ -442,7 +442,7 @@ export default function AddProductScreen() {
       <SectionCard>
         <View style={styles.cardHeader}>
           <Ionicons name="calendar-outline" size={20} color={Colors.primaryBlue} />
-          <Text style={styles.sectionTitle}>Batch & Expiry Tracking (Optional)</Text>
+          <Text style={styles.sectionTitle}>Batch & Expiry Tracking</Text>
         </View>
 
         <TextInput
