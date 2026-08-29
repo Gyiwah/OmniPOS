@@ -91,7 +91,7 @@ export function ReceiptDocument({ order, store, data, onPrint, onShare }: Receip
         <Text style={styles.qrText}>QR Code Ready</Text>
       </View>
 
-      <ScrollView style={styles.sheet} contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false}>
+      <View style={[styles.sheet, styles.sheetContent]}>
         <View style={styles.headerLine}>
           <Text style={styles.receiptTitle}>RECEIPT</Text>
           <Text style={styles.receiptDate}>{order?.dateLabel ?? new Date().toLocaleString()}</Text>
@@ -178,7 +178,7 @@ export function ReceiptDocument({ order, store, data, onPrint, onShare }: Receip
         <Text style={styles.footerRef}>
           {store?.name ?? "OmniPOS"} · Ref {order?.orderNumber ?? "--"}
         </Text>
-      </ScrollView>
+      </View>
 
       <View style={styles.bottomRow}>
         <View style={styles.printWrap}>
