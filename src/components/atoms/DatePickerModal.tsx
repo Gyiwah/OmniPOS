@@ -9,9 +9,7 @@ import {
   View,
 } from "react-native";
 
-import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { Colors } from "@/src/constants/colors";
-import { Elevation } from "@/src/constants/elevation";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
@@ -150,14 +148,19 @@ export function DatePickerModal({
         <View style={styles.dialog}>
           {/* Header */}
           <View style={styles.header}>
-            <View>
-              <Text style={styles.title}>{title}</Text>
-              <Text style={styles.subtitle}>
-                {selectedDateStr ? `Selected: ${selectedDateStr}` : "No date selected"}
-              </Text>
+            <View style={styles.headerLeft}>
+              <View style={styles.calendarIconWrap}>
+                <Ionicons name="calendar" size={20} color={Colors.primaryBlue} />
+              </View>
+              <View>
+                <Text style={styles.title}>{title}</Text>
+                <Text style={styles.subtitle}>
+                  {selectedDateStr ? `Selected: ${selectedDateStr}` : "Tap a date below"}
+                </Text>
+              </View>
             </View>
             <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn}>
-              <Ionicons name="close" size={20} color={Colors.textSecondary} />
+              <Ionicons name="close" size={20} color={Colors.textMuted} />
             </Pressable>
           </View>
 
@@ -167,6 +170,9 @@ export function DatePickerModal({
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.presetsRow}
           >
+            <Pressable style={styles.presetChip} onPress={() => applyPreset(0)}>
+              <Text style={styles.presetText}>Today</Text>
+            </Pressable>
             <Pressable style={styles.presetChip} onPress={() => applyPreset(30)}>
               <Text style={styles.presetText}>+30 Days</Text>
             </Pressable>
@@ -178,9 +184,6 @@ export function DatePickerModal({
             </Pressable>
             <Pressable style={styles.presetChip} onPress={() => applyPreset(365)}>
               <Text style={styles.presetText}>+1 Year</Text>
-            </Pressable>
-            <Pressable style={styles.presetChip} onPress={() => applyPreset(0)}>
-              <Text style={styles.presetText}>Today</Text>
             </Pressable>
           </ScrollView>
 
@@ -241,26 +244,21 @@ export function DatePickerModal({
             })}
           </View>
 
-          {/* Actions */}
+          {/* Actions Footer */}
           <View style={styles.footer}>
             <Pressable onPress={handleClear} style={styles.clearBtn}>
+              <Ionicons name="trash-outline" size={16} color={Colors.textMuted} />
               <Text style={styles.clearText}>Clear</Text>
             </Pressable>
+
             <View style={styles.footerRight}>
-              <PrimaryButton
-                label="Cancel"
-                variant="outline"
-                fullWidth={false}
-                style={styles.cancelBtn}
-                onPress={onClose}
-              />
-              <PrimaryButton
-                label="Confirm Date"
-                variant="primary"
-                fullWidth={false}
-                style={styles.confirmBtn}
-                onPress={handleSave}
-              />
+              <Pressable style={styles.cancelBtn} onPress={onClose}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={styles.saveBtn} onPress={handleSave}>
+                <Ionicons name="checkmark" size={16} color={Colors.white} />
+                <Text style={styles.saveBtnText}>Apply</Text>
+              </Pressable>
             </View>
           </View>
         </View>
@@ -272,7 +270,7 @@ export function DatePickerModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
     justifyContent: "center",
     alignItems: "center",
     padding: Spacing.md,
@@ -287,74 +285,98 @@ const styles = StyleSheet.create({
     borderRadius: Radius.card,
     padding: Spacing.lg,
     gap: Spacing.sm,
-    ...Elevation.card,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 8,
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+    paddingBottom: Spacing.sm,
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  calendarIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: Colors.primaryBluePale,
+    alignItems: "center",
+    justifyContent: "center",
   },
   title: {
-    ...Typography.title,
+    fontSize: 16,
+    fontWeight: "800",
     color: Colors.textPrimary,
-    fontSize: 18,
   },
   subtitle: {
-    ...Typography.caption,
-    color: Colors.primaryBlue,
-    fontWeight: "600",
-    marginTop: 2,
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: 1,
   },
   closeBtn: {
-    padding: 4,
-    borderRadius: Radius.pill,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: Colors.background,
+    alignItems: "center",
+    justifyContent: "center",
   },
   presetsRow: {
     flexDirection: "row",
-    gap: Spacing.xs,
-    paddingVertical: Spacing.xs,
+    gap: 6,
+    paddingVertical: 4,
   },
   presetChip: {
-    backgroundColor: Colors.primaryBluePale,
-    borderRadius: Radius.pill,
     paddingHorizontal: 12,
     paddingVertical: 6,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   presetText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
-    color: Colors.primaryBlue,
+    color: Colors.textSecondary,
   },
   navRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: Spacing.xs,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.divider,
+    backgroundColor: Colors.background,
+    borderRadius: Radius.input,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   navBtn: {
-    padding: Spacing.xs,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.background,
+    padding: 6,
   },
   monthLabel: {
-    ...Typography.body,
-    fontWeight: "700",
+    fontSize: 14,
+    fontWeight: "800",
     color: Colors.textPrimary,
-    fontSize: 16,
   },
   weekdaysRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "space-around",
     paddingVertical: 4,
   },
   weekdayText: {
-    width: 38,
+    width: 36,
     textAlign: "center",
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "700",
     color: Colors.textMuted,
   },
   grid: {
@@ -363,28 +385,33 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start",
   },
   dayCell: {
-    width: `${100 / 7}%`,
-    height: 38,
+    width: "14.28%",
+    aspectRatio: 1,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: Radius.pill,
-    marginVertical: 2,
+    marginVertical: 1,
   },
   dayCellSelected: {
     backgroundColor: Colors.primaryBlue,
+    shadowColor: Colors.primaryBlue,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 2,
   },
   dayCellToday: {
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: Colors.primaryBlue,
   },
   dayText: {
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: "600",
     color: Colors.textPrimary,
-    fontWeight: "500",
   },
   dayTextSelected: {
-    color: Colors.textWhite,
-    fontWeight: "700",
+    color: Colors.white,
+    fontWeight: "800",
   },
   dayTextToday: {
     color: Colors.primaryBlue,
@@ -394,32 +421,52 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
     paddingTop: Spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.divider,
+    marginTop: 4,
   },
   clearBtn: {
-    paddingVertical: Spacing.xs,
-    paddingHorizontal: Spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
   },
   clearText: {
-    fontSize: 14,
-    color: Colors.accentOrange,
+    fontSize: 13,
+    color: Colors.textMuted,
     fontWeight: "600",
   },
   footerRight: {
     flexDirection: "row",
-    gap: Spacing.xs,
+    gap: 8,
   },
   cancelBtn: {
-    minHeight: 38,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
-  confirmBtn: {
-    minHeight: 38,
-    paddingVertical: 6,
-    paddingHorizontal: 16,
+  cancelBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.textSecondary,
+  },
+  saveBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.primaryBlue,
+  },
+  saveBtnText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: Colors.white,
   },
 });

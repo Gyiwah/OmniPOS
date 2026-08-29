@@ -3,6 +3,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Modal,
   Pressable,
@@ -12,7 +13,6 @@ import {
   View,
 } from "react-native";
 
-import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
@@ -170,22 +170,32 @@ export function ExportPrintModal({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
+        <Pressable style={styles.backdrop} onPress={onClose} />
+
         <View style={styles.modalSheet}>
+          {/* Header */}
           <View style={styles.header}>
-            <View style={styles.titleWrap}>
-              <Text style={styles.title}>Export & Print Inventory</Text>
-              <Text style={styles.subtitle}>Filter, export CSV, or print stock list</Text>
+            <View style={styles.headerLeft}>
+              <View style={styles.headerIconWrap}>
+                <Ionicons name="document-text" size={22} color={Colors.primaryBlue} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.title}>Export & Print Inventory</Text>
+                <Text style={styles.subtitle} numberOfLines={1}>
+                  {storeName} · {products.length} catalog items
+                </Text>
+              </View>
             </View>
             <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn}>
-              <Ionicons name="close-circle-outline" size={24} color={Colors.textMuted} />
+              <Ionicons name="close" size={20} color={Colors.textMuted} />
             </Pressable>
           </View>
 
           <ScrollView style={styles.scrollBody} contentContainerStyle={styles.scrollContent}>
             {/* Filter Selector */}
             <View style={styles.section}>
-              <Text style={styles.sectionLabel}>Filter by Stock & Expiry</Text>
-              <View style={styles.filterPillsRow}>
+              <Text style={styles.sectionLabel}>Stock & Status Filter</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterPillsRow}>
                 {[
                   { key: "all", label: "All Items" },
                   { key: "in_stock", label: "In Stock" },
@@ -193,41 +203,36 @@ export function ExportPrintModal({
                   { key: "out_of_stock", label: "Out of Stock" },
                   { key: "expiring_soon", label: "Expiring Soon" },
                   { key: "expired", label: "Expired" },
-                ].map((item) => (
-                  <Pressable
-                    key={item.key}
-                    style={[
-                      styles.filterPill,
-                      filter === item.key && styles.filterPillActive,
-                    ]}
-                    onPress={() => setFilter(item.key as ExportFilter)}
-                  >
-                    <Text
-                      style={[
-                        styles.filterText,
-                        filter === item.key && styles.filterTextActive,
-                      ]}
+                ].map((item) => {
+                  const isSelected = filter === item.key;
+                  return (
+                    <Pressable
+                      key={item.key}
+                      style={[styles.filterPill, isSelected && styles.filterPillActive]}
+                      onPress={() => setFilter(item.key as ExportFilter)}
                     >
-                      {item.label}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
+                      <Text style={[styles.filterText, isSelected && styles.filterTextActive]}>
+                        {item.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
             </View>
 
             {/* Metrics Summary Cards */}
             <View style={styles.metricsGrid}>
               <View style={styles.metricCard}>
-                <Text style={styles.metricCaption}>Matching Items</Text>
+                <Text style={styles.metricCaption}>Filtered Items</Text>
                 <Text style={styles.metricValue}>{metrics.count}</Text>
               </View>
               <View style={styles.metricCard}>
-                <Text style={styles.metricCaption}>Total Stock Units</Text>
-                <Text style={styles.metricValue}>{metrics.totalStock}</Text>
+                <Text style={styles.metricCaption}>Total Quantity</Text>
+                <Text style={styles.metricValue}>{metrics.totalStock} units</Text>
               </View>
               <View style={[styles.metricCard, styles.metricCardSpan]}>
-                <Text style={styles.metricCaption}>Total Retail Valuation</Text>
-                <Text style={[styles.metricValue, { color: Colors.primaryBlue }]}>
+                <Text style={styles.metricCaption}>Estimated Retail Valuation</Text>
+                <Text style={[styles.metricValue, { color: Colors.primaryBlue, fontSize: 18 }]}>
                   {currencySymbol} {metrics.totalRetailValue.toFixed(2)}
                 </Text>
               </View>
@@ -239,20 +244,26 @@ export function ExportPrintModal({
                 style={[styles.tabBtn, viewMode === "summary" && styles.tabBtnActive]}
                 onPress={() => setViewMode("summary")}
               >
-                <Text
-                  style={[styles.tabBtnText, viewMode === "summary" && styles.tabBtnTextActive]}
-                >
-                  Table Summary
+                <Ionicons
+                  name="list-outline"
+                  size={16}
+                  color={viewMode === "summary" ? Colors.primaryBlue : Colors.textMuted}
+                />
+                <Text style={[styles.tabBtnText, viewMode === "summary" && styles.tabBtnTextActive]}>
+                  Catalog Summary
                 </Text>
               </Pressable>
               <Pressable
                 style={[styles.tabBtn, viewMode === "preview" && styles.tabBtnActive]}
                 onPress={() => setViewMode("preview")}
               >
-                <Text
-                  style={[styles.tabBtnText, viewMode === "preview" && styles.tabBtnTextActive]}
-                >
-                  Print Preview
+                <Ionicons
+                  name="print-outline"
+                  size={16}
+                  color={viewMode === "preview" ? Colors.primaryBlue : Colors.textMuted}
+                />
+                <Text style={[styles.tabBtnText, viewMode === "preview" && styles.tabBtnTextActive]}>
+                  Thermal Preview
                 </Text>
               </Pressable>
             </View>
@@ -261,12 +272,12 @@ export function ExportPrintModal({
               <View style={styles.tableList}>
                 {filteredProducts.slice(0, 25).map((p) => (
                   <View key={p.id} style={styles.tableRow}>
-                    <View style={{ flex: 1 }}>
+                    <View style={{ flex: 1, paddingRight: 8 }}>
                       <Text style={styles.rowTitle} numberOfLines={1}>
                         {p.name}
                       </Text>
                       <Text style={styles.rowSub}>
-                        SKU: {p.sku} · Reorder: {p.reorderLevel}
+                        SKU: {p.sku} · Reorder Level: {p.reorderLevel}
                       </Text>
                     </View>
                     <View style={{ alignItems: "flex-end" }}>
@@ -279,7 +290,7 @@ export function ExportPrintModal({
                 ))}
                 {filteredProducts.length > 25 ? (
                   <Text style={styles.moreNote}>
-                    + {filteredProducts.length - 25} more items included in export
+                    + {filteredProducts.length - 25} more products included in full export
                   </Text>
                 ) : null}
                 {filteredProducts.length === 0 ? (
@@ -293,13 +304,26 @@ export function ExportPrintModal({
             )}
           </ScrollView>
 
+          {/* Export Action */}
           <View style={styles.footer}>
-            <PrimaryButton
-              label={exporting ? "Generating CSV..." : "Share / Export CSV"}
-              loading={exporting}
+            <Pressable
+              style={({ pressed }) => [
+                styles.exportBtn,
+                (exporting || filteredProducts.length === 0) && styles.exportBtnDisabled,
+                pressed && styles.exportBtnPressed,
+              ]}
               disabled={exporting || filteredProducts.length === 0}
               onPress={() => void handleExportCsv()}
-            />
+            >
+              {exporting ? (
+                <ActivityIndicator size="small" color={Colors.white} />
+              ) : (
+                <Ionicons name="share-outline" size={20} color={Colors.white} />
+              )}
+              <Text style={styles.exportBtnText}>
+                {exporting ? "Generating CSV Report..." : "Share / Export CSV Report"}
+              </Text>
+            </Pressable>
           </View>
         </View>
       </View>
@@ -310,81 +334,105 @@ export function ExportPrintModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
     justifyContent: "flex-end",
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
   },
   modalSheet: {
     backgroundColor: Colors.surface,
-    borderTopLeftRadius: Radius.xl,
-    borderTopRightRadius: Radius.xl,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     maxHeight: "88%",
-    paddingBottom: Spacing.md,
+    paddingBottom: Spacing.xl,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
   },
   header: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.xs,
+    alignItems: "center",
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: "#f1f5f9",
   },
-  titleWrap: {
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
     flex: 1,
   },
+  headerIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: Colors.primaryBluePale,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   title: {
-    ...Typography.title,
+    fontSize: 16,
+    fontWeight: "800",
     color: Colors.textPrimary,
-    fontSize: 18,
   },
   subtitle: {
-    ...Typography.caption,
+    fontSize: 12,
     color: Colors.textMuted,
-    marginTop: 2,
+    marginTop: 1,
   },
   closeBtn: {
-    padding: Spacing.xs,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.background,
+    alignItems: "center",
+    justifyContent: "center",
   },
   scrollBody: {
-    maxHeight: 480,
+    paddingHorizontal: Spacing.lg,
   },
   scrollContent: {
-    padding: Spacing.md,
+    paddingVertical: Spacing.md,
     gap: Spacing.md,
   },
   section: {
     gap: Spacing.xs,
   },
   sectionLabel: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-    fontWeight: "600",
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.textPrimary,
   },
   filterPillsRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: Spacing.xs,
+    paddingVertical: 4,
   },
   filterPill: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 7,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.background,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: Radius.pill,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 6,
-    backgroundColor: Colors.surface,
   },
   filterPillActive: {
+    backgroundColor: Colors.primaryBlue,
     borderColor: Colors.primaryBlue,
-    backgroundColor: Colors.primaryBluePale,
   },
   filterText: {
-    color: Colors.textSecondary,
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "700",
+    color: Colors.textSecondary,
   },
   filterTextActive: {
-    color: Colors.primaryBlue,
+    color: Colors.white,
   },
   metricsGrid: {
     flexDirection: "row",
@@ -393,109 +441,149 @@ const styles = StyleSheet.create({
   },
   metricCard: {
     flex: 1,
-    minWidth: 120,
+    minWidth: "45%",
     backgroundColor: Colors.background,
-    borderRadius: Radius.md,
+    borderRadius: Radius.input,
     padding: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.border,
   },
   metricCardSpan: {
-    flexBasis: "100%",
+    minWidth: "100%",
   },
   metricCaption: {
-    ...Typography.caption,
+    fontSize: 11,
     color: Colors.textMuted,
+    fontWeight: "600",
   },
   metricValue: {
-    ...Typography.title,
-    fontSize: 16,
+    fontSize: 15,
+    fontWeight: "800",
     color: Colors.textPrimary,
     marginTop: 2,
   },
   tabRow: {
     flexDirection: "row",
-    backgroundColor: Colors.background,
-    borderRadius: Radius.md,
+    backgroundColor: "#f1f5f9",
+    borderRadius: Radius.input,
     padding: 3,
+    gap: 4,
   },
   tabBtn: {
     flex: 1,
-    paddingVertical: 6,
+    flexDirection: "row",
     alignItems: "center",
-    borderRadius: Radius.sm,
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: Radius.input - 2,
   },
   tabBtnActive: {
     backgroundColor: Colors.surface,
     shadowColor: "#000",
-    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
     shadowRadius: 2,
     elevation: 1,
   },
   tabBtnText: {
     fontSize: 13,
+    fontWeight: "700",
     color: Colors.textMuted,
-    fontWeight: "500",
   },
   tabBtnTextActive: {
-    color: Colors.textPrimary,
-    fontWeight: "700",
+    color: Colors.primaryBlue,
   },
   tableList: {
-    gap: Spacing.xs,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.input,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    overflow: "hidden",
   },
   tableRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.border,
+    borderBottomColor: "#f1f5f9",
   },
   rowTitle: {
-    ...Typography.body,
-    fontWeight: "600",
+    fontSize: 13,
+    fontWeight: "700",
     color: Colors.textPrimary,
   },
   rowSub: {
-    ...Typography.caption,
+    fontSize: 11,
     color: Colors.textMuted,
+    marginTop: 1,
   },
   rowStock: {
-    ...Typography.caption,
-    fontWeight: "600",
+    fontSize: 12,
+    fontWeight: "700",
     color: Colors.textPrimary,
   },
   rowPrice: {
-    ...Typography.caption,
+    fontSize: 12,
+    fontWeight: "800",
     color: Colors.primaryBlue,
-    fontWeight: "700",
+    marginTop: 1,
   },
   moreNote: {
-    ...Typography.caption,
-    color: Colors.textMuted,
     textAlign: "center",
-    marginTop: Spacing.xs,
+    fontSize: 12,
+    fontWeight: "600",
+    color: Colors.primaryBlue,
+    paddingVertical: 10,
+    backgroundColor: Colors.primaryBluePale,
   },
   emptyText: {
-    ...Typography.body,
-    color: Colors.textMuted,
     textAlign: "center",
+    color: Colors.textMuted,
     paddingVertical: Spacing.md,
+    fontSize: 13,
   },
   previewBox: {
     backgroundColor: "#1e293b",
-    padding: Spacing.sm,
-    borderRadius: Radius.md,
+    borderRadius: Radius.input,
+    padding: Spacing.md,
   },
   monoText: {
     fontFamily: "monospace",
     fontSize: 11,
-    color: "#e2e8f0",
+    color: "#f8fafc",
     lineHeight: 16,
   },
   footer: {
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.sm,
+  },
+  exportBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.primaryBlue,
+    borderRadius: Radius.pill,
+    paddingVertical: 15,
+    shadowColor: Colors.primaryBlue,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  exportBtnPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
+  },
+  exportBtnDisabled: {
+    opacity: 0.5,
+  },
+  exportBtnText: {
+    color: Colors.white,
+    fontSize: 15,
+    fontWeight: "800",
   },
 });

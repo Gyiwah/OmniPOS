@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 
 import { Avatar } from "@/src/components/atoms/Avatar";
 import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
@@ -364,68 +364,129 @@ export default function HomeScreen() {
         </SectionCard>
       </AppScrollScreen>
 
-      <Modal visible={drawerOpen} transparent animationType="slide" onRequestClose={() => setDrawerOpen(false)}>
+      <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={() => setDrawerOpen(false)}>
         <View style={styles.drawerOverlay}>
           <Pressable style={styles.backdrop} onPress={() => setDrawerOpen(false)} />
           <View style={styles.drawerPanel}>
+            {/* Drawer Header */}
             <View style={styles.drawerHeader}>
-              <Pressable onPress={() => void changeLogo()}>
-                <Avatar uri={shopLogoUri} fallbackInitials={shopName} size={92} />
-              </Pressable>
-              <Text style={styles.shopName}>{shopName}</Text>
-              <Text style={styles.shopEmail}>{shopEmail}</Text>
-              <PrimaryButton
-                label="Edit shop profile"
-                variant="outline"
-                fullWidth={false}
-                style={styles.profileBtn}
-                onPress={() => router.push("/settings")}
-              />
+              <View style={styles.drawerAvatarWrap}>
+                <Pressable onPress={() => void changeLogo()}>
+                  <Avatar uri={shopLogoUri} fallbackInitials={shopName} size={84} />
+                </Pressable>
+                <Pressable style={styles.avatarCameraBadge} onPress={() => void changeLogo()}>
+                  <Ionicons name="camera" size={14} color={Colors.white} />
+                </Pressable>
+              </View>
+              <Text style={styles.shopName} numberOfLines={1}>{shopName}</Text>
+              <Text style={styles.shopEmail} numberOfLines={1}>{shopEmail}</Text>
+              <View style={styles.roleBadge}>
+                <Ionicons name="shield-checkmark" size={12} color={Colors.primaryBlue} />
+                <Text style={styles.roleBadgeText}>Active Store</Text>
+              </View>
             </View>
 
-            <View style={styles.menuList}>
-              <Pressable style={styles.menuRow} onPress={() => router.push("/settings")}>
-                <View style={styles.menuLeft}>
-                  <Ionicons name="settings-outline" size={20} color={Colors.textSecondary} />
-                  <Text style={styles.menuText}>Settings</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
-              </Pressable>
+            {/* Quick Menu Links */}
+            <ScrollView style={styles.drawerScrollView} showsVerticalScrollIndicator={false}>
+              <View style={styles.drawerMenuSection}>
+                <Pressable
+                  style={styles.menuRow}
+                  onPress={() => {
+                    setDrawerOpen(false);
+                    router.push("/settings");
+                  }}
+                >
+                  <View style={styles.menuLeft}>
+                    <View style={[styles.menuIconWrap, { backgroundColor: Colors.primaryBluePale }]}>
+                      <Ionicons name="settings-outline" size={18} color={Colors.primaryBlue} />
+                    </View>
+                    <Text style={styles.menuText}>Store Settings</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+                </Pressable>
 
+                <Pressable
+                  style={styles.menuRow}
+                  onPress={() => {
+                    setDrawerOpen(false);
+                    router.push("/settings/stores");
+                  }}
+                >
+                  <View style={styles.menuLeft}>
+                    <View style={[styles.menuIconWrap, { backgroundColor: "#eff6ff" }]}>
+                      <Ionicons name="business-outline" size={18} color={Colors.primaryBlue} />
+                    </View>
+                    <Text style={styles.menuText}>Switch Branch Location</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+                </Pressable>
+
+                <Pressable
+                  style={styles.menuRow}
+                  onPress={() => {
+                    setDrawerOpen(false);
+                    router.push("/settings/printer");
+                  }}
+                >
+                  <View style={styles.menuLeft}>
+                    <View style={[styles.menuIconWrap, { backgroundColor: "#f0fdf4" }]}>
+                      <Ionicons name="print-outline" size={18} color="#16a34a" />
+                    </View>
+                    <Text style={styles.menuText}>Thermal Printer</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+                </Pressable>
+
+                <Pressable
+                  style={styles.menuRow}
+                  onPress={() => {
+                    const current = CURRENCIES.indexOf(currency as (typeof CURRENCIES)[number]);
+                    const next = CURRENCIES[(current + 1) % CURRENCIES.length];
+                    setCurrency(next);
+                  }}
+                >
+                  <View style={styles.menuLeft}>
+                    <View style={[styles.menuIconWrap, { backgroundColor: "#fef3c7" }]}>
+                      <Ionicons name="cash-outline" size={18} color="#d97706" />
+                    </View>
+                    <Text style={styles.menuText}>Store Currency</Text>
+                  </View>
+                  <View style={styles.currencyBadgePill}>
+                    <Text style={styles.menuValue}>{currency}</Text>
+                  </View>
+                </Pressable>
+
+                <Pressable
+                  style={styles.menuRow}
+                  onPress={() => {
+                    const current = LANGUAGES.indexOf(language as (typeof LANGUAGES)[number]);
+                    const next = LANGUAGES[(current + 1) % LANGUAGES.length];
+                    setLanguage(next);
+                  }}
+                >
+                  <View style={styles.menuLeft}>
+                    <View style={[styles.menuIconWrap, { backgroundColor: "#f3e8ff" }]}>
+                      <Ionicons name="language-outline" size={18} color="#9333ea" />
+                    </View>
+                    <Text style={styles.menuText}>App Language</Text>
+                  </View>
+                  <Text style={styles.menuValue}>{language}</Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+
+            {/* Bottom Drawer Actions */}
+            <View style={styles.drawerBottom}>
               <Pressable
-                style={styles.menuRow}
+                style={styles.drawerSignOutBtn}
                 onPress={() => {
-                  const current = LANGUAGES.indexOf(language as (typeof LANGUAGES)[number]);
-                  const next = LANGUAGES[(current + 1) % LANGUAGES.length];
-                  setLanguage(next);
+                  setDrawerOpen(false);
+                  router.push("/settings");
                 }}
               >
-                <View style={styles.menuLeft}>
-                  <Ionicons name="language-outline" size={20} color={Colors.textSecondary} />
-                  <Text style={styles.menuText}>Select Language</Text>
-                </View>
-                <Text style={styles.menuValue}>{language}</Text>
+                <Ionicons name="log-out-outline" size={18} color={Colors.danger} />
+                <Text style={styles.drawerSignOutText}>Manage & Sign Out</Text>
               </Pressable>
-
-              <Pressable
-                style={styles.menuRow}
-                onPress={() => {
-                  const current = CURRENCIES.indexOf(currency as (typeof CURRENCIES)[number]);
-                  const next = CURRENCIES[(current + 1) % CURRENCIES.length];
-                  setCurrency(next);
-                }}
-              >
-                <View style={styles.menuLeft}>
-                  <Ionicons name="cash-outline" size={20} color={Colors.textSecondary} />
-                  <Text style={styles.menuText}>Currency Settings</Text>
-                </View>
-                <Text style={styles.menuValue}>{currency}</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.modeRow}>
-              <Text style={styles.modeLabel}>App Mode</Text>
-              <Switch value={appModeDark} onValueChange={setAppModeDark} />
             </View>
           </View>
         </View>
@@ -555,46 +616,138 @@ const styles = StyleSheet.create({
   },
   syncLabel: { color: Colors.primaryBlue, fontWeight: "700", fontSize: 13 },
   syncLabelError: { color: Colors.accentOrange },
-  drawerOverlay: { flex: 1, flexDirection: "row", backgroundColor: "rgba(0,0,0,0.3)" },
-  backdrop: { flex: 1 },
+  drawerOverlay: {
+    flex: 1,
+    flexDirection: "row",
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
+  },
+  backdrop: {
+    flex: 1,
+  },
   drawerPanel: {
-    width: "80%",
+    width: "82%",
+    maxWidth: 340,
     backgroundColor: Colors.surface,
-    paddingTop: 48,
+    paddingTop: 54,
     paddingHorizontal: Spacing.md,
-    paddingBottom: Spacing.lg,
+    paddingBottom: Spacing.xl,
     justifyContent: "space-between",
+    shadowColor: "#000",
+    shadowOffset: { width: -4, height: 0 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
   },
   drawerHeader: {
     alignItems: "center",
-    gap: Spacing.xs,
+    gap: 4,
     paddingBottom: Spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.divider,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
   },
-  shopName: { ...Typography.title, color: Colors.textPrimary },
-  shopEmail: { ...Typography.body, color: Colors.textSecondary },
-  profileBtn: { minWidth: 150, marginTop: Spacing.xs },
-  menuList: { marginTop: Spacing.md, gap: Spacing.sm },
+  drawerAvatarWrap: {
+    position: "relative",
+    marginBottom: 4,
+  },
+  avatarCameraBadge: {
+    position: "absolute",
+    right: 0,
+    bottom: 0,
+    backgroundColor: Colors.primaryBlue,
+    borderRadius: 14,
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: Colors.surface,
+  },
+  shopName: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: Colors.textPrimary,
+  },
+  shopEmail: {
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  roleBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: Colors.primaryBluePale,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.pill,
+    marginTop: 4,
+  },
+  roleBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: Colors.primaryBlue,
+  },
+  drawerScrollView: {
+    flex: 1,
+    marginVertical: Spacing.sm,
+  },
+  drawerMenuSection: {
+    gap: 4,
+  },
   menuRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: Spacing.sm + 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.divider,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: Radius.input,
   },
-  menuLeft: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
-  menuText: { ...Typography.body, color: Colors.textSecondary, fontWeight: "600" },
-  menuValue: { ...Typography.caption, color: Colors.primaryBlue, fontWeight: "700" },
-  modeRow: {
-    marginTop: Spacing.md,
+  menuLeft: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: Spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.divider,
+    gap: Spacing.sm,
   },
-  modeLabel: { ...Typography.title, color: Colors.textSecondary },
+  menuIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  menuText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: Colors.textPrimary,
+  },
+  currencyBadgePill: {
+    backgroundColor: "#fef3c7",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.pill,
+  },
+  menuValue: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: Colors.textSecondary,
+  },
+  drawerBottom: {
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+  },
+  drawerSignOutBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#fff1f2",
+    paddingVertical: 12,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: "#fecdd3",
+  },
+  drawerSignOutText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.danger,
+  },
 });

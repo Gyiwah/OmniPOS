@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Modal,
   Pressable,
@@ -10,7 +11,6 @@ import {
   View,
 } from "react-native";
 
-import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { TextInput } from "@/src/components/atoms/TextInput";
 import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
@@ -23,14 +23,14 @@ import {
   type StockOutReason,
 } from "@/src/features/inventory/stockMovementService";
 
-const REASONS: StockOutReason[] = [
-  "Damaged / Broken",
-  "Expired",
-  "Lost / Theft",
-  "Internal Use / Sample",
-  "Returned to Vendor",
-  "Inventory Count Correction",
-  "Other",
+const REASONS: { label: StockOutReason; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { label: "Damaged / Broken", icon: "alert-circle-outline" },
+  { label: "Expired", icon: "time-outline" },
+  { label: "Lost / Theft", icon: "warning-outline" },
+  { label: "Internal Use / Sample", icon: "cafe-outline" },
+  { label: "Returned to Vendor", icon: "return-up-back-outline" },
+  { label: "Inventory Count Correction", icon: "calculator-outline" },
+  { label: "Other", icon: "ellipsis-horizontal-circle-outline" },
 ];
 
 type StockOutModalProps = {
@@ -77,13 +77,13 @@ export function StockOutModal({
   async function handleConfirm() {
     const qty = Number(quantity);
     if (!Number.isFinite(qty) || qty <= 0) {
-      Alert.alert("Invalid quantity", "Please enter a valid number greater than 0.");
+      Alert.alert("Invalid Quantity", "Please enter a valid number greater than 0.");
       return;
     }
     if (qty > currentStock) {
       Alert.alert(
-        "Insufficient stock",
-        `Cannot remove ${qty} units. Current stock is ${currentStock}.`,
+        "Insufficient Stock",
+        `Cannot deduct ${qty} units. Current stock is ${currentStock}.`,
       );
       return;
     }
@@ -100,19 +100,19 @@ export function StockOutModal({
       });
 
       if (!result.success) {
-        Alert.alert("Stock out failed", result.error ?? "Failed to adjust stock.");
+        Alert.alert("Stock Out Failed", result.error ?? "Failed to adjust stock.");
         return;
       }
 
       Alert.alert(
         "Stock Removed",
-        `Successfully removed ${Math.floor(qty)} unit(s) of "${productName}". New stock: ${result.newStock}.`,
+        `Successfully removed ${Math.floor(qty)} unit(s) of "${productName}". New stock balance: ${result.newStock}.`,
       );
       onStockUpdated(result.newStock);
       onClose();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error processing stock out";
-      Alert.alert("Error", msg);
+      Alert.alert("Stock Out Error", msg);
     } finally {
       setSubmitting(false);
     }
@@ -121,57 +121,64 @@ export function StockOutModal({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
+        <Pressable style={styles.backdrop} onPress={onClose} />
+
         <View style={styles.modalSheet}>
+          {/* Header */}
           <View style={styles.header}>
-            <View style={styles.titleWrap}>
-              <Text style={styles.title}>Stock Out / Write-off</Text>
-              <Text style={styles.subtitle} numberOfLines={1}>
-                {productName} · Available: {currentStock}
-              </Text>
+            <View style={styles.headerLeft}>
+              <View style={styles.headerIconWrap}>
+                <Ionicons name="remove-circle" size={22} color={Colors.danger} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.title}>Stock Out / Write-Off</Text>
+                <Text style={styles.subtitle} numberOfLines={1}>
+                  {productName}
+                </Text>
+              </View>
             </View>
             <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn}>
-              <Ionicons name="close-circle-outline" size={24} color={Colors.textMuted} />
+              <Ionicons name="close" size={20} color={Colors.textMuted} />
             </Pressable>
           </View>
 
+          {/* Available Stock Warning Banner */}
+          <View style={styles.stockNoticeBox}>
+            <Text style={styles.stockNoticeLabel}>Current Available Inventory</Text>
+            <Text style={styles.stockNoticeValue}>{currentStock} units</Text>
+          </View>
+
           <ScrollView style={styles.scrollBody} contentContainerStyle={styles.scrollContent}>
-            {/* Quantity Section */}
+            {/* Quantity Input with Quick Selector */}
             <View style={styles.section}>
-              <Text style={styles.sectionLabel}>Quantity to Remove</Text>
+              <Text style={styles.sectionLabel}>Quantity to Deduct *</Text>
               <TextInput
                 value={quantity}
                 onChangeText={setQuantity}
                 placeholder="1"
                 keyboardType="number-pad"
+                leftIcon={<Ionicons name="calculator-outline" size={18} color={Colors.textMuted} />}
               />
+
               <View style={styles.quickQtyRow}>
-                <Pressable
-                  style={styles.quickQtyPill}
-                  onPress={() => setQuantity("1")}
-                >
-                  <Text style={styles.quickQtyText}>1</Text>
+                <Pressable style={styles.quickQtyPill} onPress={() => setQuantity("1")}>
+                  <Text style={styles.quickQtyText}>1 Unit</Text>
                 </Pressable>
                 {currentStock >= 5 ? (
-                  <Pressable
-                    style={styles.quickQtyPill}
-                    onPress={() => setQuantity("5")}
-                  >
-                    <Text style={styles.quickQtyText}>5</Text>
+                  <Pressable style={styles.quickQtyPill} onPress={() => setQuantity("5")}>
+                    <Text style={styles.quickQtyText}>5 Units</Text>
                   </Pressable>
                 ) : null}
                 {currentStock >= 10 ? (
-                  <Pressable
-                    style={styles.quickQtyPill}
-                    onPress={() => setQuantity("10")}
-                  >
-                    <Text style={styles.quickQtyText}>10</Text>
+                  <Pressable style={styles.quickQtyPill} onPress={() => setQuantity("10")}>
+                    <Text style={styles.quickQtyText}>10 Units</Text>
                   </Pressable>
                 ) : null}
                 <Pressable
-                  style={styles.quickQtyPill}
+                  style={[styles.quickQtyPill, { backgroundColor: "#fee2e2" }]}
                   onPress={() => setQuantity(String(currentStock))}
                 >
-                  <Text style={styles.quickQtyText}>All ({currentStock})</Text>
+                  <Text style={[styles.quickQtyText, { color: Colors.danger }]}>All ({currentStock})</Text>
                 </Pressable>
               </View>
             </View>
@@ -179,20 +186,22 @@ export function StockOutModal({
             {/* Batch Selector if batches exist */}
             {batches.length > 0 ? (
               <View style={styles.section}>
-                <Text style={styles.sectionLabel}>Deduct from Batch (Optional)</Text>
+                <Text style={styles.sectionLabel}>Deduct from Specific Batch</Text>
                 <Pressable
                   style={styles.dropdownTrigger}
                   onPress={() => setBatchDropdownOpen((v) => !v)}
                 >
-                  <Ionicons name="layers-outline" size={18} color={Colors.primaryBlue} />
-                  <Text style={styles.dropdownTriggerText}>
-                    {selectedBatchId
-                      ? (() => {
-                          const b = batches.find((x) => x.id === selectedBatchId);
-                          return b ? `Batch #${b.batchNumber} (${b.quantity} left)` : "Select Batch";
-                        })()
-                      : "Auto (FIFO - First Expiring / Oldest)"}
-                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                    <Ionicons name="layers-outline" size={18} color={Colors.primaryBlue} />
+                    <Text style={styles.dropdownTriggerText}>
+                      {selectedBatchId
+                        ? (() => {
+                            const b = batches.find((x) => x.id === selectedBatchId);
+                            return b ? `Batch #${b.batchNumber} (${b.quantity} left)` : "Select Batch";
+                          })()
+                        : "Auto (FIFO - First Expiring / Oldest)"}
+                    </Text>
+                  </View>
                   <Ionicons
                     name={batchDropdownOpen ? "chevron-up" : "chevron-down"}
                     size={18}
@@ -242,7 +251,7 @@ export function StockOutModal({
                             selectedBatchId === b.id && styles.dropdownItemTextActive,
                           ]}
                         >
-                          Batch #{b.batchNumber} ({b.quantity} left)
+                          Batch #{b.batchNumber} ({b.quantity} units)
                           {b.expiryDate ? ` · Exp: ${b.expiryDate}` : ""}
                         </Text>
                         {selectedBatchId === b.id ? (
@@ -257,13 +266,15 @@ export function StockOutModal({
 
             {/* Reason Selector Dropdown */}
             <View style={styles.section}>
-              <Text style={styles.sectionLabel}>Reason for Removal</Text>
+              <Text style={styles.sectionLabel}>Reason for Write-Off *</Text>
               <Pressable
                 style={styles.dropdownTrigger}
                 onPress={() => setReasonDropdownOpen((v) => !v)}
               >
-                <Ionicons name="alert-circle-outline" size={18} color={Colors.primaryBlue} />
-                <Text style={styles.dropdownTriggerText}>{selectedReason}</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                  <Ionicons name="alert-circle-outline" size={18} color={Colors.danger} />
+                  <Text style={styles.dropdownTriggerText}>{selectedReason}</Text>
+                </View>
                 <Ionicons
                   name={reasonDropdownOpen ? "chevron-up" : "chevron-down"}
                   size={18}
@@ -274,24 +285,27 @@ export function StockOutModal({
               {reasonDropdownOpen ? (
                 <View style={styles.dropdownMenu}>
                   {REASONS.map((r) => {
-                    const isSelected = selectedReason === r;
+                    const isSelected = selectedReason === r.label;
                     return (
                       <Pressable
-                        key={r}
+                        key={r.label}
                         style={[styles.dropdownItem, isSelected && styles.dropdownItemActive]}
                         onPress={() => {
-                          setSelectedReason(r);
+                          setSelectedReason(r.label);
                           setReasonDropdownOpen(false);
                         }}
                       >
-                        <Text
-                          style={[
-                            styles.dropdownItemText,
-                            isSelected && styles.dropdownItemTextActive,
-                          ]}
-                        >
-                          {r}
-                        </Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                          <Ionicons name={r.icon} size={16} color={isSelected ? Colors.primaryBlue : Colors.textMuted} />
+                          <Text
+                            style={[
+                              styles.dropdownItemText,
+                              isSelected && styles.dropdownItemTextActive,
+                            ]}
+                          >
+                            {r.label}
+                          </Text>
+                        </View>
                         {isSelected ? (
                           <Ionicons name="checkmark" size={18} color={Colors.primaryBlue} />
                         ) : null}
@@ -304,23 +318,38 @@ export function StockOutModal({
 
             {/* Notes / Memo */}
             <View style={styles.section}>
-              <Text style={styles.sectionLabel}>Notes / Reference (Optional)</Text>
+              <Text style={styles.sectionLabel}>Audit Notes / Memo (Optional)</Text>
               <TextInput
                 value={notes}
                 onChangeText={setNotes}
                 placeholder="e.g. Broken in storage aisle 2, batch returned"
                 multiline
+                numberOfLines={3}
+                leftIcon={<Ionicons name="document-text-outline" size={18} color={Colors.textMuted} />}
               />
             </View>
           </ScrollView>
 
+          {/* Modal Footer Actions */}
           <View style={styles.footer}>
-            <PrimaryButton
-              label={submitting ? "Processing..." : "Confirm Stock Out"}
-              loading={submitting}
+            <Pressable
+              style={({ pressed }) => [
+                styles.confirmBtn,
+                (submitting || currentStock <= 0) && styles.confirmBtnDisabled,
+                pressed && styles.confirmBtnPressed,
+              ]}
               disabled={submitting || currentStock <= 0}
               onPress={() => void handleConfirm()}
-            />
+            >
+              {submitting ? (
+                <ActivityIndicator size="small" color={Colors.white} />
+              ) : (
+                <Ionicons name="trash-outline" size={18} color={Colors.white} />
+              )}
+              <Text style={styles.confirmBtnText}>
+                {submitting ? "Deducting Units..." : "Confirm Stock Write-Off"}
+              </Text>
+            </Pressable>
           </View>
         </View>
       </View>
@@ -331,57 +360,100 @@ export function StockOutModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
     justifyContent: "flex-end",
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
   },
   modalSheet: {
     backgroundColor: Colors.surface,
-    borderTopLeftRadius: Radius.xl,
-    borderTopRightRadius: Radius.xl,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     maxHeight: "85%",
-    paddingBottom: Spacing.md,
+    paddingBottom: Spacing.xl,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
   },
   header: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.xs,
+    alignItems: "center",
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: "#f1f5f9",
   },
-  titleWrap: {
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
     flex: 1,
-    paddingRight: Spacing.sm,
+  },
+  headerIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#fff1f2",
+    alignItems: "center",
+    justifyContent: "center",
   },
   title: {
-    ...Typography.title,
+    fontSize: 16,
+    fontWeight: "800",
     color: Colors.textPrimary,
-    fontSize: 18,
   },
   subtitle: {
-    ...Typography.caption,
+    fontSize: 12,
     color: Colors.textMuted,
-    marginTop: 2,
+    marginTop: 1,
   },
   closeBtn: {
-    padding: Spacing.xs,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.background,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stockNoticeBox: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#fff7ed",
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#fed7aa",
+  },
+  stockNoticeLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#c2410c",
+  },
+  stockNoticeValue: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#c2410c",
   },
   scrollBody: {
-    maxHeight: 400,
+    paddingHorizontal: Spacing.lg,
   },
   scrollContent: {
-    padding: Spacing.md,
+    paddingVertical: Spacing.md,
     gap: Spacing.md,
   },
   section: {
     gap: Spacing.xs,
   },
   sectionLabel: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-    fontWeight: "600",
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.textPrimary,
   },
   quickQtyRow: {
     flexDirection: "row",
@@ -389,68 +461,96 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   quickQtyPill: {
+    flex: 1,
+    alignItems: "center",
     backgroundColor: Colors.background,
     borderWidth: 1,
     borderColor: Colors.border,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 6,
     borderRadius: Radius.pill,
+    paddingVertical: 8,
   },
   quickQtyText: {
     fontSize: 12,
-    color: Colors.textPrimary,
-    fontWeight: "600",
+    fontWeight: "700",
+    color: Colors.textSecondary,
   },
   dropdownTrigger: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: Colors.background,
+    justifyContent: "space-between",
+    backgroundColor: Colors.surface,
     borderRadius: Radius.input,
+    borderWidth: 1.5,
+    borderColor: "#e2e8f0",
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm + 2,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    gap: Spacing.sm,
-    minHeight: 46,
+    paddingVertical: 12,
   },
   dropdownTriggerText: {
-    flex: 1,
-    fontSize: 14,
-    color: Colors.textPrimary,
+    fontSize: 13,
     fontWeight: "600",
+    color: Colors.textPrimary,
   },
   dropdownMenu: {
+    marginTop: Spacing.xs,
     backgroundColor: Colors.surface,
-    borderRadius: Radius.card,
+    borderRadius: Radius.input,
     borderWidth: 1,
     borderColor: Colors.border,
     overflow: "hidden",
-    marginTop: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
   dropdownItem: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm + 2,
+    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.divider,
+    borderBottomColor: "#f1f5f9",
   },
   dropdownItemActive: {
     backgroundColor: Colors.primaryBluePale,
   },
   dropdownItemText: {
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.textPrimary,
-    fontWeight: "500",
-    flex: 1,
   },
   dropdownItemTextActive: {
     color: Colors.primaryBlue,
     fontWeight: "700",
   },
   footer: {
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.sm,
+  },
+  confirmBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.danger,
+    borderRadius: Radius.pill,
+    paddingVertical: 15,
+    shadowColor: Colors.danger,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  confirmBtnPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
+  },
+  confirmBtnDisabled: {
+    opacity: 0.5,
+  },
+  confirmBtnText: {
+    color: Colors.white,
+    fontSize: 15,
+    fontWeight: "800",
   },
 });
