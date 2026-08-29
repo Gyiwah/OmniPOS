@@ -1,9 +1,9 @@
-import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { AccentButton } from "@/src/components/atoms/AccentButton";
-import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { StyleSheet, Text, View, Pressable } from "react-native";
 import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
+import { Typography } from "@/src/constants/typography";
 import { usePrinter } from "@/src/hooks/usePrinter";
 import { useOrderDraftStore } from "@/src/store/orderDraftStore";
 import { useSettingsStore } from "@/src/store/settingsStore";
@@ -49,12 +49,14 @@ function currencySymbol(code: string) {
 }
 
 function BarcodeVisual() {
-  const bars = [2, 1, 3, 1, 2, 2, 1, 3, 1, 2, 2, 1, 3, 1, 2, 1, 2, 3, 1, 2, 1, 3];
+  const bars = [3, 1, 4, 2, 1, 3, 2, 4, 1, 2, 3, 1, 4, 2, 3, 1, 2, 4, 2, 1, 3, 2, 4, 1, 3, 2];
   return (
     <View style={styles.barcodeWrap}>
-      {bars.map((w, idx) => (
-        <View key={`${idx}`} style={[styles.bar, { width: w * 2.2 }]} />
-      ))}
+      <View style={styles.barcodeBars}>
+        {bars.map((w, idx) => (
+          <View key={`${idx}`} style={[styles.bar, { width: w }]} />
+        ))}
+      </View>
     </View>
   );
 }
@@ -65,16 +67,17 @@ export function ReceiptDocument({ order, store, data, onPrint, onShare }: Receip
   const { connected, deviceName } = usePrinter();
   const sourceLines: ReceiptLine[] = (data?.lines ?? draft.lines) || [];
   const sourceDiscountMode = data?.discountMode ?? draft.discountMode;
-  const sourceDiscountValue = data?.discountValue ?? draft.discountValue;
-  const sourceAmountPaid = data?.amountPaid ?? draft.amountPaid;
+  const sourceDiscountValue = Number(data?.discountValue ?? draft.discountValue) || 0;
+  const sourceAmountPaid = Number(data?.amountPaid ?? draft.amountPaid) || 0;
   const sourceCustomerName = data?.customerName ?? draft.customerName;
   const sourceCustomerPhone = data?.customerPhone ?? draft.customerPhone;
   const sourceShippingAddress = data?.shippingAddress ?? draft.shippingAddress;
-  const sourceTaxRate = data?.taxRate ?? settings.taxRate;
-  const sourceVatRate = data?.vatRate ?? settings.vatRate;
-  const sourceServiceRate = data?.serviceRate ?? settings.serviceRate;
+  const sourceTaxRate = Number(data?.taxRate ?? settings.taxRate) || 0;
+  const sourceVatRate = Number(data?.vatRate ?? settings.vatRate) || 0;
+  const sourceServiceRate = Number(data?.serviceRate ?? settings.serviceRate) || 0;
   const sourceCurrency = data?.currency ?? settings.currency;
   const sym = currencySymbol(sourceCurrency);
+
   const subtotal = sourceLines.reduce((sum: number, line: ReceiptLine) => sum + (Number(line.price) || 0) * (Number(line.quantity) || 0), 0);
   const discount = sourceDiscountMode === "percentage" ? subtotal * (sourceDiscountValue / 100) : sourceDiscountValue;
   const base = Math.max(0, subtotal - discount);
@@ -84,172 +87,479 @@ export function ReceiptDocument({ order, store, data, onPrint, onShare }: Receip
   const total = base + tax + vat + service;
   const change = Math.max(0, sourceAmountPaid - total);
 
+  const orderNum = order?.orderNumber ?? "—";
+  const dateStr = order?.dateLabel ?? new Date().toLocaleString();
+
   return (
-    <View style={styles.page}>
-      <View style={styles.qrRow}>
-        <View style={styles.dot} />
-        <Text style={styles.qrText}>QR Code Ready</Text>
-      </View>
-
-      <View style={[styles.sheet, styles.sheetContent]}>
-        <View style={styles.headerLine}>
-          <Text style={styles.receiptTitle}>RECEIPT</Text>
-          <Text style={styles.receiptDate}>{order?.dateLabel ?? new Date().toLocaleString()}</Text>
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.cardTitle}>Item</Text>
-            <Text style={styles.cardTitle}>Price</Text>
-          </View>
-          {sourceLines.map((line) => (
-            <View key={line.id} style={styles.itemRow}>
-              <Text style={styles.itemText}>
-                {line.quantity}x {line.name}
-              </Text>
-              <Text style={styles.itemPrice}>{(line.price * line.quantity).toFixed(2)}</Text>
+    <View style={styles.container}>
+      {/* Professional Receipt Paper Container */}
+      <View style={styles.paper}>
+        {/* Header Branding */}
+        <View style={styles.header}>
+          <View style={styles.badgeRow}>
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>OFFICIAL RECEIPT</Text>
             </View>
-          ))}
+          </View>
+          <Text style={styles.storeName}>{store?.name ?? settings.shopName ?? "OmniPOS Store"}</Text>
+          <Text style={styles.orderNumber}>Order #{orderNum}</Text>
+          <Text style={styles.timestamp}>{dateStr}</Text>
         </View>
 
-        <View style={styles.card}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>
-              {sym} {total.toFixed(2)}
-            </Text>
+        <View style={styles.dashedDivider} />
+
+        {/* Itemized Table */}
+        <View style={styles.itemsSection}>
+          <View style={styles.tableHeader}>
+            <Text style={styles.tableHeaderLeft}>ITEM & QTY</Text>
+            <Text style={styles.tableHeaderRight}>AMOUNT</Text>
           </View>
-          <View style={styles.rowBetween}>
-            <Text style={styles.meta}>Subtotal</Text>
-            <Text style={styles.meta}>{subtotal.toFixed(2)}</Text>
+
+          {sourceLines.map((line, idx) => {
+            const lineTotal = (Number(line.price) || 0) * (Number(line.quantity) || 0);
+            return (
+              <View key={line.id || `line-${idx}`} style={styles.itemRow}>
+                <View style={styles.itemInfo}>
+                  <Text style={styles.itemName}>{line.name}</Text>
+                  <Text style={styles.itemSub}>
+                    {line.quantity} × {sym}{(Number(line.price) || 0).toFixed(2)}
+                  </Text>
+                </View>
+                <Text style={styles.itemTotal}>
+                  {sym}{lineTotal.toFixed(2)}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+
+        <View style={styles.solidDivider} />
+
+        {/* Calculations Breakdown */}
+        <View style={styles.summarySection}>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Subtotal</Text>
+            <Text style={styles.summaryValue}>{sym}{subtotal.toFixed(2)}</Text>
           </View>
-          <View style={styles.rowBetween}>
-            <Text style={styles.meta}>Discount</Text>
-            <Text style={styles.meta}>
-              {sourceDiscountMode === "percentage"
-                ? `${sourceDiscountValue}%`
-                : `${sym} ${sourceDiscountValue.toFixed(2)}`}
-            </Text>
+
+          {discount > 0 ? (
+            <View style={styles.summaryRow}>
+              <Text style={[styles.summaryLabel, { color: Colors.accentOrange }]}>
+                Discount {sourceDiscountMode === "percentage" ? `(${sourceDiscountValue}%)` : ""}
+              </Text>
+              <Text style={[styles.summaryValue, { color: Colors.accentOrange, fontWeight: "700" }]}>
+                -{sym}{discount.toFixed(2)}
+              </Text>
+            </View>
+          ) : null}
+
+          {tax > 0 ? (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Tax ({sourceTaxRate}%)</Text>
+              <Text style={styles.summaryValue}>{sym}{tax.toFixed(2)}</Text>
+            </View>
+          ) : null}
+
+          {vat > 0 ? (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>VAT ({sourceVatRate}%)</Text>
+              <Text style={styles.summaryValue}>{sym}{vat.toFixed(2)}</Text>
+            </View>
+          ) : null}
+
+          {service > 0 ? (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Service Charge ({sourceServiceRate}%)</Text>
+              <Text style={styles.summaryValue}>{sym}{service.toFixed(2)}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* Grand Total Block */}
+        <View style={styles.grandTotalBlock}>
+          <Text style={styles.grandTotalLabel}>TOTAL DUE</Text>
+          <Text style={styles.grandTotalValue}>{sym}{total.toFixed(2)}</Text>
+        </View>
+
+        {/* Payment & Change Details */}
+        <View style={styles.paymentBox}>
+          <View style={styles.paymentRow}>
+            <Text style={styles.paymentLabel}>Amount Tendered</Text>
+            <Text style={styles.paymentValue}>{sym}{sourceAmountPaid.toFixed(2)}</Text>
           </View>
-          <View style={styles.rowBetween}>
-            <Text style={styles.meta}>Tax {sourceTaxRate}%</Text>
-            <Text style={styles.meta}>{tax.toFixed(2)}</Text>
-          </View>
-          <View style={styles.rowBetween}>
-            <Text style={styles.meta}>VAT {sourceVatRate}%</Text>
-            <Text style={styles.meta}>{vat.toFixed(2)}</Text>
-          </View>
-          <View style={styles.rowBetween}>
-            <Text style={styles.meta}>Service {sourceServiceRate}%</Text>
-            <Text style={styles.meta}>{service.toFixed(2)}</Text>
+          <View style={styles.paymentRow}>
+            <Text style={styles.paymentLabel}>Change Returned</Text>
+            <Text style={[styles.paymentValue, { color: Colors.success }]}>{sym}{change.toFixed(2)}</Text>
           </View>
         </View>
 
-        <View style={styles.card}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.totalLabel}>Change</Text>
-            <Text style={styles.totalValue}>
-              {sym} {change.toFixed(2)}
-            </Text>
+        {/* Customer Information (if present) */}
+        {sourceCustomerName || sourceCustomerPhone || sourceShippingAddress ? (
+          <View style={styles.customerBox}>
+            <Text style={styles.customerTitle}>Customer Details</Text>
+            {sourceCustomerName ? (
+              <Text style={styles.customerText}>Name: {sourceCustomerName}</Text>
+            ) : null}
+            {sourceCustomerPhone ? (
+              <Text style={styles.customerText}>Phone: {sourceCustomerPhone}</Text>
+            ) : null}
+            {sourceShippingAddress ? (
+              <Text style={styles.customerText}>Address: {sourceShippingAddress}</Text>
+            ) : null}
           </View>
-          <View style={styles.rowBetween}>
-            <Text style={styles.meta}>Amount Paid</Text>
-            <Text style={styles.meta}>{sourceAmountPaid.toFixed(2)}</Text>
-          </View>
-        </View>
+        ) : null}
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Customer Info</Text>
-          <View style={styles.rowBetween}>
-            <Text style={styles.meta}>Name</Text>
-            <Text style={styles.meta}>{sourceCustomerName || "Optional"}</Text>
-          </View>
-          <View style={styles.rowBetween}>
-            <Text style={styles.meta}>Phone</Text>
-            <Text style={styles.meta}>{sourceCustomerPhone || "Optional"}</Text>
-          </View>
-          <View style={styles.rowBetween}>
-            <Text style={styles.meta}>Shipping Address</Text>
-            <Text style={styles.meta}>{sourceShippingAddress || "Optional"}</Text>
-          </View>
-        </View>
+        <View style={styles.dashedDivider} />
 
+        {/* Barcode & Footer */}
         <BarcodeVisual />
-        <Text style={styles.footerRef}>
-          {store?.name ?? "OmniPOS"} · Ref {order?.orderNumber ?? "--"}
-        </Text>
+        <Text style={styles.barcodeRef}>*{orderNum}*</Text>
+
+        <View style={styles.footer}>
+          <Text style={styles.footerThanks}>Thank you for your patronage!</Text>
+          <Text style={styles.footerBrand}>Powered by OmniPOS</Text>
+        </View>
       </View>
 
-      <View style={styles.bottomRow}>
-        <View style={styles.printWrap}>
-          <PrimaryButton
-            label="Print Receipt"
-            onPress={() => onPrint?.()}
-            fullWidth
-            variant="primary"
-            disabled={!connected}
-          />
-          <Text style={[styles.printHint, connected && styles.printHintReady]}>
-            {connected ? `Ready · ${deviceName ?? "Printer"}` : "Pair a printer in Settings → Printer"}
-          </Text>
-        </View>
-        <AccentButton label="Share" onPress={() => onShare?.()} fullWidth={false} style={styles.shareBtn} outlined />
+      {/* Floating / Bottom Icon Actions */}
+      <View style={styles.iconActionBar}>
+        {/* Print Icon Action */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.iconActionButton,
+            styles.printActionButton,
+            !connected && styles.printActionDisabled,
+            pressed && styles.iconButtonPressed,
+          ]}
+          onPress={() => onPrint?.()}
+          disabled={!connected}
+        >
+          <View style={[styles.iconCircle, { backgroundColor: connected ? "#e0e7ff" : "#f1f5f9" }]}>
+            <Ionicons
+              name="print"
+              size={22}
+              color={connected ? Colors.primaryBlue : Colors.textMuted}
+            />
+          </View>
+          <View style={styles.actionTextWrap}>
+            <Text style={[styles.actionTitle, !connected && { color: Colors.textMuted }]}>
+              Print Receipt
+            </Text>
+            <Text style={[styles.actionSubtitle, connected ? styles.statusOnline : styles.statusOffline]}>
+              {connected ? `Connected (${deviceName ?? "Printer"})` : "Printer offline (Settings)"}
+            </Text>
+          </View>
+        </Pressable>
+
+        {/* Share PDF Icon Action */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.iconActionButton,
+            styles.shareActionButton,
+            pressed && styles.iconButtonPressed,
+          ]}
+          onPress={() => onShare?.()}
+        >
+          <View style={[styles.iconCircle, { backgroundColor: "#dcfce7" }]}>
+            <Ionicons name="share-social" size={22} color="#16a34a" />
+          </View>
+          <View style={styles.actionTextWrap}>
+            <Text style={[styles.actionTitle, { color: "#15803d" }]}>Share PDF</Text>
+            <Text style={styles.actionSubtitle}>Export professional PDF</Text>
+          </View>
+        </Pressable>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { gap: Spacing.sm },
-  qrRow: { alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 6 },
-  dot: { width: 9, height: 9, borderRadius: 4.5, backgroundColor: Colors.success },
-  qrText: { color: Colors.textSecondary, fontSize: 13 },
-  sheet: {
-    maxHeight: 560,
+  container: {
+    gap: Spacing.md,
+    paddingBottom: Spacing.xl,
+  },
+  paper: {
     backgroundColor: Colors.surface,
     borderRadius: Radius.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    padding: Spacing.lg,
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
   },
-  sheetContent: { padding: Spacing.md, gap: Spacing.sm },
-  headerLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  receiptTitle: { fontSize: 40, color: Colors.textPrimary, letterSpacing: 1 },
-  receiptDate: { fontSize: 12, color: Colors.textSecondary },
-  card: { backgroundColor: Colors.background, borderRadius: Radius.input, padding: Spacing.sm + 2, gap: Spacing.xs },
-  rowBetween: { flexDirection: "row", justifyContent: "space-between", gap: Spacing.sm },
-  cardTitle: { fontSize: 16, fontWeight: "700", color: Colors.textPrimary },
-  itemRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: Spacing.sm },
-  itemText: { flex: 1, fontSize: 14, color: Colors.textSecondary },
-  itemPrice: { fontSize: 14, color: Colors.textPrimary },
-  totalLabel: { fontSize: 19, fontWeight: "700", color: Colors.textPrimary },
-  totalValue: { fontSize: 24, fontWeight: "800", color: Colors.textPrimary },
-  meta: { fontSize: 13, color: Colors.textSecondary },
-  barcodeWrap: {
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "flex-end",
-    height: 58,
-    gap: 2,
-    marginTop: Spacing.sm,
+  header: {
+    alignItems: "center",
+    marginBottom: Spacing.sm,
   },
-  bar: { backgroundColor: "#111827", height: "100%" },
-  footerRef: { textAlign: "center", color: Colors.textMuted, fontSize: 12 },
-  bottomRow: { flexDirection: "row", alignItems: "center", gap: Spacing.xs },
-  printWrap: {
-    flex: 1,
-    backgroundColor: Colors.primaryBluePale,
-    borderRadius: Radius.input,
-    padding: 4,
+  badgeRow: {
+    marginBottom: Spacing.xs,
   },
-  printHint: {
-    textAlign: "center",
-    color: Colors.accentOrange,
-    fontSize: 12,
-    marginTop: 3,
-    fontWeight: "700",
+  badge: {
+    backgroundColor: "#eff6ff",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 20,
   },
-  printHintReady: {
+  badgeText: {
+    fontSize: 10,
+    fontWeight: "800",
     color: Colors.primaryBlue,
+    letterSpacing: 0.8,
   },
-  shareBtn: { minWidth: 110 },
+  storeName: {
+    ...Typography.title,
+    fontSize: 22,
+    fontWeight: "900",
+    color: Colors.textPrimary,
+    textTransform: "uppercase",
+    letterSpacing: -0.5,
+    textAlign: "center",
+  },
+  orderNumber: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.primaryBlue,
+    marginTop: 2,
+  },
+  timestamp: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  dashedDivider: {
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderStyle: "dashed",
+    marginVertical: Spacing.md,
+  },
+  solidDivider: {
+    height: 1,
+    backgroundColor: "#e2e8f0",
+    marginVertical: Spacing.sm,
+  },
+  itemsSection: {
+    gap: Spacing.xs,
+  },
+  tableHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+  },
+  tableHeaderLeft: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#94a3b8",
+    letterSpacing: 0.5,
+  },
+  tableHeaderRight: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#94a3b8",
+    letterSpacing: 0.5,
+  },
+  itemRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 4,
+  },
+  itemInfo: {
+    flex: 1,
+    paddingRight: Spacing.sm,
+  },
+  itemName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  itemSub: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: 1,
+  },
+  itemTotal: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  summarySection: {
+    gap: 6,
+    paddingVertical: Spacing.xs,
+  },
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  summaryLabel: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  summaryValue: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: Colors.textPrimary,
+  },
+  grandTotalBlock: {
+    backgroundColor: "#0f172a",
+    borderRadius: Radius.input,
+    paddingVertical: 14,
+    paddingHorizontal: Spacing.md,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginVertical: Spacing.sm,
+  },
+  grandTotalLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#cbd5e1",
+    letterSpacing: 0.5,
+  },
+  grandTotalValue: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#ffffff",
+  },
+  paymentBox: {
+    backgroundColor: "#f8fafc",
+    borderRadius: Radius.input,
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    gap: 4,
+    marginVertical: Spacing.xs,
+  },
+  paymentRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  paymentLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: Colors.textSecondary,
+  },
+  paymentValue: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  customerBox: {
+    backgroundColor: "#f8fafc",
+    borderRadius: Radius.input,
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+    gap: 2,
+    marginTop: Spacing.xs,
+  },
+  customerTitle: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#94a3b8",
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+  customerText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  barcodeWrap: {
+    alignItems: "center",
+    marginTop: Spacing.xs,
+  },
+  barcodeBars: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 38,
+    gap: 2,
+  },
+  bar: {
+    height: "100%",
+    backgroundColor: "#0f172a",
+    borderRadius: 1,
+  },
+  barcodeRef: {
+    textAlign: "center",
+    fontFamily: "monospace",
+    fontSize: 11,
+    color: Colors.textMuted,
+    letterSpacing: 2,
+    marginTop: 4,
+  },
+  footer: {
+    alignItems: "center",
+    marginTop: Spacing.sm,
+    gap: 2,
+  },
+  footerThanks: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  footerBrand: {
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
+  iconActionBar: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+  },
+  iconActionButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    padding: Spacing.sm,
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    gap: Spacing.sm,
+  },
+  printActionButton: {
+    backgroundColor: Colors.surface,
+    borderColor: "#c7d2fe",
+  },
+  printActionDisabled: {
+    opacity: 0.7,
+    borderColor: "#e2e8f0",
+  },
+  shareActionButton: {
+    backgroundColor: "#f0fdf4",
+    borderColor: "#bbf7d0",
+  },
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionTextWrap: {
+    flex: 1,
+  },
+  actionTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: Colors.textPrimary,
+  },
+  actionSubtitle: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 1,
+  },
+  statusOnline: {
+    color: Colors.primaryBlue,
+    fontWeight: "600",
+  },
+  statusOffline: {
+    color: Colors.accentOrange,
+  },
+  iconButtonPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
+  },
 });

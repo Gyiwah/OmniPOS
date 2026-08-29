@@ -21,6 +21,8 @@ import { database } from "@/src/database";
 import type Order from "@/src/database/models/Order";
 import type OrderItem from "@/src/database/models/OrderItem";
 
+import { shareReceiptAsPdf } from "@/src/utils/receiptPdf";
+
 type OrderRow = {
   id: string;
   order_number: string;
@@ -181,48 +183,12 @@ export default function ReceiptScreen() {
 
   async function onShareReceipt() {
     if (!remoteData) return;
-    const sym = remoteData.currency === "USD" ? "$" : remoteData.currency === "NGN" ? "₦" : "₵";
-    const subtotal = remoteData.lines.reduce((s, x) => s + x.price * x.quantity, 0);
-    const discount = remoteData.discountMode === "percentage" ? subtotal * (remoteData.discountValue / 100) : remoteData.discountValue;
-    const total = Math.max(0, subtotal - discount);
-
-    const linesFormatted = remoteData.lines.map((l) => `${l.name} x${l.quantity} - ${sym}${(l.price * l.quantity).toFixed(2)}`).join("\n");
-
-    const text = `
-=================================
-       ${shopName.toUpperCase()}
-=================================
-Order #: ${orderNumber}
-Date: ${dateLabel ?? new Date().toLocaleString()}
-Customer: ${remoteData.customerName || "Guest"}
----------------------------------
-${linesFormatted}
----------------------------------
-Subtotal: ${sym}${subtotal.toFixed(2)}
-Discount: -${sym}${discount.toFixed(2)}
-Total: ${sym}${total.toFixed(2)}
-Amount Paid: ${sym}${remoteData.amountPaid.toFixed(2)}
----------------------------------
-Thank you for shopping with us!
-=================================
-`.trim();
-
-    try {
-      const fileUri = `${FileSystem.cacheDirectory}receipt_${orderNumber}.txt`;
-      await FileSystem.writeAsStringAsync(fileUri, text, { encoding: FileSystem.EncodingType.UTF8 });
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: "text/plain",
-          dialogTitle: `Receipt ${orderNumber}`,
-          UTI: "public.plain-text",
-        });
-      } else {
-        Alert.alert("Sharing unavailable", "Sharing is not supported on this device.");
-      }
-    } catch (shareErr) {
-      Alert.alert("Share failed", toErrorMessage(shareErr, "Could not share receipt."));
-    }
+    await shareReceiptAsPdf({
+      shopName,
+      orderNumber,
+      dateLabel: dateLabel ?? new Date().toLocaleString(),
+      data: remoteData,
+    });
   }
 
   return (
@@ -231,9 +197,42 @@ Thank you for shopping with us!
       title="Order Receipt"
       subtitle={`Reference · ${ref}`}
       right={
-        <Pressable hitSlop={8} onPress={() => void onShareReceipt()}>
-          <Ionicons name="share-outline" size={24} color={Colors.primaryBlue} />
-        </Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Pressable
+            hitSlop={8}
+            onPress={() => void onPrintReceipt()}
+            style={({ pressed }) => [
+              {
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: Colors.primaryBluePale,
+                alignItems: "center",
+                justifyContent: "center",
+              },
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Ionicons name="print-outline" size={20} color={Colors.primaryBlue} />
+          </Pressable>
+          <Pressable
+            hitSlop={8}
+            onPress={() => void onShareReceipt()}
+            style={({ pressed }) => [
+              {
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: "#dcfce7",
+                alignItems: "center",
+                justifyContent: "center",
+              },
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Ionicons name="share-social-outline" size={20} color="#16a34a" />
+          </Pressable>
+        </View>
       }
     >
       {loading ? (
