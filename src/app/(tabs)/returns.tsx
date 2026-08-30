@@ -128,7 +128,7 @@ export default function ReturnsScreen() {
             onPress={() => setDateFilter("all")}
           >
             <Text style={[styles.filterPillText, dateFilter === "all" && styles.filterPillTextActive]}>
-              All Dates
+              All
             </Text>
           </Pressable>
           <Pressable
@@ -144,7 +144,7 @@ export default function ReturnsScreen() {
             onPress={() => setDateFilter("7d")}
           >
             <Text style={[styles.filterPillText, dateFilter === "7d" && styles.filterPillTextActive]}>
-              Last 7 Days
+              7 Days
             </Text>
           </Pressable>
           <Pressable
@@ -152,7 +152,7 @@ export default function ReturnsScreen() {
             onPress={() => setDateFilter("30d")}
           >
             <Text style={[styles.filterPillText, dateFilter === "30d" && styles.filterPillTextActive]}>
-              Last 30 Days
+              30 Days
             </Text>
           </Pressable>
         </View>
@@ -178,17 +178,12 @@ export default function ReturnsScreen() {
                 </View>
 
                 <View style={styles.returnInfo}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    <Text style={styles.orderNumber}>#{item.orderNumber}</Text>
-                    <View style={styles.refundBadge}>
-                      <Text style={styles.refundBadgeText}>Refund</Text>
-                    </View>
-                  </View>
-
+                  <Text style={styles.orderNumber} numberOfLines={1}>
+                    #{item.orderNumber}
+                  </Text>
                   <Text style={styles.returnReason} numberOfLines={1}>
                     Reason: {item.reason}
                   </Text>
-
                   <Text style={styles.returnDate}>
                     {new Date(item.createdAt).toLocaleString([], {
                       month: "short",
@@ -201,10 +196,13 @@ export default function ReturnsScreen() {
               </View>
 
               <View style={styles.returnRight}>
+                <View style={styles.refundBadge}>
+                  <Text style={styles.refundBadgeText}>Refund</Text>
+                </View>
                 <Text style={styles.returnAmount}>
                   -{symbol} {item.amount.toFixed(2)}
                 </Text>
-                <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} style={{ marginTop: 4 }} />
+                <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
               </View>
             </Pressable>
           ))}
@@ -360,14 +358,17 @@ const styles = StyleSheet.create({
   },
   refundBadge: {
     backgroundColor: "#fee2e2",
-    paddingHorizontal: 6,
+    paddingHorizontal: 7,
     paddingVertical: 2,
-    borderRadius: 10,
+    borderRadius: 8,
+    alignSelf: "flex-end",
   },
   refundBadgeText: {
     fontSize: 10,
     fontWeight: "800",
     color: "#dc2626",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   returnReason: {
     fontSize: 13,
@@ -380,10 +381,12 @@ const styles = StyleSheet.create({
   },
   returnRight: {
     alignItems: "flex-end",
-    paddingLeft: Spacing.sm,
+    justifyContent: "center",
+    paddingLeft: Spacing.xs,
+    gap: 3,
   },
   returnAmount: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "900",
     color: Colors.danger,
   },

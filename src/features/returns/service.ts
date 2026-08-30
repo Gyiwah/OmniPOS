@@ -12,37 +12,43 @@ function isUuid(value: string): boolean {
 async function fetchReturnedQtyByOrderItem(
   storeId: string,
   orderId: string,
-): Promise<Map<string, number>> {
-  const totals = new Map<string, number>();
+): Promise<{ itemTotals: Map<string, number>; totalRefunded: number; returnCount: number }> {
+  const itemTotals = new Map<string, number>();
+  let totalRefunded = 0;
+  let returnCount = 0;
 
-  const { data: returns, error: returnsError } = await supabase
-    .from("returns")
-    .select("id")
-    .eq("store_id", storeId)
-    .eq("order_id", orderId);
+  try {
+    const { data: returns, error: returnsError } = await supabase
+      .from("returns")
+      .select("id, amount")
+      .eq("store_id", storeId)
+      .eq("order_id", orderId);
 
-  if (returnsError || !returns?.length) return totals;
-
-  const returnIds = returns.map((row) => String(row.id));
-  const { data: items, error: itemsError } = await supabase
-    .from("return_items")
-    .select("order_item_id, quantity")
-    .eq("store_id", storeId)
-    .in("return_id", returnIds);
-
-  if (itemsError) {
-    if (itemsError.message.toLowerCase().includes("return_items")) {
-      return totals;
+    if (returnsError || !returns?.length) {
+      return { itemTotals, totalRefunded, returnCount };
     }
-    throw new Error(itemsError.message);
+
+    returnCount = returns.length;
+    totalRefunded = returns.reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
+
+    const returnIds = returns.map((row) => String(row.id));
+    const { data: items, error: itemsError } = await supabase
+      .from("return_items")
+      .select("order_item_id, quantity")
+      .eq("store_id", storeId)
+      .in("return_id", returnIds);
+
+    if (!itemsError && items?.length) {
+      items.forEach((row) => {
+        const key = String(row.order_item_id);
+        itemTotals.set(key, (itemTotals.get(key) ?? 0) + Number(row.quantity ?? 0));
+      });
+    }
+  } catch {
+    // fallback
   }
 
-  (items ?? []).forEach((row) => {
-    const key = String(row.order_item_id);
-    totals.set(key, (totals.get(key) ?? 0) + Number(row.quantity ?? 0));
-  });
-
-  return totals;
+  return { itemTotals, totalRefunded, returnCount };
 }
 
 export async function lookupOrderForReturn(storeId: string, ref: string): Promise<OrderForReturn | null> {
@@ -52,15 +58,19 @@ export async function lookupOrderForReturn(storeId: string, ref: string): Promis
   try {
     let query = supabase
       .from("orders")
-      .select("id, order_number, created_at, customer_name, status")
+      .select("id, order_number, created_at, customer_name, status, total")
       .eq("store_id", storeId);
 
     query = isUuid(cleanRef) ? query.eq("id", cleanRef) : query.eq("order_number", cleanRef);
 
     const { data: order, error } = await query.maybeSingle();
     if (!error && order) {
-      if (String(order.status) === "voided") {
+      const orderStatus = String(order.status).toLowerCase();
+      if (orderStatus === "voided") {
         throw new Error("This order was voided and cannot be returned.");
+      }
+      if (orderStatus === "refunded" || orderStatus === "returned") {
+        throw new Error(`Order #${order.order_number} has already been fully refunded and returned.`);
       }
 
       const { data: items, error: itemsError } = await supabase
@@ -71,26 +81,51 @@ export async function lookupOrderForReturn(storeId: string, ref: string): Promis
         .order("created_at", { ascending: true });
 
       if (itemsError) throw new Error(itemsError.message);
+      if (!items || items.length === 0) {
+        throw new Error("This order contains no items available for return.");
+      }
 
-      const returnedByItem = await fetchReturnedQtyByOrderItem(storeId, String(order.id));
+      const { itemTotals, totalRefunded, returnCount } = await fetchReturnedQtyByOrderItem(storeId, String(order.id));
 
-      return {
-        id: String(order.id),
-        orderNumber: String(order.order_number),
-        createdAt: String(order.created_at),
-        customerName: (order.customer_name as string | null) ?? null,
-        items: (items ?? []).map((item) => ({
+      const orderTotal = Number(order.total ?? 0);
+      const isAmountExhausted = orderTotal > 0 && totalRefunded >= orderTotal - 0.01;
+
+      const orderItems = items.map((item) => {
+        let retQty = itemTotals.get(String(item.id)) ?? 0;
+        // If return_items wasn't populated but full refund amount was already recorded
+        if (retQty === 0 && isAmountExhausted) {
+          retQty = Number(item.quantity ?? 0);
+        }
+        return {
           id: String(item.id),
           productId: item.product_id ? String(item.product_id) : null,
           sku: item.sku ? String(item.sku) : null,
           name: String(item.product_name),
           unitPrice: Number(item.unit_price ?? 0),
           purchasedQty: Number(item.quantity ?? 0),
-          returnedQty: returnedByItem.get(String(item.id)) ?? 0,
-        })),
+          returnedQty: retQty,
+        };
+      });
+
+      const hasRemaining = orderItems.some((i) => i.purchasedQty - i.returnedQty > 0);
+      if (!hasRemaining || isAmountExhausted) {
+        throw new Error(
+          `All items from receipt #${order.order_number} have already been returned and refunded (${returnCount} previous return${returnCount === 1 ? "" : "s"}).`
+        );
+      }
+
+      return {
+        id: String(order.id),
+        orderNumber: String(order.order_number),
+        createdAt: String(order.created_at),
+        customerName: (order.customer_name as string | null) ?? null,
+        items: orderItems,
       };
     }
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("already been")) {
+      throw err;
+    }
     // try local SQLite fallback
   }
 
@@ -98,8 +133,6 @@ export async function lookupOrderForReturn(storeId: string, ref: string): Promis
   try {
     const { database } = await import("@/src/database");
     const { Q } = await import("@nozbe/watermelondb");
-    const OrderModel = (await import("@/src/database/models/Order")).default;
-    const OrderItemModel = (await import("@/src/database/models/OrderItem")).default;
 
     const localOrders = await database
       .get<any>("orders")
@@ -111,29 +144,57 @@ export async function lookupOrderForReturn(storeId: string, ref: string): Promis
 
     const matched = localOrders[0];
     if (matched) {
+      const orderStatus = String(matched.status).toLowerCase();
+      if (orderStatus === "refunded" || orderStatus === "returned") {
+        throw new Error(`Order #${matched.orderNumber} has already been fully refunded and returned.`);
+      }
+
       const localItems = await database
         .get<any>("order_items")
         .query(Q.where("order_id", matched.id))
         .fetch();
 
-      return {
-        id: matched.id,
-        orderNumber: matched.orderNumber,
-        createdAt: new Date(matched.createdAt).toISOString(),
-        customerName: matched.customerName ?? null,
-        items: localItems.map((item: any) => ({
+      const { itemTotals, totalRefunded } = await fetchReturnedQtyByOrderItem(
+        storeId,
+        matched.remoteId || matched.id
+      );
+
+      const orderTotal = Number(matched.total ?? 0);
+      const isAmountExhausted = orderTotal > 0 && totalRefunded >= orderTotal - 0.01;
+
+      const orderItems = localItems.map((item: any) => {
+        let retQty = itemTotals.get(String(item.id)) ?? 0;
+        if (retQty === 0 && isAmountExhausted) {
+          retQty = Number(item.quantity ?? 0);
+        }
+        return {
           id: item.id,
           productId: item.productId ?? null,
           sku: item.sku ?? null,
           name: item.productName,
           unitPrice: Number(item.unitPrice ?? 0),
           purchasedQty: Number(item.quantity ?? 0),
-          returnedQty: 0,
-        })),
+          returnedQty: retQty,
+        };
+      });
+
+      const hasRemaining = orderItems.some((i: any) => i.purchasedQty - i.returnedQty > 0);
+      if (!hasRemaining || isAmountExhausted) {
+        throw new Error(`All items from receipt #${matched.orderNumber} have already been returned and refunded.`);
+      }
+
+      return {
+        id: matched.id,
+        orderNumber: matched.orderNumber,
+        createdAt: new Date(matched.createdAt).toISOString(),
+        customerName: matched.customerName ?? null,
+        items: orderItems,
       };
     }
-  } catch {
-    // fallback error
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("already been")) {
+      throw err;
+    }
   }
 
   return null;
@@ -153,8 +214,8 @@ export function validateReturnSelections(
     if (qty > remaining) {
       throw new Error(
         remaining <= 0
-          ? `"${item.name}" has no remaining quantity to return.`
-          : `"${item.name}" can only return ${remaining} more (requested ${qty}).`,
+          ? `"${item.name}" has already been fully returned and refunded.`
+          : `"${item.name}" only has ${remaining} unit${remaining === 1 ? "" : "s"} remaining to return (requested ${qty}).`,
       );
     }
 
@@ -169,7 +230,7 @@ export function validateReturnSelections(
   }
 
   if (lines.length === 0) {
-    throw new Error("Select at least one item to return.");
+    throw new Error("Select at least one item and quantity to return.");
   }
 
   return lines;
@@ -223,6 +284,47 @@ export async function processReturn(input: {
   }
 
   await restoreStockForReturn(input.storeId, input.lines);
+
+  // Update order status in Supabase and local SQLite to prevent reuse
+  try {
+    const { data: orderData } = await supabase
+      .from("orders")
+      .select("id, total")
+      .eq("id", input.orderId)
+      .maybeSingle();
+
+    const { totalRefunded } = await fetchReturnedQtyByOrderItem(input.storeId, input.orderId);
+    const orderTotal = Number(orderData?.total ?? 0);
+    const isFullyRefunded = orderTotal > 0 && totalRefunded >= orderTotal - 0.01;
+
+    const nextStatus = isFullyRefunded ? "refunded" : "partially_refunded";
+
+    await supabase
+      .from("orders")
+      .update({ status: nextStatus })
+      .eq("id", input.orderId);
+
+    // Also update local WatermelonDB order
+    const { database } = await import("@/src/database");
+    const { Q } = await import("@nozbe/watermelondb");
+    const localOrderList = await database
+      .get<any>("orders")
+      .query(Q.or(Q.where("id", input.orderId), Q.where("remote_id", input.orderId)))
+      .fetch();
+
+    if (localOrderList.length > 0) {
+      await database.write(async () => {
+        for (const lo of localOrderList) {
+          await lo.update((rec: any) => {
+            rec.status = nextStatus;
+          });
+        }
+      });
+    }
+  } catch {
+    // ignore non-critical status update failure
+  }
+
   return returnId;
 }
 

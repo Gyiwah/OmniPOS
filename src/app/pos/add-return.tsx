@@ -87,8 +87,10 @@ export default function AddReturnScreen() {
       setOrder(found);
       setCounts(Object.fromEntries(found.items.map((item) => [item.id, 0])));
     } catch (error) {
+      setOrder(null);
+      setCounts({});
       const message = error instanceof Error ? error.message : "Failed to load order";
-      Alert.alert("Load Failed", message);
+      Alert.alert("Return Unavailable", message);
     } finally {
       setLoadingOrder(false);
     }

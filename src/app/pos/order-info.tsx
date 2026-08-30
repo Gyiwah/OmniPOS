@@ -388,12 +388,12 @@ export default function OrderInfoScreen() {
       return;
     }
 
-    // Requirement 9: Walk-in customers must make full payment
-    const isWalkIn = !customerName?.trim() && !customerId;
-    if (isWalkIn && amountPaid < total - 0.01) {
+    // Strict Validation: Walk-in customers (anyone without a registered or saved profile) must pay in full.
+    const isProfileCustomer = Boolean(customerId || saveToCrm);
+    if (!isProfileCustomer && (amountPaid < total - 0.01 || amountPaid <= 0)) {
       Alert.alert(
-        "Full Payment Required for Walk-in",
-        "Walk-in customers must pay in full. To permit partial payment or debit/credit terms, please assign or select a Customer Profile."
+        "Full Payment Required",
+        `Walk-in customers must make full payment (${sym} ${total.toFixed(2)}).\n\nTo allow credit or partial payment, please select an existing customer profile or enable 'Save customer to store directory'.`
       );
       return;
     }
