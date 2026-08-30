@@ -2,6 +2,7 @@ import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { Alert } from "react-native";
 import type { ReceiptData } from "@/src/components/organisms/ReceiptDocument";
+import { generateBarcodeSvgHtml } from "@/src/utils/barcodeEncoder";
 
 export type ReceiptPdfProps = {
   shopName: string;
@@ -318,27 +319,8 @@ export function buildReceiptHtml({ shopName, orderNumber, dateLabel, data }: Rec
           }
 
           <div class="barcode-wrap">
-            <div class="barcode-bars">
-              <div class="bar" style="width: 3px;"></div>
-              <div class="bar" style="width: 1px;"></div>
-              <div class="bar" style="width: 4px;"></div>
-              <div class="bar" style="width: 2px;"></div>
-              <div class="bar" style="width: 1px;"></div>
-              <div class="bar" style="width: 3px;"></div>
-              <div class="bar" style="width: 2px;"></div>
-              <div class="bar" style="width: 4px;"></div>
-              <div class="bar" style="width: 1px;"></div>
-              <div class="bar" style="width: 2px;"></div>
-              <div class="bar" style="width: 3px;"></div>
-              <div class="bar" style="width: 1px;"></div>
-              <div class="bar" style="width: 4px;"></div>
-              <div class="bar" style="width: 2px;"></div>
-              <div class="bar" style="width: 3px;"></div>
-              <div class="bar" style="width: 1px;"></div>
-              <div class="bar" style="width: 2px;"></div>
-              <div class="bar" style="width: 4px;"></div>
-            </div>
-            <div style="font-family: monospace; font-size: 11px; letter-spacing: 2px; color: #64748b;">
+            ${generateBarcodeSvgHtml(orderNumber, 44)}
+            <div style="font-family: monospace; font-size: 11px; letter-spacing: 2px; color: #64748b; margin-top: 6px;">
               *${orderNumber}*
             </div>
           </div>

@@ -48,13 +48,22 @@ function currencySymbol(code: string) {
   return "₵";
 }
 
-function BarcodeVisual() {
-  const bars = [3, 1, 4, 2, 1, 3, 2, 4, 1, 2, 3, 1, 4, 2, 3, 1, 2, 4, 2, 1, 3, 2, 4, 1, 3, 2];
+import { encodeCode128B } from "@/src/utils/barcodeEncoder";
+
+function BarcodeVisual({ code }: { code: string }) {
+  const segments = encodeCode128B(code);
   return (
     <View style={styles.barcodeWrap}>
       <View style={styles.barcodeBars}>
-        {bars.map((w, idx) => (
-          <View key={`${idx}`} style={[styles.bar, { width: w }]} />
+        {segments.map((seg, idx) => (
+          <View
+            key={`bar-${idx}`}
+            style={{
+              width: seg.width * 1.5,
+              height: "100%",
+              backgroundColor: seg.isBlack ? Colors.navyDark : "transparent",
+            }}
+          />
         ))}
       </View>
     </View>
@@ -212,7 +221,7 @@ export function ReceiptDocument({ order, store, data, onPrint, onShare }: Receip
         <View style={styles.dashedDivider} />
 
         {/* Barcode & Footer */}
-        <BarcodeVisual />
+        <BarcodeVisual code={orderNum} />
         <Text style={styles.barcodeRef}>*{orderNum}*</Text>
 
         <View style={styles.footer}>

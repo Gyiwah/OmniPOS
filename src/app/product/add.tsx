@@ -176,6 +176,7 @@ export default function AddProductScreen() {
           r.sellPrice = sell;
           r.costPrice = cost;
           r.reorderLevel = Number.isFinite(reorderVal) ? reorderVal : 5;
+          r.tags = tags.trim() || undefined;
           r.imageUrl = imageUri ?? undefined;
           r.updatedAt = now;
           r.dirty = true;
@@ -233,6 +234,7 @@ export default function AddProductScreen() {
           stock: Math.floor(stock),
           price: sell,
           cost_price: cost ?? null,
+          reorder_level: Number.isFinite(reorderVal) ? reorderVal : 5,
           image_url: remoteImageUrlOnly(imageUri),
           local_image_uri: imageUri && isLocalImageUri(imageUri) ? imageUri : null,
           local_image_mime: imageUri && isLocalImageUri(imageUri) ? imageMimeType : null,

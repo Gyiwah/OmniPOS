@@ -334,6 +334,10 @@ async function pullProducts(storeId: string): Promise<void> {
           if ((row as Record<string, unknown>).reorder_level != null) {
             rec.reorderLevel = Number((row as Record<string, unknown>).reorder_level);
           }
+          if ((row as Record<string, unknown>).tags != null) {
+            const rawTags = (row as Record<string, unknown>).tags;
+            rec.tags = Array.isArray(rawTags) ? rawTags.join(", ") : typeof rawTags === "string" ? rawTags : undefined;
+          }
           rec.updatedAt = resolvedTs;
           rec.dirty = false;
         });
@@ -352,6 +356,8 @@ async function pullProducts(storeId: string): Promise<void> {
           rec.barcode = row.barcode ?? undefined;
           rec.imageUrl = row.image_url ?? undefined;
           rec.reorderLevel = (row as Record<string, unknown>).reorder_level != null ? Number((row as Record<string, unknown>).reorder_level) : 5;
+          const rawTags = (row as Record<string, unknown>).tags;
+          rec.tags = Array.isArray(rawTags) ? rawTags.join(", ") : typeof rawTags === "string" ? rawTags : undefined;
         });
       }
     }

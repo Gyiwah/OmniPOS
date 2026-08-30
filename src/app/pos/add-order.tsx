@@ -14,6 +14,7 @@ import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
 import { database } from "@/src/database";
 import type Product from "@/src/database/models/Product";
+import { playScannerBeep } from "@/src/utils/scannerAudio";
 import {
   canIncreaseQuantity,
   fetchStockByProductId,
@@ -115,6 +116,7 @@ export default function AddOrderScreen() {
       price: entry.price,
       barcode: entry.barcode,
     });
+    void playScannerBeep();
     setSearch("");
   }
 

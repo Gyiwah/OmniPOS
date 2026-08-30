@@ -123,5 +123,14 @@ export default schemaMigrations({
         }),
       ],
     },
+    {
+      toVersion: 5,
+      steps: [
+        addColumns({
+          table: "products",
+          columns: [{ name: "tags", type: "string", isOptional: true }],
+        }),
+      ],
+    },
   ],
 });

@@ -145,7 +145,14 @@ export default function CustomersScreen() {
           {filtered.map((item, idx) => {
             const avatarColor = AVATAR_COLORS[idx % AVATAR_COLORS.length];
             return (
-              <View key={item.id} style={styles.customerCard}>
+              <Pressable
+                key={item.id}
+                style={({ pressed }) => [
+                  styles.customerCard,
+                  pressed && { opacity: 0.8 },
+                ]}
+                onPress={() => router.push(`/customers/${item.id}`)}
+              >
                 <View style={[styles.avatarWrap, { backgroundColor: `${avatarColor}15` }]}>
                   <Text style={[styles.avatarInitials, { color: avatarColor }]}>
                     {item.name.slice(0, 2).toUpperCase()}
@@ -174,7 +181,8 @@ export default function CustomersScreen() {
                     {sym} {item.totalSpend.toFixed(2)}
                   </Text>
                 </View>
-              </View>
+                <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+              </Pressable>
             );
           })}
 

@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Alert, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { Q } from "@nozbe/watermelondb";
 
 import { TextInput } from "@/src/components/atoms/TextInput";
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
@@ -26,6 +27,7 @@ import { enqueueChange } from "@/src/sync/enqueue";
 import { database } from "@/src/database";
 import type Order from "@/src/database/models/Order";
 import type OrderItem from "@/src/database/models/OrderItem";
+import type Customer from "@/src/database/models/Customer";
 import type { PaymentMethod } from "@/src/store/orderDraftStore";
 
 function symbolFor(currency: string) {
@@ -33,6 +35,15 @@ function symbolFor(currency: string) {
   if (currency === "NGN") return "₦";
   return "₵";
 }
+
+type CustomerOption = {
+  id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  outstandingBalance: number;
+  totalSpend: number;
+};
 
 export default function OrderInfoScreen() {
   const router = useRouter();
@@ -57,7 +68,41 @@ export default function OrderInfoScreen() {
   } = useOrderDraftStore();
   const { currency, taxRate, vatRate, serviceRate } = useSettingsStore();
   const [customerOpen, setCustomerOpen] = useState(false);
+  const [saveToCrm, setSaveToCrm] = useState(true);
+  const [existingCustomers, setExistingCustomers] = useState<CustomerOption[]>([]);
   const [submitting, setSubmitting] = useState(false);
+
+  // Load existing customers for quick auto-suggest
+  useEffect(() => {
+    let mounted = true;
+    async function loadCustomers() {
+      if (!activeStoreId) return;
+      try {
+        const rows = await database
+          .get<Customer>("customers")
+          .query(Q.where("store_id", activeStoreId))
+          .fetch();
+        if (mounted) {
+          setExistingCustomers(
+            rows.map((r) => ({
+              id: r.id,
+              name: r.name,
+              phone: r.phone,
+              email: r.email,
+              outstandingBalance: Number(r.outstandingBalance ?? 0),
+              totalSpend: Number(r.totalSpend ?? 0),
+            }))
+          );
+        }
+      } catch {
+        // ignore
+      }
+    }
+    void loadCustomers();
+    return () => {
+      mounted = false;
+    };
+  }, [activeStoreId]);
 
   const subtotal = useMemo(() => lines.reduce((sum, line) => sum + line.price * line.quantity, 0), [lines]);
   const discountAmount = useMemo(
@@ -73,10 +118,112 @@ export default function OrderInfoScreen() {
   const balance = Math.max(0, total - amountPaid);
   const sym = symbolFor(currency);
 
+  const matchedCustomers = useMemo(() => {
+    const q = (customerName || customerPhone || "").trim().toLowerCase();
+    if (!q || q.length < 2) return [];
+    return existingCustomers
+      .filter((c) => c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)))
+      .slice(0, 4);
+  }, [customerName, customerPhone, existingCustomers]);
+
+  function selectExistingCustomer(c: CustomerOption) {
+    setCustomer({
+      name: c.name,
+      phone: c.phone,
+      id: c.id,
+    });
+  }
+
+  async function updateCustomerCrmRecord(assignedCustomerId?: string) {
+    if (!activeStoreId || !customerName?.trim()) return;
+    const now = Date.now();
+    const paid = Number(amountPaid) || 0;
+    const unpaid = Math.max(0, total - paid);
+
+    try {
+      let targetCust: Customer | null = null;
+      if (assignedCustomerId) {
+        try {
+          targetCust = await database.get<Customer>("customers").find(assignedCustomerId);
+        } catch {
+          // not found by id
+        }
+      }
+      if (!targetCust) {
+        const matches = await database
+          .get<Customer>("customers")
+          .query(
+            Q.where("store_id", activeStoreId),
+            customerPhone ? Q.where("phone", customerPhone.trim()) : Q.where("name", customerName.trim())
+          )
+          .fetch();
+        targetCust = matches[0] ?? null;
+      }
+
+      if (targetCust) {
+        await database.write(async () => {
+          await targetCust!.update((rec) => {
+            rec.totalSpend = Number(rec.totalSpend ?? 0) + paid;
+            rec.outstandingBalance = Number(rec.outstandingBalance ?? 0) + unpaid;
+            rec.updatedAt = now;
+            rec.dirty = true;
+          });
+        });
+
+        await enqueueChange({
+          storeId: activeStoreId,
+          entity: "customers",
+          operation: "upsert",
+          recordId: targetCust.id,
+          payload: {
+            id: targetCust.id,
+            store_id: activeStoreId,
+            name: targetCust.name,
+            phone: targetCust.phone ?? null,
+            total_spend: Number(targetCust.totalSpend ?? 0),
+            outstanding_balance: Number(targetCust.outstandingBalance ?? 0),
+          },
+        });
+      } else if (saveToCrm) {
+        let newCustId = "";
+        await database.write(async () => {
+          const created = await database.get<Customer>("customers").create((rec) => {
+            rec.storeId = activeStoreId;
+            rec.name = customerName.trim();
+            rec.phone = customerPhone?.trim() || undefined;
+            rec.totalSpend = paid;
+            rec.outstandingBalance = unpaid;
+            rec.updatedAt = now;
+            rec.dirty = true;
+          });
+          newCustId = created.id;
+        });
+
+        await enqueueChange({
+          storeId: activeStoreId,
+          entity: "customers",
+          operation: "upsert",
+          recordId: newCustId,
+          payload: {
+            id: newCustId,
+            store_id: activeStoreId,
+            name: customerName.trim(),
+            phone: customerPhone?.trim() || null,
+            total_spend: paid,
+            outstanding_balance: unpaid,
+          },
+        });
+      }
+    } catch {
+      // ignore CRM update error
+    }
+  }
+
   async function saveOrderOffline(orderNumber: string, cashierUserId: string) {
     if (!activeStoreId) return;
     const now = Date.now();
     let localOrderId = `local-ord-${now}`;
+    const orderStatus = amountPaid >= total - 0.01 ? "completed" : amountPaid <= 0 ? "credit" : "part_paid";
 
     await database.write(async () => {
       const ordersCol = database.get<Order>("orders");
@@ -86,7 +233,7 @@ export default function OrderInfoScreen() {
         rec.storeId = activeStoreId;
         rec.cashierUserId = cashierUserId;
         rec.orderNumber = orderNumber;
-        rec.status = "completed";
+        rec.status = orderStatus;
         rec.subtotal = subtotal;
         rec.tax = tax;
         rec.discount = discountAmount;
@@ -128,7 +275,7 @@ export default function OrderInfoScreen() {
           order_number: orderNumber,
           store_id: activeStoreId,
           cashier_user_id: cashierUserId,
-          status: "completed",
+          status: orderStatus,
           subtotal,
           tax_rate: taxRate,
           vat_rate: vatRate,
@@ -149,6 +296,8 @@ export default function OrderInfoScreen() {
       // offline fallback
     }
 
+    void updateCustomerCrmRecord(customerId);
+
     clearDraft();
     router.push(`/pos/receipt/${localOrderId}`);
   }
@@ -163,12 +312,23 @@ export default function OrderInfoScreen() {
       return;
     }
 
+    // Requirement 9: Walk-in customers must make full payment
+    const isWalkIn = !customerName?.trim() && !customerId;
+    if (isWalkIn && amountPaid < total - 0.01) {
+      Alert.alert(
+        "Full Payment Required for Walk-in",
+        "Walk-in customers must pay in full. To permit partial payment or debit/credit terms, please assign or select a Customer Profile."
+      );
+      return;
+    }
+
     setSubmitting(true);
     let stockAdjusted = false;
 
     try {
       const orderNumber = `ORD-${Date.now().toString().slice(-6)}`;
       const cashierUserId = userId ?? "00000000-0000-0000-0000-000000000000";
+      const orderStatus = amountPaid >= total - 0.01 ? "completed" : amountPaid <= 0 ? "credit" : "part_paid";
 
       const freshStock = await fetchStockByProductId(
         activeStoreId,
@@ -186,7 +346,7 @@ export default function OrderInfoScreen() {
             store_id: activeStoreId,
             cashier_user_id: cashierUserId,
             order_number: orderNumber,
-            status: "completed",
+            status: orderStatus,
             subtotal,
             tax_rate: taxRate,
             vat_rate: vatRate,
@@ -225,6 +385,8 @@ export default function OrderInfoScreen() {
         if (itemsError) {
           throw itemsError;
         }
+
+        void updateCustomerCrmRecord(customerId);
 
         clearDraft();
         router.push(`/pos/receipt/${inserted.id}`);
@@ -403,7 +565,13 @@ export default function OrderInfoScreen() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Ionicons name="person-circle-outline" size={22} color={Colors.primaryBlue} />
             <Text style={styles.cardSectionTitle}>Customer Information</Text>
-            <Text style={styles.optionalTag}>(Optional)</Text>
+            {customerId ? (
+              <View style={styles.assignedBadge}>
+                <Text style={styles.assignedBadgeText}>Saved Client</Text>
+              </View>
+            ) : (
+              <Text style={styles.optionalTag}>(Optional / Credit)</Text>
+            )}
           </View>
           <Ionicons
             name={customerOpen ? "chevron-up" : "chevron-down"}
@@ -414,13 +582,43 @@ export default function OrderInfoScreen() {
 
         {customerOpen ? (
           <View style={styles.customerFields}>
-            <TextInput
-              label="Customer Full Name"
-              value={customerName}
-              onChangeText={(name) => setCustomer({ name })}
-              placeholder="e.g. John Mensah"
-              leftIcon={<Ionicons name="person-outline" size={18} color={Colors.textMuted} />}
-            />
+            {/* Auto-suggest Matched Customers */}
+            {matchedCustomers.length > 0 && !customerId ? (
+              <View style={styles.suggestBox}>
+                <Text style={styles.suggestTitle}>Matching Existing Clients:</Text>
+                <View style={styles.suggestChipRow}>
+                  {matchedCustomers.map((mc) => (
+                    <Pressable
+                      key={mc.id}
+                      style={({ pressed }) => [styles.suggestChip, pressed && { opacity: 0.7 }]}
+                      onPress={() => selectExistingCustomer(mc)}
+                    >
+                      <Ionicons name="person" size={12} color={Colors.primaryBlue} />
+                      <Text style={styles.suggestChipName}>{mc.name}</Text>
+                      {mc.phone ? <Text style={styles.suggestChipPhone}>({mc.phone})</Text> : null}
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            <View style={{ position: "relative" }}>
+              <TextInput
+                label="Customer Full Name"
+                value={customerName}
+                onChangeText={(name) => setCustomer({ name, id: undefined })}
+                placeholder="e.g. Ama Serwaa (or Walk-in)"
+                leftIcon={<Ionicons name="person-outline" size={18} color={Colors.textMuted} />}
+                rightIcon={
+                  customerName ? (
+                    <Pressable onPress={() => setCustomer({ name: "", phone: "", id: undefined })} hitSlop={10}>
+                      <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
+                    </Pressable>
+                  ) : undefined
+                }
+              />
+            </View>
+
             <TextInput
               label="Phone Number"
               value={customerPhone}
@@ -429,6 +627,7 @@ export default function OrderInfoScreen() {
               keyboardType="phone-pad"
               leftIcon={<Ionicons name="call-outline" size={18} color={Colors.textMuted} />}
             />
+
             <TextInput
               label="Delivery / Shipping Address"
               value={shippingAddress}
@@ -436,10 +635,28 @@ export default function OrderInfoScreen() {
               placeholder="e.g. House No. 12, Osu, Accra"
               leftIcon={<Ionicons name="location-outline" size={18} color={Colors.textMuted} />}
             />
+
+            {/* Save Customer Toggle */}
+            {!customerId && customerName?.trim() ? (
+              <View style={styles.saveToggleRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.saveToggleLabel}>Save customer to store directory</Text>
+                  <Text style={styles.saveToggleSub}>Enables future autofill, order tracking & credit balances.</Text>
+                </View>
+                <Switch
+                  value={saveToCrm}
+                  onValueChange={setSaveToCrm}
+                  trackColor={{ false: "#e2e8f0", true: Colors.primaryBlueLight }}
+                  thumbColor={saveToCrm ? Colors.primaryBlue : "#cbd5e1"}
+                />
+              </View>
+            ) : null}
           </View>
         ) : (
           <Text style={styles.customerClosedHint}>
-            {customerName ? `Assigned to: ${customerName}` : "Tap to record customer name, phone, or address."}
+            {customerName
+              ? `Assigned to: ${customerName}${customerPhone ? ` (${customerPhone})` : ""}`
+              : "Walk-in sale (Full payment). Tap to assign customer for credit/partial payment."}
           </Text>
         )}
       </SectionCard>
@@ -650,6 +867,79 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textMuted,
     fontWeight: "400",
+  },
+  assignedBadge: {
+    backgroundColor: "#eff6ff",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+  },
+  assignedBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: Colors.primaryBlue,
+  },
+  suggestBox: {
+    backgroundColor: Colors.background,
+    borderRadius: Radius.input,
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    gap: 6,
+  },
+  suggestTitle: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: Colors.textSecondary,
+    textTransform: "uppercase",
+  },
+  suggestChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  suggestChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: Colors.surface,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  suggestChipName: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  suggestChipPhone: {
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
+  saveToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: Colors.background,
+    padding: Spacing.sm,
+    borderRadius: Radius.input,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    marginTop: 4,
+  },
+  saveToggleLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  saveToggleSub: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 2,
   },
   customerClosedHint: {
     fontSize: 13,

@@ -57,12 +57,12 @@ export default function AddReturnScreen() {
     [counts],
   );
 
-  async function loadOrder() {
+  async function loadOrder(overrideRef?: string) {
     if (!activeStoreId) {
       Alert.alert("Store Missing", "Select an active store before processing returns.");
       return;
     }
-    const cleanRef = orderRef.trim();
+    const cleanRef = (overrideRef ?? orderRef).trim().replace(/^\*|\*$/g, "");
     if (!cleanRef) {
       Alert.alert("Order Required", "Enter or scan a receipt or order number.");
       return;
@@ -166,8 +166,10 @@ export default function AddReturnScreen() {
             <BarcodeScanner
               label="Scan receipt barcode"
               onScan={(payload) => {
-                setOrderRef(payload);
+                const clean = payload.trim().replace(/^\*|\*$/g, "");
+                setOrderRef(clean);
                 setShowScanner(false);
+                void loadOrder(clean);
               }}
             />
           </View>

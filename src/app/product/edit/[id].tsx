@@ -104,7 +104,7 @@ export default function EditProductScreen() {
         setCostPrice(found.costPrice == null ? "" : String(found.costPrice));
         setSellPrice(String(found.sellPrice ?? 0));
         setReorderLevel(String(found.reorderLevel ?? 5));
-        setTags("");
+        setTags(found.tags ?? "");
 
         if (found.imageUrl) {
           const resolved = await resolveProductImageUrl(found.imageUrl);
@@ -390,6 +390,7 @@ export default function EditProductScreen() {
           rec.sellPrice = sell;
           rec.costPrice = cost;
           rec.reorderLevel = Number.isFinite(reorderVal) ? reorderVal : 5;
+          rec.tags = tags.trim() || undefined;
           rec.barcode = sku.trim() || rec.barcode;
           if (pickedLocalUri) {
             rec.imageUrl = pickedLocalUri;
@@ -436,10 +437,11 @@ export default function EditProductScreen() {
           id: productRef.remoteId ?? productRef.id,
           name: cleanName,
           sku: productRef.sku,
-          barcode: sku.trim() || productRef.sku,
+          barcode: productRef.sku,
           stock: Math.floor(stock),
           price: sell,
           cost_price: cost ?? null,
+          reorder_level: Number.isFinite(reorderVal) ? reorderVal : 5,
           image_url: imageRef,
           local_image_uri: pickedLocalUri,
           local_image_mime: pickedLocalUri ? imageMimeType : null,
@@ -515,23 +517,31 @@ export default function EditProductScreen() {
 
       {/* Identity Section */}
       <SectionCard>
-        <Text style={styles.sectionTitle}>Identity</Text>
+        <View style={styles.cardHeader}>
+          <Ionicons name="barcode-outline" size={20} color={Colors.primaryBlue} />
+          <Text style={styles.sectionTitle}>Product Identification</Text>
+        </View>
+
         <TextInput
-          label="Product code / SKU"
+          label="Barcode / Product SKU (Locked)"
           value={sku}
           editable={false}
-          placeholder="Read-only product code"
+          leftIcon={<Ionicons name="lock-closed-outline" size={18} color={Colors.textMuted} />}
         />
+        <Text style={styles.fieldHelper}>
+          Barcode / SKU is the primary unique identifier and cannot be modified after creation.
+        </Text>
+
         <TextInput
-          label="Product name"
+          label="Product name *"
           value={name}
           onChangeText={(value) => {
             setName(value);
             setErrors((prev) => ({ ...prev, name: "" }));
           }}
-          placeholder="e.g. Sawyer Picaridin Insect Repellent"
+          placeholder="e.g. Cerelac Wheat 400g"
           error={errors.name}
-          multiline
+          leftIcon={<Ionicons name="cube-outline" size={18} color={Colors.textMuted} />}
         />
       </SectionCard>
 
@@ -1032,5 +1042,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 2,
     borderColor: Colors.surface,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: Spacing.xs,
+  },
+  fieldHelper: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: -Spacing.xs,
+    marginBottom: Spacing.sm,
   },
 });

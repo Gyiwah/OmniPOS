@@ -13,6 +13,7 @@ export default class Product extends Model {
   @field("sell_price") sellPrice!: number;
   @field("cost_price") costPrice?: number;
   @field("reorder_level") reorderLevel?: number;
+  @field("tags") tags?: string;
   @field("image_url") imageUrl?: string;
   @field("updated_at") updatedAt!: number;
   @field("dirty") dirty!: boolean;

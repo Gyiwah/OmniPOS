@@ -46,50 +46,97 @@ async function fetchReturnedQtyByOrderItem(
 }
 
 export async function lookupOrderForReturn(storeId: string, ref: string): Promise<OrderForReturn | null> {
-  const cleanRef = ref.trim();
+  const cleanRef = ref.trim().replace(/^\*|\*$/g, ""); // Strip any barcode asterisks
   if (!cleanRef) return null;
 
-  let query = supabase
-    .from("orders")
-    .select("id, order_number, created_at, customer_name, status")
-    .eq("store_id", storeId);
+  try {
+    let query = supabase
+      .from("orders")
+      .select("id, order_number, created_at, customer_name, status")
+      .eq("store_id", storeId);
 
-  query = isUuid(cleanRef) ? query.eq("id", cleanRef) : query.eq("order_number", cleanRef);
+    query = isUuid(cleanRef) ? query.eq("id", cleanRef) : query.eq("order_number", cleanRef);
 
-  const { data: order, error } = await query.maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!order) return null;
+    const { data: order, error } = await query.maybeSingle();
+    if (!error && order) {
+      if (String(order.status) === "voided") {
+        throw new Error("This order was voided and cannot be returned.");
+      }
 
-  if (String(order.status) === "voided") {
-    throw new Error("This order was voided and cannot be returned.");
+      const { data: items, error: itemsError } = await supabase
+        .from("order_items")
+        .select("id, product_id, sku, product_name, unit_price, quantity")
+        .eq("store_id", storeId)
+        .eq("order_id", order.id)
+        .order("created_at", { ascending: true });
+
+      if (itemsError) throw new Error(itemsError.message);
+
+      const returnedByItem = await fetchReturnedQtyByOrderItem(storeId, String(order.id));
+
+      return {
+        id: String(order.id),
+        orderNumber: String(order.order_number),
+        createdAt: String(order.created_at),
+        customerName: (order.customer_name as string | null) ?? null,
+        items: (items ?? []).map((item) => ({
+          id: String(item.id),
+          productId: item.product_id ? String(item.product_id) : null,
+          sku: item.sku ? String(item.sku) : null,
+          name: String(item.product_name),
+          unitPrice: Number(item.unit_price ?? 0),
+          purchasedQty: Number(item.quantity ?? 0),
+          returnedQty: returnedByItem.get(String(item.id)) ?? 0,
+        })),
+      };
+    }
+  } catch {
+    // try local SQLite fallback
   }
 
-  const { data: items, error: itemsError } = await supabase
-    .from("order_items")
-    .select("id, product_id, sku, product_name, unit_price, quantity")
-    .eq("store_id", storeId)
-    .eq("order_id", order.id)
-    .order("created_at", { ascending: true });
+  // Fallback: check SQLite WatermelonDB
+  try {
+    const { database } = await import("@/src/database");
+    const { Q } = await import("@nozbe/watermelondb");
+    const OrderModel = (await import("@/src/database/models/Order")).default;
+    const OrderItemModel = (await import("@/src/database/models/OrderItem")).default;
 
-  if (itemsError) throw new Error(itemsError.message);
+    const localOrders = await database
+      .get<any>("orders")
+      .query(
+        Q.where("store_id", storeId),
+        Q.or(Q.where("order_number", cleanRef), Q.where("id", cleanRef), Q.where("remote_id", cleanRef))
+      )
+      .fetch();
 
-  const returnedByItem = await fetchReturnedQtyByOrderItem(storeId, String(order.id));
+    const matched = localOrders[0];
+    if (matched) {
+      const localItems = await database
+        .get<any>("order_items")
+        .query(Q.where("order_id", matched.id))
+        .fetch();
 
-  return {
-    id: String(order.id),
-    orderNumber: String(order.order_number),
-    createdAt: String(order.created_at),
-    customerName: (order.customer_name as string | null) ?? null,
-    items: (items ?? []).map((item) => ({
-      id: String(item.id),
-      productId: item.product_id ? String(item.product_id) : null,
-      sku: item.sku ? String(item.sku) : null,
-      name: String(item.product_name),
-      unitPrice: Number(item.unit_price ?? 0),
-      purchasedQty: Number(item.quantity ?? 0),
-      returnedQty: returnedByItem.get(String(item.id)) ?? 0,
-    })),
-  };
+      return {
+        id: matched.id,
+        orderNumber: matched.orderNumber,
+        createdAt: new Date(matched.createdAt).toISOString(),
+        customerName: matched.customerName ?? null,
+        items: localItems.map((item: any) => ({
+          id: item.id,
+          productId: item.productId ?? null,
+          sku: item.sku ?? null,
+          name: item.productName,
+          unitPrice: Number(item.unitPrice ?? 0),
+          purchasedQty: Number(item.quantity ?? 0),
+          returnedQty: 0,
+        })),
+      };
+    }
+  } catch {
+    // fallback error
+  }
+
+  return null;
 }
 
 export function validateReturnSelections(

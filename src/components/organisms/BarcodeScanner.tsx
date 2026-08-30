@@ -6,6 +6,8 @@ import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 
+import { playScannerBeep } from "@/src/utils/scannerAudio";
+
 /** Stage-1 scaffold: swaps to react-native-vision-camera + barcode plugin in POS build */
 type BarcodeScannerProps = {
   label?: string;
@@ -22,6 +24,7 @@ export function BarcodeScanner({ label = "Align barcode inside frame", flashEnab
     const payload = result.data?.trim();
     if (!payload) return;
     setLocked(true);
+    void playScannerBeep();
     onScan(payload);
   }
 
