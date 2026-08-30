@@ -241,16 +241,11 @@ export default function OrdersScreen() {
                 </View>
 
                 <View style={styles.orderMetaCol}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    <Text style={styles.orderNumberText}>#{order.orderNumber}</Text>
-                    <View style={[styles.statusBadge, order.isPartPayment ? styles.statusBadgePart : styles.statusBadgePaid]}>
-                      <Text style={[styles.statusBadgeText, order.isPartPayment ? styles.statusTextPart : styles.statusTextPaid]}>
-                        {order.isPartPayment ? "Part Paid" : "Paid"}
-                      </Text>
-                    </View>
-                  </View>
+                  <Text style={styles.orderNumberText} numberOfLines={1} ellipsizeMode="tail">
+                    #{order.orderNumber}
+                  </Text>
 
-                  <Text style={styles.customerNameText}>
+                  <Text style={styles.customerNameText} numberOfLines={1} ellipsizeMode="tail">
                     {order.customerName ? order.customerName : "Walk-in Customer"}
                     {order.customerPhone ? ` · ${order.customerPhone}` : ""}
                   </Text>
@@ -258,21 +253,25 @@ export default function OrdersScreen() {
                   <View style={styles.orderSubRow}>
                     <Text style={styles.orderDateText}>{order.dateLabel}</Text>
                     <Text style={styles.orderUnitCount}>
-                      {order.itemCount} {order.itemCount === 1 ? "unit" : "units"}
+                      · {order.itemCount} {order.itemCount === 1 ? "unit" : "units"}
                     </Text>
                   </View>
                 </View>
               </View>
 
-              {/* Right Total & Chevron */}
+              {/* Right Total, Status Badge & Chevron */}
               <View style={styles.orderRight}>
+                <View style={[styles.statusBadge, order.isPartPayment ? styles.statusBadgePart : styles.statusBadgePaid]}>
+                  <Text style={[styles.statusBadgeText, order.isPartPayment ? styles.statusTextPart : styles.statusTextPaid]}>
+                    {order.isPartPayment ? "Part Paid" : "Paid"}
+                  </Text>
+                </View>
                 <Text style={styles.orderTotalText}>
                   {currencySymbol} {order.total.toFixed(2)}
                 </Text>
                 {order.isPartPayment ? (
                   <Text style={styles.paidText}>Paid: {currencySymbol}{order.amountPaid.toFixed(2)}</Text>
                 ) : null}
-                <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} style={{ marginTop: 4 }} />
               </View>
             </Pressable>
           ))}
@@ -430,9 +429,11 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   statusBadge: {
-    paddingHorizontal: 6,
+    paddingHorizontal: 7,
     paddingVertical: 2,
-    borderRadius: 10,
+    borderRadius: 8,
+    alignSelf: "flex-end",
+    marginBottom: 2,
   },
   statusBadgePaid: {
     backgroundColor: "#dcfce7",
@@ -443,6 +444,8 @@ const styles = StyleSheet.create({
   statusBadgeText: {
     fontSize: 10,
     fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
   },
   statusTextPaid: {
     color: "#16a34a",
@@ -458,7 +461,7 @@ const styles = StyleSheet.create({
   orderSubRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
     marginTop: 1,
   },
   orderDateText: {
@@ -472,18 +475,20 @@ const styles = StyleSheet.create({
   },
   orderRight: {
     alignItems: "flex-end",
-    paddingLeft: Spacing.sm,
+    justifyContent: "center",
+    paddingLeft: Spacing.xs,
+    gap: 2,
   },
   orderTotalText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "900",
     color: Colors.textPrimary,
   },
   paidText: {
     fontSize: 11,
     color: Colors.accentOrange,
-    fontWeight: "600",
-    marginTop: 2,
+    fontWeight: "700",
+    marginTop: 1,
   },
   emptyBox: {
     alignItems: "center",

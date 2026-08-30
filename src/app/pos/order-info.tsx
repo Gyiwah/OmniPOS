@@ -71,7 +71,7 @@ export default function OrderInfoScreen() {
   } = useOrderDraftStore();
   const { currency, taxRate, vatRate, serviceRate } = useSettingsStore();
   const [customerOpen, setCustomerOpen] = useState(false);
-  const [saveToCrm, setSaveToCrm] = useState(true);
+  const [saveToCrm, setSaveToCrm] = useState(false);
   const [existingCustomers, setExistingCustomers] = useState<CustomerOption[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -120,6 +120,13 @@ export default function OrderInfoScreen() {
   const change = Math.max(0, amountPaid - total);
   const balance = Math.max(0, total - amountPaid);
   const sym = symbolFor(currency);
+
+  // Sync amountPaid with total if amountPaid was not explicitly modified
+  useEffect(() => {
+    if (amountPaid === 0 && total > 0) {
+      setAmountPaid(Number(total.toFixed(2)));
+    }
+  }, [total]);
 
   const matchedCustomers = useMemo(() => {
     const q = (customerName || customerPhone || "").trim().toLowerCase();
@@ -388,12 +395,13 @@ export default function OrderInfoScreen() {
       return;
     }
 
-    // Strict Validation: Walk-in customers (anyone without a registered or saved profile) must pay in full.
-    const isProfileCustomer = Boolean(customerId || saveToCrm);
+    // Strict Validation: Only customers with an existing profile (customerId)
+    // or who have a valid name AND 'Save to directory' enabled qualify for credit / partial payment.
+    const isProfileCustomer = Boolean(customerId || (customerName?.trim() && saveToCrm));
     if (!isProfileCustomer && (amountPaid < total - 0.01 || amountPaid <= 0)) {
       Alert.alert(
-        "Full Payment Required",
-        `Walk-in customers must make full payment (${sym} ${total.toFixed(2)}).\n\nTo allow credit or partial payment, please select an existing customer profile or enable 'Save customer to store directory'.`
+        "Full Payment Required for Walk-ins",
+        `Walk-in customers must make full payment (${sym} ${total.toFixed(2)}).\n\nTo allow partial payment or store credit, please assign a Customer Profile or enter a customer name and enable "Save customer to store directory".`
       );
       return;
     }
