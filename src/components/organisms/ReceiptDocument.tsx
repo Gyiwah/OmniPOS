@@ -59,7 +59,8 @@ function BarcodeVisual({ code }: { code: string }) {
           <View
             key={`bar-${idx}`}
             style={{
-              width: seg.width * 1.5,
+              flexGrow: seg.width,
+              flexBasis: 0,
               height: "100%",
               backgroundColor: seg.isBlack ? Colors.navyDark : "transparent",
             }}
@@ -481,12 +482,14 @@ const styles = StyleSheet.create({
   barcodeWrap: {
     alignItems: "center",
     marginTop: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
   },
   barcodeBars: {
     flexDirection: "row",
-    alignItems: "center",
-    height: 38,
-    gap: 2,
+    alignItems: "stretch",
+    width: "85%",
+    maxWidth: 260,
+    height: 42,
   },
   bar: {
     height: "100%",

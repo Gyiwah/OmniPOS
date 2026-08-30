@@ -1,4 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Crypto from "expo-crypto";
+import NetInfo from "@react-native-community/netinfo";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, StyleSheet, Switch, Text, View } from "react-native";
@@ -24,6 +26,7 @@ import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
 
 import { enqueueChange } from "@/src/sync/enqueue";
+import { runSyncCycle } from "@/src/sync/syncEngine";
 import { database } from "@/src/database";
 import type Order from "@/src/database/models/Order";
 import type OrderItem from "@/src/database/models/OrderItem";
@@ -161,34 +164,75 @@ export default function OrderInfoScreen() {
       }
 
       if (targetCust) {
+        const nextSpend = Number(targetCust.totalSpend ?? 0) + paid;
+        const nextBal = Number(targetCust.outstandingBalance ?? 0) + unpaid;
+
         await database.write(async () => {
           await targetCust!.update((rec) => {
-            rec.totalSpend = Number(rec.totalSpend ?? 0) + paid;
-            rec.outstandingBalance = Number(rec.outstandingBalance ?? 0) + unpaid;
+            rec.totalSpend = nextSpend;
+            rec.outstandingBalance = nextBal;
             rec.updatedAt = now;
             rec.dirty = true;
           });
         });
 
-        await enqueueChange({
-          storeId: activeStoreId,
-          entity: "customers",
-          operation: "upsert",
-          recordId: targetCust.id,
-          payload: {
-            id: targetCust.id,
-            store_id: activeStoreId,
-            name: targetCust.name,
-            phone: targetCust.phone ?? null,
-            total_spend: Number(targetCust.totalSpend ?? 0),
-            outstanding_balance: Number(targetCust.outstandingBalance ?? 0),
-          },
-        });
+        const custRemoteId = targetCust.remoteId || targetCust.id;
+
+        // Try direct sync
+        try {
+          const net = await NetInfo.fetch();
+          if (net.isConnected) {
+            await supabase.from("customers").upsert(
+              {
+                id: custRemoteId,
+                store_id: activeStoreId,
+                name: targetCust.name,
+                phone: targetCust.phone ?? null,
+                email: targetCust.email ?? null,
+                total_spend: nextSpend,
+                outstanding_balance: nextBal,
+              },
+              { onConflict: "id" }
+            );
+          } else {
+            await enqueueChange({
+              storeId: activeStoreId,
+              entity: "customers",
+              operation: "upsert",
+              recordId: targetCust.id,
+              payload: {
+                id: custRemoteId,
+                store_id: activeStoreId,
+                name: targetCust.name,
+                phone: targetCust.phone ?? null,
+                total_spend: nextSpend,
+                outstanding_balance: nextBal,
+              },
+            });
+          }
+        } catch {
+          await enqueueChange({
+            storeId: activeStoreId,
+            entity: "customers",
+            operation: "upsert",
+            recordId: targetCust.id,
+            payload: {
+              id: custRemoteId,
+              store_id: activeStoreId,
+              name: targetCust.name,
+              phone: targetCust.phone ?? null,
+              total_spend: nextSpend,
+              outstanding_balance: nextBal,
+            },
+          });
+        }
       } else if (saveToCrm) {
-        let newCustId = "";
+        const newCustId = Crypto.randomUUID();
         await database.write(async () => {
-          const created = await database.get<Customer>("customers").create((rec) => {
+          await database.get<Customer>("customers").create((rec) => {
+            rec._raw.id = newCustId;
             rec.storeId = activeStoreId;
+            rec.remoteId = newCustId;
             rec.name = customerName.trim();
             rec.phone = customerPhone?.trim() || undefined;
             rec.totalSpend = paid;
@@ -196,23 +240,55 @@ export default function OrderInfoScreen() {
             rec.updatedAt = now;
             rec.dirty = true;
           });
-          newCustId = created.id;
         });
 
-        await enqueueChange({
-          storeId: activeStoreId,
-          entity: "customers",
-          operation: "upsert",
-          recordId: newCustId,
-          payload: {
-            id: newCustId,
-            store_id: activeStoreId,
-            name: customerName.trim(),
-            phone: customerPhone?.trim() || null,
-            total_spend: paid,
-            outstanding_balance: unpaid,
-          },
-        });
+        // Try direct sync
+        try {
+          const net = await NetInfo.fetch();
+          if (net.isConnected) {
+            await supabase.from("customers").upsert(
+              {
+                id: newCustId,
+                store_id: activeStoreId,
+                name: customerName.trim(),
+                phone: customerPhone?.trim() || null,
+                total_spend: paid,
+                outstanding_balance: unpaid,
+              },
+              { onConflict: "id" }
+            );
+          } else {
+            await enqueueChange({
+              storeId: activeStoreId,
+              entity: "customers",
+              operation: "upsert",
+              recordId: newCustId,
+              payload: {
+                id: newCustId,
+                store_id: activeStoreId,
+                name: customerName.trim(),
+                phone: customerPhone?.trim() || null,
+                total_spend: paid,
+                outstanding_balance: unpaid,
+              },
+            });
+          }
+        } catch {
+          await enqueueChange({
+            storeId: activeStoreId,
+            entity: "customers",
+            operation: "upsert",
+            recordId: newCustId,
+            payload: {
+              id: newCustId,
+              store_id: activeStoreId,
+              name: customerName.trim(),
+              phone: customerPhone?.trim() || null,
+              total_spend: paid,
+              outstanding_balance: unpaid,
+            },
+          });
+        }
       }
     } catch {
       // ignore CRM update error

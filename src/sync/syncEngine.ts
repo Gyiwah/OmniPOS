@@ -467,14 +467,26 @@ async function flushCustomerQueue(storeId: string): Promise<SyncCycleResult> {
         const payload = JSON.parse(item.payload) as CustomerUpsertPayload;
         const row = buildCustomerRowForSupabase(payload);
 
-        const { data: inserted, error: custErr } = await supabase
-          .from("customers")
-          .upsert(row)
-          .select("id")
-          .single();
+        let remoteId = payload.id;
+        if (row.id) {
+          const { data: inserted, error: custErr } = await supabase
+            .from("customers")
+            .upsert(row, { onConflict: "id" })
+            .select("id")
+            .single();
 
-        if (custErr) throw new Error(custErr.message);
-        const remoteId = inserted?.id ?? payload.id;
+          if (custErr) throw new Error(custErr.message);
+          remoteId = inserted?.id ?? payload.id;
+        } else {
+          const { data: inserted, error: custErr } = await supabase
+            .from("customers")
+            .insert(row)
+            .select("id")
+            .single();
+
+          if (custErr) throw new Error(custErr.message);
+          remoteId = inserted?.id;
+        }
 
         if (item.recordId && remoteId) {
           try {
@@ -536,7 +548,12 @@ async function pullCustomers(storeId: string): Promise<void> {
     for (const row of rows) {
       const ts = Date.parse(row.updated_at);
       const resolvedTs = Number.isFinite(ts) ? ts : Date.now();
-      const match = await custCol.query(Q.where("store_id", row.store_id), Q.where("name", row.name)).fetch();
+      const match = await custCol
+        .query(
+          Q.where("store_id", row.store_id),
+          Q.or(Q.where("id", row.id), Q.where("remote_id", row.id), Q.where("name", row.name))
+        )
+        .fetch();
 
       const found = match[0];
       if (found) {

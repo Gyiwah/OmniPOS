@@ -1,3 +1,9 @@
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isUuid(value?: string | null): boolean {
+  return Boolean(value && UUID_REGEX.test(value.trim()));
+}
+
 export type CustomerUpsertPayload = {
   id?: string;
   store_id: string;
@@ -15,14 +21,15 @@ export function buildCustomerRowForSupabase(payload: CustomerUpsertPayload): Rec
     name: payload.name,
     phone: payload.phone ?? null,
     email: payload.email ?? null,
-    total_spend: payload.total_spend ?? 0,
-    outstanding_balance: payload.outstanding_balance ?? 0,
+    total_spend: Number(payload.total_spend ?? 0),
+    outstanding_balance: Number(payload.outstanding_balance ?? 0),
     notes: payload.notes ?? null,
   };
 
-  if (payload.id && payload.id.length > 20) {
+  if (payload.id && isUuid(payload.id)) {
     row.id = payload.id;
   }
 
   return row;
 }
+

@@ -1,7 +1,9 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
+import * as Crypto from "expo-crypto";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import NetInfo from "@react-native-community/netinfo";
 
 import { TextInput } from "@/src/components/atoms/TextInput";
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
@@ -13,6 +15,8 @@ import { database } from "@/src/database";
 import type Customer from "@/src/database/models/Customer";
 import { useStoreSlice } from "@/src/store/storeSlice";
 import { enqueueChange } from "@/src/sync/enqueue";
+import { runSyncCycle } from "@/src/sync/syncEngine";
+import { supabase } from "@/src/services/supabase";
 
 export default function AddCustomerScreen() {
   const router = useRouter();
@@ -36,12 +40,14 @@ export default function AddCustomerScreen() {
     setSubmitting(true);
     try {
       const now = Date.now();
-      let recordId = "";
+      const customerId = Crypto.randomUUID();
 
       await database.write(async () => {
         const custCol = database.get<Customer>("customers");
-        const created = await custCol.create((rec) => {
+        await custCol.create((rec) => {
+          rec._raw.id = customerId;
           rec.storeId = activeStoreId;
+          rec.remoteId = customerId;
           rec.name = name.trim();
           rec.phone = phone.trim() || undefined;
           rec.email = email.trim() || undefined;
@@ -51,27 +57,66 @@ export default function AddCustomerScreen() {
           rec.updatedAt = now;
           rec.dirty = true;
         });
-        recordId = created.id;
       });
 
-      await enqueueChange({
-        storeId: activeStoreId,
-        entity: "customers",
-        operation: "upsert",
-        recordId,
-        payload: {
-          id: recordId,
-          store_id: activeStoreId,
-          name: name.trim(),
-          phone: phone.trim() || null,
-          email: email.trim() || null,
-          notes: notes.trim() || null,
-          total_spend: 0,
-          outstanding_balance: 0,
-        },
-      });
+      // Attempt direct cloud insert if online
+      let syncedDirectly = false;
+      const net = await NetInfo.fetch();
+      if (net.isConnected) {
+        try {
+          const { error: insertErr } = await supabase.from("customers").upsert(
+            {
+              id: customerId,
+              store_id: activeStoreId,
+              name: name.trim(),
+              phone: phone.trim() || null,
+              email: email.trim() || null,
+              notes: notes.trim() || null,
+              total_spend: 0,
+              outstanding_balance: 0,
+            },
+            { onConflict: "id" }
+          );
 
-      Alert.alert("Customer Registered", `"${name}" was successfully added to your store database.`);
+          if (!insertErr) {
+            syncedDirectly = true;
+            try {
+              const localRec = await database.get<Customer>("customers").find(customerId);
+              await database.write(async () => {
+                await localRec.update((r) => {
+                  r.dirty = false;
+                });
+              });
+            } catch {
+              // ignore
+            }
+          }
+        } catch {
+          // fallback to queue
+        }
+      }
+
+      if (!syncedDirectly) {
+        await enqueueChange({
+          storeId: activeStoreId,
+          entity: "customers",
+          operation: "upsert",
+          recordId: customerId,
+          payload: {
+            id: customerId,
+            store_id: activeStoreId,
+            name: name.trim(),
+            phone: phone.trim() || null,
+            email: email.trim() || null,
+            notes: notes.trim() || null,
+            total_spend: 0,
+            outstanding_balance: 0,
+          },
+        });
+        void runSyncCycle(activeStoreId);
+      }
+
+      Alert.alert("Customer Registered", `"${name.trim()}" was successfully added to your store database.`);
       router.back();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not create customer profile";
