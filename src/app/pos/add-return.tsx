@@ -119,6 +119,7 @@ export default function AddReturnScreen() {
       const returnId = await processReturn({
         storeId: activeStoreId,
         orderId: order.id,
+        orderNumber: order.orderNumber,
         reason: reason.trim() || "Customer return",
         lines,
         processedByUserId,

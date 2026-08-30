@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/src/services/supabase";
 import { restoreStockForReturn } from "./stock";
 import type { OrderForReturn, ReturnDetail, ReturnLineInput, ReturnListRow } from "./types";
@@ -9,43 +10,136 @@ function isUuid(value: string): boolean {
   return UUID_RE.test(value.trim());
 }
 
+export function cleanReturnReason(reason?: string | null): string {
+  if (!reason) return "Customer return";
+  return reason.replace(/\[ITEMS:.*?\]/g, "").trim() || "Customer return";
+}
+
 async function fetchReturnedQtyByOrderItem(
   storeId: string,
   orderId: string,
-): Promise<{ itemTotals: Map<string, number>; totalRefunded: number; returnCount: number }> {
+  orderNumber?: string,
+): Promise<{
+  itemTotals: Map<string, number>;
+  totalRefunded: number;
+  returnCount: number;
+}> {
   const itemTotals = new Map<string, number>();
   let totalRefunded = 0;
   let returnCount = 0;
 
+  // 1. Check local persistent AsyncStorage registry
   try {
-    const { data: returns, error: returnsError } = await supabase
-      .from("returns")
-      .select("id, amount")
-      .eq("store_id", storeId)
-      .eq("order_id", orderId);
+    const keysToCheck = [
+      `omnipos:returned_items:${storeId}:${orderId}`,
+      orderNumber ? `omnipos:returned_items:${storeId}:${orderNumber}` : null,
+    ].filter(Boolean) as string[];
 
-    if (returnsError || !returns?.length) {
-      return { itemTotals, totalRefunded, returnCount };
-    }
-
-    returnCount = returns.length;
-    totalRefunded = returns.reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
-
-    const returnIds = returns.map((row) => String(row.id));
-    const { data: items, error: itemsError } = await supabase
-      .from("return_items")
-      .select("order_item_id, quantity")
-      .eq("store_id", storeId)
-      .in("return_id", returnIds);
-
-    if (!itemsError && items?.length) {
-      items.forEach((row) => {
-        const key = String(row.order_item_id);
-        itemTotals.set(key, (itemTotals.get(key) ?? 0) + Number(row.quantity ?? 0));
-      });
+    for (const key of keysToCheck) {
+      const raw = await AsyncStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((line: any) => {
+            const qty = Number(line.quantity ?? 0);
+            if (line.orderItemId) {
+              const k = String(line.orderItemId);
+              itemTotals.set(k, (itemTotals.get(k) ?? 0) + qty);
+            }
+            if (line.name) {
+              const k = String(line.name).trim().toLowerCase();
+              itemTotals.set(k, (itemTotals.get(k) ?? 0) + qty);
+            }
+            if (line.productId) {
+              const k = String(line.productId);
+              itemTotals.set(k, (itemTotals.get(k) ?? 0) + qty);
+            }
+          });
+        }
+      }
     }
   } catch {
-    // fallback
+    // ignore
+  }
+
+  // 2. Check Supabase returns & return_items
+  try {
+    let qb = supabase
+      .from("returns")
+      .select("id, amount, reason")
+      .eq("store_id", storeId);
+
+    if (orderNumber && orderId !== orderNumber) {
+      qb = isUuid(orderId)
+        ? qb.or(`order_id.eq.${orderId}`)
+        : qb.eq("order_id", orderId);
+    } else {
+      qb = qb.eq("order_id", orderId);
+    }
+
+    const { data: returns, error: returnsError } = await qb;
+
+    if (!returnsError && returns?.length) {
+      returnCount = Math.max(returnCount, returns.length);
+      totalRefunded = returns.reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
+
+      // Parse item manifest in reason if available
+      returns.forEach((r) => {
+        const reasonStr = String(r.reason ?? "");
+        const match = reasonStr.match(/\[ITEMS:(.*?)\]/);
+        if (match && match[1]) {
+          try {
+            const parsedLines = JSON.parse(match[1]);
+            if (Array.isArray(parsedLines)) {
+              parsedLines.forEach((line: any) => {
+                const qty = Number(line.quantity ?? 0);
+                if (line.orderItemId) {
+                  const k = String(line.orderItemId);
+                  itemTotals.set(k, (itemTotals.get(k) ?? 0) + qty);
+                }
+                if (line.name) {
+                  const k = String(line.name).trim().toLowerCase();
+                  itemTotals.set(k, (itemTotals.get(k) ?? 0) + qty);
+                }
+                if (line.productId) {
+                  const k = String(line.productId);
+                  itemTotals.set(k, (itemTotals.get(k) ?? 0) + qty);
+                }
+              });
+            }
+          } catch {
+            // ignore JSON parse
+          }
+        }
+      });
+
+      const returnIds = returns.map((row) => String(row.id));
+      const { data: items } = await supabase
+        .from("return_items")
+        .select("order_item_id, product_name, product_id, quantity")
+        .eq("store_id", storeId)
+        .in("return_id", returnIds);
+
+      if (items?.length) {
+        items.forEach((row) => {
+          const qty = Number(row.quantity ?? 0);
+          if (row.order_item_id) {
+            const k = String(row.order_item_id);
+            itemTotals.set(k, (itemTotals.get(k) ?? 0) + qty);
+          }
+          if (row.product_name) {
+            const k = String(row.product_name).trim().toLowerCase();
+            itemTotals.set(k, (itemTotals.get(k) ?? 0) + qty);
+          }
+          if (row.product_id) {
+            const k = String(row.product_id);
+            itemTotals.set(k, (itemTotals.get(k) ?? 0) + qty);
+          }
+        });
+      }
+    }
+  } catch {
+    // ignore
   }
 
   return { itemTotals, totalRefunded, returnCount };
@@ -85,17 +179,30 @@ export async function lookupOrderForReturn(storeId: string, ref: string): Promis
         throw new Error("This order contains no items available for return.");
       }
 
-      const { itemTotals, totalRefunded, returnCount } = await fetchReturnedQtyByOrderItem(storeId, String(order.id));
+      const { itemTotals, totalRefunded, returnCount } = await fetchReturnedQtyByOrderItem(
+        storeId,
+        String(order.id),
+        String(order.order_number),
+      );
 
       const orderTotal = Number(order.total ?? 0);
       const isAmountExhausted = orderTotal > 0 && totalRefunded >= orderTotal - 0.01;
 
       const orderItems = items.map((item) => {
-        let retQty = itemTotals.get(String(item.id)) ?? 0;
-        // If return_items wasn't populated but full refund amount was already recorded
+        const keyId = String(item.id);
+        const keyName = String(item.product_name).trim().toLowerCase();
+        const keyProdId = item.product_id ? String(item.product_id) : "";
+
+        const qtyById = itemTotals.get(keyId) ?? 0;
+        const qtyByName = itemTotals.get(keyName) ?? 0;
+        const qtyByProdId = keyProdId ? itemTotals.get(keyProdId) ?? 0 : 0;
+
+        let retQty = Math.max(qtyById, qtyByName, qtyByProdId);
         if (retQty === 0 && isAmountExhausted) {
           retQty = Number(item.quantity ?? 0);
         }
+        retQty = Math.min(Number(item.quantity ?? 0), retQty);
+
         return {
           id: String(item.id),
           productId: item.product_id ? String(item.product_id) : null,
@@ -156,17 +263,28 @@ export async function lookupOrderForReturn(storeId: string, ref: string): Promis
 
       const { itemTotals, totalRefunded } = await fetchReturnedQtyByOrderItem(
         storeId,
-        matched.remoteId || matched.id
+        matched.remoteId || matched.id,
+        matched.orderNumber,
       );
 
       const orderTotal = Number(matched.total ?? 0);
       const isAmountExhausted = orderTotal > 0 && totalRefunded >= orderTotal - 0.01;
 
       const orderItems = localItems.map((item: any) => {
-        let retQty = itemTotals.get(String(item.id)) ?? 0;
+        const keyId = String(item.id);
+        const keyName = String(item.productName).trim().toLowerCase();
+        const keyProdId = item.productId ? String(item.productId) : "";
+
+        const qtyById = itemTotals.get(keyId) ?? 0;
+        const qtyByName = itemTotals.get(keyName) ?? 0;
+        const qtyByProdId = keyProdId ? itemTotals.get(keyProdId) ?? 0 : 0;
+
+        let retQty = Math.max(qtyById, qtyByName, qtyByProdId);
         if (retQty === 0 && isAmountExhausted) {
           retQty = Number(item.quantity ?? 0);
         }
+        retQty = Math.min(Number(item.quantity ?? 0), retQty);
+
         return {
           id: item.id,
           productId: item.productId ?? null,
@@ -243,6 +361,7 @@ export function calculateRefundAmount(lines: ReturnLineInput[]): number {
 export async function processReturn(input: {
   storeId: string;
   orderId: string;
+  orderNumber?: string;
   reason: string;
   lines: ReturnLineInput[];
   processedByUserId: string;
@@ -251,13 +370,26 @@ export async function processReturn(input: {
 
   await supabase.from("profiles").upsert({ id: input.processedByUserId }, { onConflict: "id" });
 
+  const manifest = JSON.stringify(
+    input.lines.map((l) => ({
+      orderItemId: l.orderItemId,
+      productId: l.productId,
+      name: l.name,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+    }))
+  );
+
+  const cleanUserReason = input.reason.trim() || "Customer return";
+  const fullReasonWithManifest = `${cleanUserReason} [ITEMS:${manifest}]`;
+
   const { data: inserted, error } = await supabase
     .from("returns")
     .insert({
       store_id: input.storeId,
       order_id: input.orderId,
       processed_by_user_id: input.processedByUserId,
-      reason: input.reason.trim() || "Customer return",
+      reason: fullReasonWithManifest,
       amount,
     })
     .select("id")
@@ -267,20 +399,40 @@ export async function processReturn(input: {
   if (!inserted?.id) throw new Error("Return created but missing id.");
 
   const returnId = String(inserted.id);
+
+  // Store in return_items
   const itemsPayload = input.lines.map((line) => ({
     return_id: returnId,
     store_id: input.storeId,
-    order_item_id: line.orderItemId,
-    product_id: line.productId,
+    order_item_id: isUuid(line.orderItemId) ? line.orderItemId : null,
+    product_id: line.productId && isUuid(line.productId) ? line.productId : null,
     product_name: line.name,
     unit_price: line.unitPrice,
     quantity: line.quantity,
     line_total: line.unitPrice * line.quantity,
   }));
 
-  const { error: itemsError } = await supabase.from("return_items").insert(itemsPayload);
-  if (itemsError && !itemsError.message.toLowerCase().includes("return_items")) {
-    throw new Error(itemsError.message);
+  try {
+    await supabase.from("return_items").insert(itemsPayload);
+  } catch {
+    // Handled by manifest
+  }
+
+  // Save to local persistent AsyncStorage registry
+  try {
+    const keysToSave = [
+      `omnipos:returned_items:${input.storeId}:${input.orderId}`,
+      input.orderNumber ? `omnipos:returned_items:${input.storeId}:${input.orderNumber}` : null,
+    ].filter(Boolean) as string[];
+
+    for (const key of keysToSave) {
+      const raw = await AsyncStorage.getItem(key);
+      const prev: any[] = raw ? JSON.parse(raw) : [];
+      const updated = [...prev, ...input.lines];
+      await AsyncStorage.setItem(key, JSON.stringify(updated));
+    }
+  } catch {
+    // ignore
   }
 
   await restoreStockForReturn(input.storeId, input.lines);
@@ -293,7 +445,11 @@ export async function processReturn(input: {
       .eq("id", input.orderId)
       .maybeSingle();
 
-    const { totalRefunded } = await fetchReturnedQtyByOrderItem(input.storeId, input.orderId);
+    const { totalRefunded } = await fetchReturnedQtyByOrderItem(
+      input.storeId,
+      input.orderId,
+      input.orderNumber,
+    );
     const orderTotal = Number(orderData?.total ?? 0);
     const isFullyRefunded = orderTotal > 0 && totalRefunded >= orderTotal - 0.01;
 
@@ -355,18 +511,20 @@ export async function listReturns(storeId: string): Promise<ReturnListRow[]> {
       itemCounts.set(key, (itemCounts.get(key) ?? 0) + Number(row.quantity ?? 0));
     });
   } else {
-    const { data: orderItems } = await supabase
-      .from("order_items")
-      .select("order_id, quantity")
-      .eq("store_id", storeId)
-      .in("order_id", orderIds);
-    const orderTotals = new Map<string, number>();
-    (orderItems ?? []).forEach((row) => {
-      const key = String(row.order_id);
-      orderTotals.set(key, (orderTotals.get(key) ?? 0) + Number(row.quantity ?? 0));
-    });
     returns.forEach((row) => {
-      itemCounts.set(String(row.id), orderTotals.get(String(row.order_id)) ?? 1);
+      const reasonStr = String(row.reason ?? "");
+      const match = reasonStr.match(/\[ITEMS:(.*?)\]/);
+      if (match && match[1]) {
+        try {
+          const parsed = JSON.parse(match[1]);
+          if (Array.isArray(parsed)) {
+            const count = parsed.reduce((sum: number, l: any) => sum + Number(l.quantity ?? 0), 0);
+            itemCounts.set(String(row.id), count);
+          }
+        } catch {
+          // ignore
+        }
+      }
     });
   }
 
@@ -384,10 +542,10 @@ export async function listReturns(storeId: string): Promise<ReturnListRow[]> {
     id: String(row.id),
     orderId: String(row.order_id),
     orderNumber: orderNumbers.get(String(row.order_id)) ?? String(row.order_id).slice(0, 8),
-    reason: String(row.reason ?? ""),
+    reason: cleanReturnReason(row.reason),
     amount: Number(row.amount ?? 0),
     createdAt: String(row.created_at),
-    itemCount: itemCounts.get(String(row.id)) ?? 0,
+    itemCount: itemCounts.get(String(row.id)) ?? 1,
   }));
 }
 
@@ -415,11 +573,7 @@ export async function getReturnDetail(storeId: string, returnId: string): Promis
     .eq("store_id", storeId)
     .eq("return_id", row.id);
 
-  if (itemsError && !itemsError.message.toLowerCase().includes("return_items")) {
-    throw new Error(itemsError.message);
-  }
-
-  const mappedItems = (items ?? []).map((item) => ({
+  let mappedItems = (items ?? []).map((item) => ({
     id: String(item.id),
     name: String(item.product_name),
     quantity: Number(item.quantity ?? 0),
@@ -427,11 +581,32 @@ export async function getReturnDetail(storeId: string, returnId: string): Promis
     lineTotal: Number(item.line_total ?? 0),
   }));
 
+  if (mappedItems.length === 0) {
+    const reasonStr = String(row.reason ?? "");
+    const match = reasonStr.match(/\[ITEMS:(.*?)\]/);
+    if (match && match[1]) {
+      try {
+        const parsed = JSON.parse(match[1]);
+        if (Array.isArray(parsed)) {
+          mappedItems = parsed.map((item: any, idx: number) => ({
+            id: `line-${idx}`,
+            name: String(item.name),
+            quantity: Number(item.quantity ?? 0),
+            unitPrice: Number(item.unitPrice ?? 0),
+            lineTotal: Number(item.unitPrice ?? 0) * Number(item.quantity ?? 0),
+          }));
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   return {
     id: String(row.id),
     orderId: String(row.order_id),
     orderNumber: order?.order_number ? String(order.order_number) : String(row.order_id).slice(0, 8),
-    reason: String(row.reason ?? ""),
+    reason: cleanReturnReason(row.reason),
     amount: Number(row.amount ?? 0),
     createdAt: String(row.created_at),
     itemCount: mappedItems.reduce((sum, item) => sum + item.quantity, 0),
