@@ -24,7 +24,7 @@ import { recordStockMovement } from "@/src/features/inventory/stockMovementServi
 import { enqueueChange } from "@/src/sync/enqueue";
 import { remoteImageUrlOnly } from "@/src/sync/productRow";
 import { isLocalImageUri } from "@/src/services/storage";
-import { runSyncCycle } from "@/src/sync/syncEngine";
+import { synchronise } from "@/src/sync";
 import { useStoreSlice } from "@/src/store/storeSlice";
 import { isNonNegativeNumber, isPositiveNumber, isRequired } from "@/src/utils/validators";
 
@@ -245,7 +245,7 @@ export default function AddProductScreen() {
 
       const net = await NetInfo.fetch();
       if (net.isConnected) {
-        const syncResult = await runSyncCycle(activeStoreId);
+        const syncResult = await synchronise(activeStoreId);
         if (!syncResult.ok) {
           Alert.alert(
             "Saved locally",

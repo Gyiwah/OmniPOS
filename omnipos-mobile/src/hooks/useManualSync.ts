@@ -1,7 +1,7 @@
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback } from "react";
 
-import { runSyncCycle } from "@/src/sync/syncEngine";
+import { synchronise } from "@/src/sync";
 import { refreshPendingSyncCount } from "@/src/sync/syncCounters";
 import { useStoreSlice } from "@/src/store/storeSlice";
 import { useSyncStore } from "@/src/store/syncStore";
@@ -22,7 +22,7 @@ export function useManualSync() {
 
   const triggerSync = useCallback(async () => {
     if (!activeStoreId || syncing) return null;
-    const result = await runSyncCycle(activeStoreId);
+    const result = await synchronise(activeStoreId);
     await refreshPendingSyncCount();
     return result;
   }, [activeStoreId, syncing]);

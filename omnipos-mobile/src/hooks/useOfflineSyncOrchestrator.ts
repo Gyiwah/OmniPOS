@@ -5,7 +5,7 @@ import { AppState } from "react-native";
 
 import { getOrCreateOfflineEncryptionMaterial } from "@/src/database/encryptionKey";
 import { registerBackgroundSync } from "@/src/sync/backgroundSyncRegistration";
-import { runSyncCycle } from "@/src/sync/syncEngine";
+import { synchronise } from "@/src/sync";
 import { SYNC_STORAGE } from "@/src/sync/keys";
 import { refreshPendingSyncCount } from "@/src/sync/syncCounters";
 import { useStoreSlice } from "@/src/store/storeSlice";
@@ -32,7 +32,7 @@ export function useOfflineSyncOrchestrator(appReady = true): void {
     if (!appReady || !activeStoreId) return;
     const unsub = network.subscribe((state) => {
       if (state.isConnected) {
-        void runSyncCycle(activeStoreId);
+        void synchronise(activeStoreId);
       }
     });
     return unsub;
@@ -42,7 +42,7 @@ export function useOfflineSyncOrchestrator(appReady = true): void {
     if (!appReady || !activeStoreId) return;
     const sub = AppState.addEventListener("change", (next) => {
       if (next === "active") {
-        void runSyncCycle(activeStoreId);
+        void synchronise(activeStoreId);
       }
     });
     return () => sub.remove();
@@ -50,6 +50,6 @@ export function useOfflineSyncOrchestrator(appReady = true): void {
 
   useEffect(() => {
     if (!appReady || !activeStoreId) return;
-    void runSyncCycle(activeStoreId);
+    void synchronise(activeStoreId);
   }, [activeStoreId, appReady]);
 }

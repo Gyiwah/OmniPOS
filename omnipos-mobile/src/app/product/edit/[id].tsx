@@ -39,7 +39,7 @@ import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
 import { isNonNegativeNumber, isPositiveNumber, isRequired } from "@/src/utils/validators";
 import { enqueueChange } from "@/src/sync/enqueue";
-import { runSyncCycle } from "@/src/sync/syncEngine";
+import { synchronise } from "@/src/sync";
 
 export default function EditProductScreen() {
   const { id } = useLocalSearchParams<{ id?: string | string[] }>();
@@ -455,7 +455,7 @@ export default function EditProductScreen() {
 
       const net = await NetInfo.fetch();
       if (net.isConnected) {
-        const syncResult = await runSyncCycle(activeStoreId);
+        const syncResult = await synchronise(activeStoreId);
         if (!syncResult.ok) {
           Alert.alert(
             "Updated locally",

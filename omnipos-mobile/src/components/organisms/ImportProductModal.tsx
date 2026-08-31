@@ -27,7 +27,7 @@ import type Product from "@/src/database/models/Product";
 import { createProductBatch } from "@/src/features/inventory/batchService";
 import { supabase } from "@/src/services/supabase";
 import { enqueueChange } from "@/src/sync/enqueue";
-import { runSyncCycle } from "@/src/sync/syncEngine";
+import { synchronise } from "@/src/sync";
 
 type ParsedProduct = {
   name: string;
@@ -301,7 +301,7 @@ export function ImportProductModal({
         }
       });
 
-      void runSyncCycle(storeId);
+      void synchronise(storeId);
 
       Alert.alert(
         "Import Complete",

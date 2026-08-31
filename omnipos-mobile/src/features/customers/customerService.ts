@@ -6,7 +6,7 @@ import type Customer from "@/src/database/models/Customer";
 import type Order from "@/src/database/models/Order";
 import { supabase } from "@/src/services/supabase";
 import { enqueueChange } from "@/src/sync/enqueue";
-import { runSyncCycle } from "@/src/sync/syncEngine";
+import { synchronise } from "@/src/sync";
 
 export type CustomerProfileData = {
   id: string;
@@ -130,7 +130,7 @@ export async function updateCustomerProfile(
       recordId: localCustomer.id,
       payload,
     });
-    void runSyncCycle(storeId);
+    void synchronise(storeId);
   }
 }
 
@@ -393,7 +393,7 @@ export async function settleCustomerBalance(
     }
   }
 
-  void runSyncCycle(storeId);
+  void synchronise(storeId);
 
   return {
     totalPaid: totalPaymentProcessed,

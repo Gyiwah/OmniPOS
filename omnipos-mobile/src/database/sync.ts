@@ -1,1 +1,1 @@
-export { runSyncCycle as runSync } from "@/src/sync/syncEngine";
+export { synchronise as runSync } from "@/src/sync";

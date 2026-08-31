@@ -15,7 +15,7 @@ import { database } from "@/src/database";
 import type Customer from "@/src/database/models/Customer";
 import { useStoreSlice } from "@/src/store/storeSlice";
 import { enqueueChange } from "@/src/sync/enqueue";
-import { runSyncCycle } from "@/src/sync/syncEngine";
+import { synchronise } from "@/src/sync";
 import { supabase } from "@/src/services/supabase";
 
 export default function AddCustomerScreen() {
@@ -113,7 +113,7 @@ export default function AddCustomerScreen() {
             outstanding_balance: 0,
           },
         });
-        void runSyncCycle(activeStoreId);
+        void synchronise(activeStoreId);
       }
 
       Alert.alert("Customer Registered", `"${name.trim()}" was successfully added to your store database.`);

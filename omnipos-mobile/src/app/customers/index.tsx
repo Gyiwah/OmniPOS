@@ -15,7 +15,7 @@ import { database } from "@/src/database";
 import type Customer from "@/src/database/models/Customer";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
-import { runSyncCycle } from "@/src/sync/syncEngine";
+import { synchronise } from "@/src/sync";
 
 type CustomerItem = {
   id: string;
@@ -63,7 +63,7 @@ export default function CustomersScreen() {
       );
 
       // Trigger background sync
-      void runSyncCycle(activeStoreId);
+      void synchronise(activeStoreId);
     } catch {
       // ignore load errors
     } finally {

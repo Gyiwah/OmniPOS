@@ -14,7 +14,7 @@ import { Typography } from "@/src/constants/typography";
 import { database } from "@/src/database";
 import type Order from "@/src/database/models/Order";
 import type OrderItem from "@/src/database/models/OrderItem";
-import { runSyncCycle } from "@/src/sync/syncEngine";
+import { synchronise } from "@/src/sync";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
 
@@ -112,7 +112,7 @@ export default function OrdersScreen() {
     void loadLocalOrders();
     // Trigger non-blocking background sync
     if (activeStoreId) {
-      void runSyncCycle(activeStoreId).then(() => {
+      void synchronise(activeStoreId).then(() => {
         void loadLocalOrders();
       });
     }
@@ -122,7 +122,7 @@ export default function OrdersScreen() {
     if (!activeStoreId) return;
     setRefreshing(true);
     try {
-      await runSyncCycle(activeStoreId);
+      await synchronise(activeStoreId);
       await loadLocalOrders();
     } finally {
       setRefreshing(false);

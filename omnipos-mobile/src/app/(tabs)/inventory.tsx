@@ -22,7 +22,7 @@ import type SyncQueueItem from "@/src/database/models/SyncQueueItem";
 import { calculateExpiryStatus, getAllStoreBatches } from "@/src/features/inventory/batchService";
 import { resolveProductImageUrl } from "@/src/services/storage";
 import { useSettingsStore } from "@/src/store/settingsStore";
-import { runSyncCycle } from "@/src/sync/syncEngine";
+import { synchronise } from "@/src/sync";
 import { useStoreSlice } from "@/src/store/storeSlice";
 
 type InventoryRow = {

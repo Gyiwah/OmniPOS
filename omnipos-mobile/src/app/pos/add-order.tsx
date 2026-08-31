@@ -27,7 +27,7 @@ import {
   canIncreaseQuantity,
   fetchStockByProductId,
 } from "@/src/features/orders/stock";
-import { runSyncCycle } from "@/src/sync/syncEngine";
+import { synchronise } from "@/src/sync";
 import { useOrderDraftStore } from "@/src/store/orderDraftStore";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
@@ -97,7 +97,7 @@ export default function AddOrderScreen() {
     );
 
     // Non-blocking sync in background
-    void runSyncCycle(activeStoreId);
+    void synchronise(activeStoreId);
   }, [activeStoreId]);
 
   useEffect(() => {
