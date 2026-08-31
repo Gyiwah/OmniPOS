@@ -1,0 +1,335 @@
+/*
+ * Deliberately dark and high-contrast: a till often sits under harsh shop
+ * lighting, and the cashier is reading it at a glance while a queue waits.
+ * Type is large for the same reason.
+ */
+:root {
+  --bg: #0f172a;
+  --panel: #1e293b;
+  --panel-2: #273449;
+  --line: #334155;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #38bdf8;
+  --ok: #22c55e;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+  --radius: 10px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+}
+
+button { font: inherit; cursor: pointer; }
+input, select { font: inherit; }
+
+input, select {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 0.55rem 0.7rem;
+}
+input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.muted { color: var(--muted); }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9em; }
+.danger-text { color: var(--danger); }
+.boot { padding: 3rem; text-align: center; color: var(--muted); }
+
+/* ---------------------------------------------------------------- shell */
+
+.shell { min-height: 100vh; display: flex; flex-direction: column; }
+
+.shell-header {
+  display: flex; align-items: center; gap: 1.5rem;
+  padding: 0.6rem 1rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.brand { font-size: 1.05rem; }
+.shell-nav { display: flex; gap: 0.25rem; flex: 1; flex-wrap: wrap; }
+.shell-nav a {
+  color: var(--muted); text-decoration: none;
+  padding: 0.45rem 0.75rem; border-radius: var(--radius);
+  position: relative;
+}
+.shell-nav a:hover { background: var(--panel-2); color: var(--text); }
+.shell-nav a.active { background: var(--panel-2); color: var(--text); }
+.shell-status { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.shell-main { flex: 1; min-height: 0; }
+
+.pill {
+  padding: 0.2rem 0.6rem; border-radius: 999px;
+  font-size: 0.78rem; font-weight: 600;
+}
+.pill-online { background: rgba(34, 197, 94, 0.15); color: var(--ok); }
+.pill-offline { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+.pill-pending { background: rgba(245, 158, 11, 0.15); color: var(--warn); }
+
+.badge {
+  margin-left: 0.35rem; padding: 0.05rem 0.4rem;
+  border-radius: 999px; font-size: 0.7rem;
+}
+.badge-error { background: var(--danger); color: #fff; }
+
+.link {
+  background: none; border: none; color: var(--accent);
+  padding: 0; text-decoration: underline;
+}
+.link.danger { color: var(--danger); }
+
+/* ---------------------------------------------------------------- POS */
+
+.pos {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26rem;
+  height: calc(100vh - 3.2rem);
+}
+.pos-empty { padding: 3rem; color: var(--muted); }
+
+.pos-catalogue { padding: 1rem; overflow-y: auto; min-width: 0; }
+.pos-search { margin-bottom: 0.75rem; }
+.pos-search-input { width: 100%; font-size: 1.05rem; padding: 0.75rem; }
+
+.pos-categories { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+.chip {
+  background: var(--panel); color: var(--muted);
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+}
+.chip-active { background: var(--accent); color: #06263a; border-color: var(--accent); font-weight: 600; }
+
+.pos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.6rem;
+}
+.product-tile {
+  display: flex; flex-direction: column; gap: 0.25rem; text-align: left;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 0.75rem; color: var(--text);
+  min-height: 5.5rem;
+}
+.product-tile:hover { border-color: var(--accent); }
+.product-name { font-weight: 600; line-height: 1.25; }
+.product-price { color: var(--accent); font-variant-numeric: tabular-nums; }
+.product-stock { font-size: 0.78rem; color: var(--muted); }
+.product-stock-out { color: var(--danger); }
+.pos-grid-empty { grid-column: 1 / -1; color: var(--muted); }
+
+.pos-cart {
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  padding: 1rem;
+  display: flex; flex-direction: column; gap: 0.75rem;
+  overflow-y: auto;
+}
+.cart-header { display: flex; justify-content: space-between; align-items: center; }
+.cart-header h2 { margin: 0; font-size: 1.05rem; }
+
+.cart-lines { list-style: none; margin: 0; padding: 0; flex: 1; overflow-y: auto; overflow-x: hidden; }
+.cart-line { padding: 0.55rem 0; border-bottom: 1px solid var(--line); }
+.cart-line-main { display: flex; justify-content: space-between; gap: 0.5rem; font-weight: 600; }
+.cart-line-total { font-variant-numeric: tabular-nums; }
+/* Wraps rather than overflowing: at the cart's width the unit price and the
+   Remove control do not fit on one line, and clipping "Remove" leaves a cashier
+   unable to correct a mis-scan. */
+.cart-line-controls {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.4rem 0.6rem; margin-top: 0.35rem; font-size: 0.85rem; flex-wrap: wrap;
+}
+.cart-line-right { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+/* Only the quantity steppers are square icon buttons. Without :not(.link) this
+   also sized the "Remove" text button to 1.8rem, clipping it to "Rem" and
+   leaving a cashier no way to take a mis-scanned item off the sale. */
+.cart-line-controls button:not(.link) {
+  background: var(--panel-2); border: 1px solid var(--line);
+  color: var(--text); border-radius: 6px; width: 1.8rem; height: 1.8rem;
+  flex: none;
+}
+.cart-line-controls input { width: 3.5rem; padding: 0.25rem; text-align: center; }
+.cart-line-unit { color: var(--muted); white-space: nowrap; }
+.cart-empty { color: var(--muted); padding: 1rem 0; }
+
+.cart-discount { display: flex; align-items: center; gap: 0.5rem; }
+.cart-discount input { width: 6rem; }
+
+.cart-totals { margin: 0; display: grid; gap: 0.3rem; }
+.cart-totals > div { display: flex; justify-content: space-between; }
+.cart-totals dt, .cart-totals dd { margin: 0; }
+.cart-totals dd { font-variant-numeric: tabular-nums; }
+.cart-total { font-size: 1.25rem; font-weight: 700; padding-top: 0.4rem; border-top: 1px solid var(--line); }
+
+.pay-button {
+  background: var(--accent); color: #06263a; border: none;
+  border-radius: var(--radius); padding: 0.85rem 1rem;
+  font-size: 1.05rem; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; gap: 0.6rem;
+}
+.pay-button:disabled { opacity: 0.45; cursor: not-allowed; }
+.pay-button kbd {
+  background: rgba(0, 0, 0, 0.2); border-radius: 4px;
+  padding: 0.1rem 0.35rem; font-size: 0.75rem;
+}
+
+/* ---------------------------------------------------------------- modal */
+
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(2, 6, 23, 0.75);
+  display: grid; place-items: center; padding: 1rem; z-index: 40;
+}
+.modal {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 14px; padding: 1.25rem;
+  width: min(30rem, 100%); max-height: 90vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 0.85rem;
+}
+.modal h2 { margin: 0 0 0.25rem; }
+.payment-due { margin: 0; color: var(--muted); }
+.payment-due strong { color: var(--text); font-size: 1.15rem; }
+
+.tender-methods { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.tender-entry { display: flex; gap: 0.5rem; align-items: center; }
+.tender-entry input { flex: 1; font-size: 1.1rem; }
+.tender-entry button[type="submit"] {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 0.55rem 0.9rem;
+}
+
+.tender-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; }
+.tender-list li {
+  display: grid; grid-template-columns: 1fr auto auto; gap: 0.75rem;
+  padding: 0.4rem 0.6rem; background: var(--panel-2); border-radius: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.change-due { margin: 0; font-size: 1.05rem; }
+.change-due strong { color: var(--ok); }
+
+.customer-attach { display: grid; gap: 0.4rem; }
+.customer-attach label { font-size: 0.85rem; color: var(--muted); }
+.customer-attach em { color: var(--warn); font-style: normal; }
+.customer-selected { display: flex; justify-content: space-between; margin: 0; }
+.customer-matches { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.2rem; }
+.customer-matches button {
+  width: 100%; text-align: left; background: var(--panel-2);
+  border: 1px solid var(--line); color: var(--text);
+  border-radius: 8px; padding: 0.45rem 0.6rem;
+}
+.debt { color: var(--warn); }
+
+.modal-actions { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.modal-actions .pay-button { flex: 1; }
+
+/* ---------------------------------------------------------------- pages */
+
+.page { padding: 1.25rem; max-width: 78rem; }
+.page-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.page-header h1 { margin: 0 0 0.5rem; font-size: 1.35rem; }
+.page-actions { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+.checkbox { display: flex; align-items: center; gap: 0.35rem; color: var(--muted); }
+
+.table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; }
+.table th, .table td { text-align: left; padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--line); }
+.table th { color: var(--muted); font-weight: 600; font-size: 0.85rem; }
+.table td { font-variant-numeric: tabular-nums; }
+.row-warn td { background: rgba(245, 158, 11, 0.07); }
+
+.stat-row { display: flex; gap: 2rem; flex-wrap: wrap; margin: 1rem 0; }
+.stat-row dt { color: var(--muted); font-size: 0.85rem; }
+.stat-row dd { margin: 0.2rem 0 0; font-size: 1.15rem; font-weight: 600; }
+
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 0.75rem; margin: 1rem 0 2rem; }
+.kpi {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 0.9rem;
+  display: flex; flex-direction: column; gap: 0.3rem;
+}
+.kpi-warn { border-color: var(--warn); }
+.kpi-label { color: var(--muted); font-size: 0.82rem; }
+.kpi-value { font-size: 1.45rem; font-variant-numeric: tabular-nums; }
+.kpi-hint { color: var(--muted); font-size: 0.75rem; }
+
+.notice { padding: 0.6rem 0.75rem; border-radius: var(--radius); margin: 0; }
+.notice-ok { background: rgba(34, 197, 94, 0.12); color: var(--ok); }
+.notice-warn, .warn { background: rgba(245, 158, 11, 0.12); color: var(--warn); padding: 0.6rem 0.75rem; border-radius: var(--radius); margin: 0; }
+.notice-error { background: rgba(239, 68, 68, 0.12); color: var(--danger); }
+
+/* ---------------------------------------------------------------- login */
+
+.login { min-height: 100vh; display: grid; place-items: center; padding: 1rem; }
+.login-card {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 14px; padding: 1.75rem;
+  width: min(22rem, 100%); display: grid; gap: 0.5rem;
+}
+.login-card h1 { margin: 0; }
+.login-card label { font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; }
+.login-card .pay-button { margin-top: 1rem; }
+
+/* A narrow screen means a tablet till: the cart moves below the catalogue. */
+@media (max-width: 900px) {
+  .pos { grid-template-columns: 1fr; height: auto; }
+  .pos-cart { border-left: none; border-top: 1px solid var(--line); }
+}
+
+/* ---------------------------------------------------------------- conflicts */
+
+.conflict-list { display: grid; gap: 0.9rem; margin-top: 0.9rem; }
+
+.conflict-card {
+  background: var(--panel); border: 1px solid var(--danger);
+  border-radius: var(--radius); padding: 1rem;
+  display: grid; gap: 0.8rem;
+}
+.conflict-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.conflict-head h3 {
+  margin: 0 0 0.25rem; font-size: 1.05rem;
+  display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap;
+}
+.conflict-amount { font-variant-numeric: tabular-nums; color: var(--accent); }
+.conflict-reason { margin: 0; color: var(--danger); font-size: 0.9rem; }
+
+.conflict-detail {
+  display: grid; gap: 0.6rem;
+  background: var(--panel-2); border-radius: 8px; padding: 0.7rem;
+}
+.conflict-detail dl { margin: 0; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+.conflict-detail dt { color: var(--muted); font-size: 0.75rem; }
+.conflict-detail dd { margin: 0.1rem 0 0; font-variant-numeric: tabular-nums; }
+
+.conflict-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.2rem; }
+.conflict-lines li {
+  display: flex; justify-content: space-between; gap: 1rem;
+  font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+
+.conflict-actions { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; }
+.conflict-actions .pay-button { padding: 0.6rem 0.9rem; font-size: 0.92rem; }
+
+.secondary-button {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 0.6rem 0.9rem; font-size: 0.92rem;
+}
+.secondary-button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.confirm-inline { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; font-size: 0.85rem; }
+
+.conflict-hint {
+  margin: 0; font-size: 0.82rem; color: var(--muted);
+  border-left: 2px solid var(--line); padding-left: 0.7rem;
+}
+
+.pill-discarded { background: rgba(148, 163, 184, 0.15); color: var(--muted); }

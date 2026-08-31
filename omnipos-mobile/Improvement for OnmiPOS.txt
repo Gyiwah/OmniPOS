@@ -1,0 +1,7 @@
+1. Turn the Inventory screen into a more professional.
+2. Let the "Export/Print" and "Add Product" buttons to be on the same line at the top right side of the screen.
+3. Fully implement the Customer CRM module.
+    Let the users to view and edit the customer information.
+    Let the users to view the customer purchase history.
+    Let the user select and complete customer's unpaid balance.
+    
