@@ -36,6 +36,12 @@ class RouteGuardTest extends TestCase
         'api/stores',
         // Sanctum's own SPA cookie endpoint.
         'sanctum/csrf-cookie',
+        // Platform operations. A super admin acts across tenants by definition,
+        // so store.access cannot apply — it would reject the very calls these
+        // routes exist to serve. The privilege is verified explicitly in
+        // SuperAdminController instead, and SuperAdminTest is what holds that
+        // check in place.
+        'api/admin/stores',
     ];
 
     /** @return array<int, RoutingRoute> */

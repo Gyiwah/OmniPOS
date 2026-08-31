@@ -1,7 +1,9 @@
 import { supabase } from "@/src/services/supabase";
 import type { ProvisionStoreInput, SystemStore } from "./types";
+import { usingLaravel } from "@/src/core/api/config";
+import { laravelSuperAdminService } from "./laravelSuperAdmin";
 
-export const superAdminService = {
+const supabaseSuperAdminService = {
   async listAllStores(): Promise<SystemStore[]> {
     const { data: storesData, error: storesError } = await supabase
       .from("stores")
@@ -168,3 +170,13 @@ export const superAdminService = {
     };
   },
 };
+
+/**
+ * Which implementation answers is decided once, from build configuration.
+ *
+ * The Supabase version needed three fallbacks — Edge Function, then RPC, then a
+ * hand-rolled insert — because any of them could be missing from a given
+ * project. The Laravel path is one endpoint in one transaction, so a store can
+ * never end up without an admin.
+ */
+export const superAdminService = usingLaravel ? laravelSuperAdminService : supabaseSuperAdminService;

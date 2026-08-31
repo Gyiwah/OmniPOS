@@ -15,14 +15,18 @@ work changes the Supabase path.
 
 ## What is a transport switch, and what is not
 
-`src/sync/index.ts` is the only place the choice is made. Every caller —
-the orchestrator, the manual Sync button, the screens — calls `synchronise()`
-and knows nothing about which backend answers.
+`src/sync/index.ts` is the only place the sync choice is made, and each migrated
+feature makes the same choice once at the bottom of its `service.ts`:
 
-That means retiring Supabase is an edit to one file plus a deletion, not a
-rewrite. It also means there are **not** two sync implementations competing:
-there is one protocol, spoken by two transports, and only one of them is live at
-a time.
+```ts
+export const storesService = usingLaravel ? laravelStoresService : supabaseStoresService;
+```
+
+Callers — the orchestrator, the manual Sync button, the screens, the hooks —
+import the service and know nothing about which backend answers. That means
+retiring Supabase is a set of one-line edits plus deletions, not a rewrite. It
+also means there are **not** two implementations competing: there is one
+protocol, spoken by two transports, and only one of them is live at a time.
 
 ---
 
@@ -60,33 +64,62 @@ including the gateway statuses a reverse proxy returns while the backend is
 down — a till behind nginx during an outage should read as offline, not as a
 server error.
 
+**Every remaining read path** — one Laravel implementation per feature:
+
+| Area | Laravel implementation | Endpoints |
+|---|---|---|
+| Stores | `features/stores/laravelStores.ts` | `GET /api/stores` |
+| Settings & staff | `features/settings/laravelSettings.ts` | `/api/store`, `/api/store-members`, `/api/store-invites` |
+| Analytics | `features/analytics/laravelAnalytics.ts` | `/api/reports/dashboard`, `/api/reports/sales` |
+| Returns | `features/returns/laravelReturns.ts` | `/api/returns`, `/api/returns/eligibility/{order}` |
+| Images | `services/laravelStorage.ts` | `/api/media` |
+| Super admin | `features/superAdmin/laravelSuperAdmin.ts` | `GET`/`POST /api/admin/stores` |
+
+Two of these are deliberately server-side rather than local:
+
+- **Analytics** covers every till in the store. A terminal's local database only
+  knows its own sales, so computing these locally would quietly report a
+  fraction of the business. It is the one screen that genuinely needs a
+  connection.
+- **Return eligibility** is asked of the server for the same reason. A till only
+  knows the returns it processed itself, so a locally computed figure goes stale
+  the moment another terminal refunds against the same sale — and the cost of
+  getting it wrong is refunding a customer twice.
+
+**Everything else that wrote to Supabase is gated.** The remaining
+`supabase.from(...)` calls in screens and services sit behind `usingLaravel`
+checks, so a Laravel build never reaches Supabase. Writes go through the sync
+queue, which is where they belonged anyway.
+
+The one file still calling Supabase unconditionally is `src/sync/syncEngine.ts`,
+and that is correct: it *is* the Supabase transport, and `src/sync/index.ts`
+never calls it under Laravel.
+
+**Server-side gaps that had to be filled first**, because there was nothing to
+migrate onto:
+
+- `MediaController` — store-scoped object paths (`{store_id}/products/{id}.{ext}`),
+  read authorised by path prefix, traversal refused. It replaces a Supabase
+  bucket that was protected by RLS on `storage.objects`.
+- `ReturnHandler` — restocks through the ledger and records the refund as a
+  negative payment in the same `payments` table, rather than a parallel refunds
+  table that would have to be reconciled against it. Eligibility is re-checked
+  across *all* returns for the line, not just the one being processed.
+- `SuperAdminController` — provisions a store and its admin in one transaction.
+  The Supabase version needed three fallbacks (Edge Function, then RPC, then a
+  hand-rolled insert), any of which could leave a store nobody could administer.
+
 ---
 
 ## Not done
 
-**19 files still call Supabase directly** — 41 call sites. They are unaffected
-while `EXPO_PUBLIC_BACKEND=supabase`, but a `laravel` build will still reach
-Supabase for these, which is why that build is for testing sync and auth only,
-not for trading on.
-
-| Area | Files | Replacement |
-|---|---|---|
-| Analytics | `features/analytics/service.ts` | `GET /api/reports/*` |
-| Returns | `features/returns/service.ts`, `returns/stock.ts`, `app/pos/add-return.tsx` | `GET /api/returns`, eligibility endpoint; writes via sync |
-| Stock reads | `features/orders/stock.ts` | local ledger; server recomputes |
-| Settings & staff | `features/settings/service.ts` | `/api/store`, `/api/store-members`, `/api/store-invites` |
-| Stores | `features/stores/service.ts` | `GET /api/stores` |
-| Super admin | `features/superAdmin/service.ts` | provisioning endpoints |
-| Images | `services/storage.ts` | object storage — **not yet built on the server** |
-| Auth bootstrap | `hooks/useAuthBootstrap.ts` | `restoreSession()` in `laravelAuth.ts` |
-| Screens | `home.tsx`, `auth/callback.tsx`, `customers/add.tsx`, `order-info.tsx`, `receipt/[id].tsx`, `ImportProductModal.tsx` | read from local DB or the API |
-
-Order of work: auth bootstrap first (it gates everything), then the read-only
-services, then returns, then images once the server has somewhere to put them.
-
 **Conflict resolution has no mobile UI.** Rejected operations are kept with
 `status = "conflict"` and `pendingConflicts()` returns them, but nothing renders
-them yet. The web till has the full flow; the mobile equivalent is outstanding.
+them yet. The web till has the full flow — including a manager settling another
+till's conflict remotely — and the mobile equivalent is outstanding.
+
+**Not verified on hardware.** Everything above was proven against local servers,
+not against a phone on a real network.
 
 ---
 

@@ -8,6 +8,7 @@ import { supabase } from "@/src/services/supabase";
 import { restoreStockForReturn } from "./stock";
 import type { OrderForReturn, ReturnDetail, ReturnLineInput, ReturnListRow } from "./types";
 import { usingLaravel } from "@/src/core/api/config";
+import * as laravelReturns from "./laravelReturns";
 import { enqueueChange } from "@/src/sync/enqueue";
 
 const UUID_RE =
@@ -152,7 +153,7 @@ async function fetchReturnedQtyByOrderItem(
   return { itemTotals, totalRefunded, returnCount };
 }
 
-export async function lookupOrderForReturn(storeId: string, ref: string): Promise<OrderForReturn | null> {
+async function supabase_lookupOrderForReturn(storeId: string, ref: string): Promise<OrderForReturn | null> {
   const cleanRef = ref.trim().replace(/^\*|\*$/g, ""); // Strip any barcode asterisks
   if (!cleanRef) return null;
 
@@ -527,7 +528,7 @@ export async function processReturn(input: {
   return localReturnId;
 }
 
-export async function listReturns(storeId: string): Promise<ReturnListRow[]> {
+async function supabase_listReturns(storeId: string): Promise<ReturnListRow[]> {
   try {
     const { data: returns, error } = await supabase
       .from("returns")
@@ -614,7 +615,7 @@ export async function listReturns(storeId: string): Promise<ReturnListRow[]> {
   return [];
 }
 
-export async function getReturnDetail(storeId: string, returnId: string): Promise<ReturnDetail | null> {
+async function supabase_getReturnDetail(storeId: string, returnId: string): Promise<ReturnDetail | null> {
   try {
     const { data: row, error } = await supabase
       .from("returns")
@@ -681,6 +682,22 @@ export async function getReturnDetail(storeId: string, returnId: string): Promis
 
   return null;
 }
+
+/*
+ * Reads pick a backend once, here.
+ *
+ * Eligibility is the reason these are not shared: a till only knows the returns
+ * it processed itself, so the Supabase version computed from local knowledge
+ * that goes stale as soon as another terminal refunds the same sale. The server
+ * counts every return ever recorded.
+ */
+export const lookupOrderForReturn = usingLaravel
+  ? laravelReturns.lookupOrderForReturn
+  : supabase_lookupOrderForReturn;
+
+export const listReturns = usingLaravel ? laravelReturns.listReturns : supabase_listReturns;
+
+export const getReturnDetail = usingLaravel ? laravelReturns.getReturnDetail : supabase_getReturnDetail;
 
 export const returnsService = {
   list: listReturns,

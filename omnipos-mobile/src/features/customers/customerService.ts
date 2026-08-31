@@ -7,6 +7,7 @@ import type Order from "@/src/database/models/Order";
 import { supabase } from "@/src/services/supabase";
 import { enqueueChange } from "@/src/sync/enqueue";
 import { synchronise } from "@/src/sync";
+import { usingLaravel } from "@/src/core/api/config";
 
 export type CustomerProfileData = {
   id: string;
@@ -107,7 +108,9 @@ export async function updateCustomerProfile(
   let syncedDirectly = false;
   try {
     const net = await network.getState();
-    if (net.isConnected) {
+    // Under Laravel the queue below is the only path to the server; writing
+    // here as well would put the same customer in two backends.
+    if (!usingLaravel && net.isConnected) {
       const { error } = await supabase.from("customers").upsert(payload, { onConflict: "id" });
       if (!error) {
         syncedDirectly = true;
@@ -301,7 +304,7 @@ export async function settleCustomerBalance(
 
       try {
         const net = await network.getState();
-        if (net.isConnected) {
+        if (!usingLaravel && net.isConnected) {
           await supabase
             .from("orders")
             .update({ amount_paid: nextPaid, status: nextStatus })
@@ -371,7 +374,7 @@ export async function settleCustomerBalance(
 
     try {
       const net = await network.getState();
-      if (net.isConnected) {
+      if (!usingLaravel && net.isConnected) {
         await supabase.from("customers").upsert(custPayload, { onConflict: "id" });
       } else {
         await enqueueChange({

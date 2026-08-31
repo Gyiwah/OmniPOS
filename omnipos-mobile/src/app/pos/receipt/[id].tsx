@@ -22,6 +22,7 @@ import type Order from "@/src/database/models/Order";
 import type OrderItem from "@/src/database/models/OrderItem";
 
 import { shareReceiptAsPdf } from "@/src/utils/receiptPdf";
+import { usingLaravel } from "@/src/core/api/config";
 
 type OrderRow = {
   id: string;
@@ -66,14 +67,22 @@ export default function ReceiptScreen() {
       setLoading(true);
       setErrorMessage(null);
 
-      const { data: order, error } = await supabase
-        .from("orders")
-        .select(
-          "id, order_number, created_at, discount_mode, discount_value, amount_paid, customer_name, customer_phone, shipping_address, tax_rate, vat_rate, service_rate",
-        )
-        .eq("store_id", activeStoreId)
-        .eq("id", ref)
-        .maybeSingle<OrderRow>();
+      /*
+       * Supabase only. Under Laravel this falls through to the local copy
+       * below, which is the right source anyway: a receipt is reprinted on the
+       * till that issued it, and that till must be able to reprint with no
+       * connection at all.
+       */
+      const { data: order, error } = usingLaravel
+        ? { data: null, error: null }
+        : await supabase
+            .from("orders")
+            .select(
+              "id, order_number, created_at, discount_mode, discount_value, amount_paid, customer_name, customer_phone, shipping_address, tax_rate, vat_rate, service_rate",
+            )
+            .eq("store_id", activeStoreId)
+            .eq("id", ref)
+            .maybeSingle<OrderRow>();
 
       if (error || !order) {
         // Fallback: Check WatermelonDB SQLite for offline order

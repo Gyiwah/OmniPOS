@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ReturnController;
 use App\Http\Controllers\Api\StoreController;
 use App\Http\Controllers\Api\StoreMemberController;
+use App\Http\Controllers\Api\SuperAdminController;
 use App\Http\Controllers\Api\SyncConflictController;
 use App\Http\Controllers\Api\SyncController;
 use Illuminate\Support\Facades\Route;
@@ -160,6 +161,16 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('reports/inventory', [ReportController::class, 'inventory']);
         Route::get('reports/customers', [ReportController::class, 'customers']);
         Route::get('reports/cashiers', [ReportController::class, 'cashiers']);
+    });
+
+    /*
+    | Platform operations. Deliberately NOT store-scoped: a super admin works
+    | across tenants, so store.access cannot apply and the privilege is checked
+    | explicitly in the controller instead.
+    */
+    Route::prefix('admin')->group(function () {
+        Route::get('stores', [SuperAdminController::class, 'stores']);
+        Route::post('stores', [SuperAdminController::class, 'provision']);
     });
 
     // Staff management. Gated at the route so a cashier cannot even enumerate.

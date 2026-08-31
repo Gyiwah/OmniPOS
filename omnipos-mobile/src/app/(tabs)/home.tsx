@@ -25,6 +25,7 @@ import type Order from "@/src/database/models/Order";
 import type OrderItem from "@/src/database/models/OrderItem";
 import type Customer from "@/src/database/models/Customer";
 import { formatRelativeSyncTime } from "@/src/utils/date";
+import { usingLaravel } from "@/src/core/api/config";
 
 const SHORTCUTS: {
   label: string;
@@ -214,18 +215,30 @@ export default function HomeScreen() {
           0
         );
 
-        // Fetch Supabase data if available
-        const { data: cloudOrders } = await supabase
-          .from("orders")
-          .select("id, order_number, total, amount_paid, status, customer_name, created_at")
-          .eq("store_id", activeStoreId)
-          .gte("created_at", since7d.toISOString());
+        /*
+         * Supabase only. Under Laravel this falls through to the local figures
+         * below, which cover this till's own sales.
+         *
+         * That is a real limitation, not a temporary one: a home screen showing
+         * one terminal's takings while looking like the whole shop's is worse
+         * than showing nothing, so a store-wide summary should come from
+         * /api/reports/dashboard rather than from a cloud table read.
+         */
+        const { data: cloudOrders } = usingLaravel
+          ? { data: null }
+          : await supabase
+              .from("orders")
+              .select("id, order_number, total, amount_paid, status, customer_name, created_at")
+              .eq("store_id", activeStoreId)
+              .gte("created_at", since7d.toISOString());
 
-        const { data: cloudReturns } = await supabase
-          .from("returns")
-          .select("amount, created_at")
-          .eq("store_id", activeStoreId)
-          .gte("created_at", since7d.toISOString());
+        const { data: cloudReturns } = usingLaravel
+          ? { data: null }
+          : await supabase
+              .from("returns")
+              .select("amount, created_at")
+              .eq("store_id", activeStoreId)
+              .gte("created_at", since7d.toISOString());
 
         const orderRows = cloudOrders && cloudOrders.length > 0 ? cloudOrders : localOrders.map((o) => ({
           id: o.id,

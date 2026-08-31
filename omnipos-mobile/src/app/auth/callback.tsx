@@ -11,6 +11,7 @@ import { useAuthStore } from "@/src/store/authStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SYNC_STORAGE } from "@/src/sync/keys";
+import { usingLaravel } from "@/src/core/api/config";
 
 export default function AuthCallbackScreen() {
   const router = useRouter();
@@ -19,6 +20,19 @@ export default function AuthCallbackScreen() {
 
   useEffect(() => {
     async function handleAuthCallback() {
+      /*
+       * This screen exists for Supabase's magic-link and invite deep links.
+       *
+       * Laravel has no equivalent: invites are attached to the account by the
+       * server on sign-in, so there is no token to exchange here and nothing to
+       * wait for. Landing on it means a stale link was followed — send the
+       * person to sign in rather than showing a spinner that never resolves.
+       */
+      if (usingLaravel) {
+        router.replace("/(auth)/sign-in");
+        return;
+      }
+
       try {
         // Parse current deep link URL if needed
         const url = await Linking.getInitialURL();

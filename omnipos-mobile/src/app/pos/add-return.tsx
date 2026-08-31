@@ -21,6 +21,7 @@ import { supabase } from "@/src/services/supabase";
 import { useAuthStore } from "@/src/store/authStore";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
+import { usingLaravel } from "@/src/core/api/config";
 
 function money(value: number, currency: string) {
   const symbol = currency === "USD" ? "$" : currency === "NGN" ? "₦" : "₵";
@@ -109,7 +110,11 @@ export default function AddReturnScreen() {
     setSubmitting(true);
     try {
       const lines = validateReturnSelections(order, counts);
-      const fallbackUser = (await supabase.auth.getUser()).data.user?.id ?? null;
+      // Under Laravel the signed-in user is already in the auth store; there
+      // is no second source to fall back to.
+      const fallbackUser = usingLaravel
+        ? null
+        : ((await supabase.auth.getUser()).data.user?.id ?? null);
       const processedByUserId = userId ?? fallbackUser;
       if (!processedByUserId) {
         Alert.alert("Not Signed In", "Sign in again before processing a return.");
