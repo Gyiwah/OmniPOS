@@ -1,44 +1,54 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# Monorepo root. Each project also carries its own .gitignore; these are the
+# patterns that matter regardless of which one a file lands in.
 
-# dependencies
+# Dependencies and build output — reproducible from the lockfiles.
 node_modules/
-
-# Expo
-.expo/
+vendor/
 dist/
+dist-ssr/
 web-build/
-expo-env.d.ts
+dev-dist/
 
-# Native
-.kotlin/
+# Never commit real credentials. Every project ships a .env.example instead.
+.env
+.env.*
+!.env.example
+
+# Expo / React Native
+.expo/
+expo-env.d.ts
+.metro-health-check*
 *.orig.*
 *.jks
 *.p8
 *.p12
 *.key
 *.mobileprovision
+# Generated native projects — recreated by `expo prebuild`.
+omnipos-mobile/ios/
+omnipos-mobile/android/
+.kotlin/
 
-# Metro
-.metro-health-check*
+# Laravel runtime state
+omnipos-backend/storage/logs/*.log
+omnipos-backend/storage/framework/cache/*
+omnipos-backend/storage/framework/sessions/*
+omnipos-backend/storage/framework/views/*
+omnipos-backend/bootstrap/cache/*
+!**/.gitignore
 
-# debug
+# TypeScript
+*.tsbuildinfo
+
+# Editors and OS
+# .cursor/ is deliberately NOT ignored: the rules files in it are project
+# standards that belong in the repository.
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.pem
 npm-debug.*
 yarn-debug.*
 yarn-error.*
-
-# macOS
-.DS_Store
-*.pem
-
-# local env files
-.env
-.env.*
-!.env.example
-.env*.local
-
-# typescript
-*.tsbuildinfo
-
-# generated native folders
-/ios
-/android
+*.log
