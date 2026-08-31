@@ -16,7 +16,9 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "types": ["vite/client", "vitest/globals"],
+    // "node" is needed by src/test/precache.test.ts, which reads the built
+    // dist/ output from disk to verify the service worker precache.
+    "types": ["vite/client", "vitest/globals", "node"],
     "baseUrl": ".",
     "paths": { "@/*": ["./src/*"] }
   },
