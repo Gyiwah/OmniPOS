@@ -140,24 +140,25 @@ export function buildReceiptHtml({ shopName, orderNumber, dateLabel, data }: Rec
             color: #475569;
           }
           .grand-total-box {
-            background: #0f172a;
-            color: #ffffff;
+            background: #eff6ff;
+            color: #042358;
             border-radius: 8px;
             padding: 12px 14px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin: 12px 0;
+            border: 1px solid #bfdbfe;
           }
           .grand-total-label {
             font-size: 14px;
-            font-weight: 600;
-            color: #e2e8f0;
+            font-weight: 700;
+            color: #0767de;
           }
           .grand-total-value {
             font-size: 20px;
             font-weight: 800;
-            color: #ffffff;
+            color: #042358;
           }
           .payment-info {
             background: #f8fafc;

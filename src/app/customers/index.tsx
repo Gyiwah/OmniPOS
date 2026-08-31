@@ -1,8 +1,9 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Q } from "@nozbe/watermelondb";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 
 import { TextInput } from "@/src/components/atoms/TextInput";
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
@@ -34,6 +35,7 @@ export default function CustomersScreen() {
   const [search, setSearch] = useState("");
   const [customers, setCustomers] = useState<CustomerItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [filterMode, setFilterMode] = useState<"all" | "unpaid">("all");
 
   const sym = currency === "USD" ? "$" : currency === "NGN" ? "₦" : "₵";
 
@@ -44,7 +46,6 @@ export default function CustomersScreen() {
     }
     setLoading(true);
     try {
-      await runSyncCycle(activeStoreId);
       const rows = await database
         .get<Customer>("customers")
         .query(Q.where("store_id", activeStoreId))
@@ -60,6 +61,9 @@ export default function CustomersScreen() {
           outstandingBalance: Number(r.outstandingBalance ?? 0),
         })),
       );
+
+      // Trigger background sync
+      void runSyncCycle(activeStoreId);
     } catch {
       // ignore load errors
     } finally {
@@ -67,34 +71,55 @@ export default function CustomersScreen() {
     }
   }, [activeStoreId]);
 
-  useEffect(() => {
-    void loadCustomers();
-  }, [loadCustomers]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return customers;
-    return customers.filter(
-      (c) => c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)) || (c.email && c.email.toLowerCase().includes(q)),
-    );
-  }, [customers, search]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadCustomers();
+    }, [loadCustomers])
+  );
 
   const aggregateSpend = useMemo(
     () => customers.reduce((sum, c) => sum + c.totalSpend, 0),
     [customers],
   );
 
+  const totalOutstanding = useMemo(
+    () => customers.reduce((sum, c) => sum + c.outstandingBalance, 0),
+    [customers],
+  );
+
+  const unpaidCount = useMemo(
+    () => customers.filter((c) => c.outstandingBalance > 0.01).length,
+    [customers],
+  );
+
+  const filtered = useMemo(() => {
+    let result = customers;
+    if (filterMode === "unpaid") {
+      result = result.filter((c) => c.outstandingBalance > 0.01);
+    }
+    const q = search.trim().toLowerCase();
+    if (!q) return result;
+    return result.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.phone && c.phone.includes(q)) ||
+        (c.email && c.email.toLowerCase().includes(q)),
+    );
+  }, [customers, filterMode, search]);
+
   return (
     <AppScrollScreen
       showBack
       title="Customer CRM"
-      subtitle="Manage registered clients and track lifetime sales value."
+      subtitle="Client directory, lifetime spend & balance tracking"
       right={
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Add New Client"
           style={({ pressed }) => [styles.headerAddBtn, pressed && { opacity: 0.8 }]}
           onPress={() => router.push("/customers/add")}
         >
-          <Ionicons name="person-add" size={16} color={Colors.white} />
+          <Ionicons name="person-add" size={15} color={Colors.white} />
           <Text style={styles.headerAddText}>Add Client</Text>
         </Pressable>
       }
@@ -109,14 +134,32 @@ export default function CustomersScreen() {
 
         <View style={[styles.metricCard, { backgroundColor: "#f0fdf4", borderColor: "#bbf7d0" }]}>
           <Text style={[styles.metricLabel, { color: "#16a34a" }]}>Lifetime Value</Text>
-          <Text style={[styles.metricValue, { color: "#15803d" }]}>
+          <Text style={[styles.metricValue, { color: "#15803d" }]} numberOfLines={1}>
             {sym} {aggregateSpend.toFixed(2)}
           </Text>
           <Text style={styles.metricSub}>Cumulative spend</Text>
         </View>
+
+        {totalOutstanding > 0 ? (
+          <Pressable
+            style={[
+              styles.metricCard,
+              { backgroundColor: "#fff1f2", borderColor: "#fecdd3" },
+            ]}
+            onPress={() => setFilterMode("unpaid")}
+          >
+            <Text style={[styles.metricLabel, { color: Colors.danger }]}>Unpaid Debt</Text>
+            <Text style={[styles.metricValue, { color: "#b91c1c" }]} numberOfLines={1}>
+              {sym} {totalOutstanding.toFixed(2)}
+            </Text>
+            <Text style={[styles.metricSub, { color: "#dc2626" }]}>
+              {unpaidCount} client(s) due
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
 
-      {/* Search Input */}
+      {/* Search Input & Filter Pills */}
       <SectionCard>
         <TextInput
           label="Search Directory"
@@ -132,23 +175,72 @@ export default function CustomersScreen() {
             ) : undefined
           }
         />
+
+        <View style={styles.filterTabsRow}>
+          <Pressable
+            style={[
+              styles.filterTab,
+              filterMode === "all" && styles.filterTabActive,
+            ]}
+            onPress={() => setFilterMode("all")}
+          >
+            <Text
+              style={[
+                styles.filterTabText,
+                filterMode === "all" && styles.filterTabTextActive,
+              ]}
+            >
+              All Clients ({customers.length})
+            </Text>
+          </Pressable>
+
+          {unpaidCount > 0 ? (
+            <Pressable
+              style={[
+                styles.filterTab,
+                filterMode === "unpaid" && styles.filterTabUnpaidActive,
+              ]}
+              onPress={() => setFilterMode("unpaid")}
+            >
+              <Ionicons
+                name="alert-circle"
+                size={14}
+                color={filterMode === "unpaid" ? Colors.white : "#dc2626"}
+              />
+              <Text
+                style={[
+                  styles.filterTabText,
+                  filterMode === "unpaid" && styles.filterTabTextActive,
+                  filterMode !== "unpaid" && { color: "#dc2626" },
+                ]}
+              >
+                With Unpaid Balance ({unpaidCount})
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
       </SectionCard>
 
       {/* Customer List */}
       <SectionCard>
         <View style={styles.listHeader}>
-          <Text style={styles.sectionTitle}>Client Directory ({filtered.length})</Text>
+          <Text style={styles.sectionTitle}>
+            {filterMode === "unpaid" ? "Clients with Debt" : "Client Directory"} ({filtered.length})
+          </Text>
           {loading ? <ActivityIndicator size="small" color={Colors.primaryBlue} /> : null}
         </View>
 
         <View style={styles.customerList}>
           {filtered.map((item, idx) => {
             const avatarColor = AVATAR_COLORS[idx % AVATAR_COLORS.length];
+            const hasDebt = item.outstandingBalance > 0.01;
+
             return (
               <Pressable
                 key={item.id}
                 style={({ pressed }) => [
                   styles.customerCard,
+                  hasDebt && styles.customerCardDebt,
                   pressed && { opacity: 0.8 },
                 ]}
                 onPress={() => router.push(`/customers/${item.id}`)}
@@ -160,7 +252,15 @@ export default function CustomersScreen() {
                 </View>
 
                 <View style={styles.customerDetails}>
-                  <Text style={styles.customerName}>{item.name}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Text style={styles.customerName}>{item.name}</Text>
+                    {hasDebt ? (
+                      <View style={styles.debtPill}>
+                        <Text style={styles.debtPillText}>Due</Text>
+                      </View>
+                    ) : null}
+                  </View>
+
                   {item.phone ? (
                     <View style={styles.metaRow}>
                       <Ionicons name="call-outline" size={12} color={Colors.textMuted} />
@@ -180,6 +280,11 @@ export default function CustomersScreen() {
                   <Text style={styles.spendValue}>
                     {sym} {item.totalSpend.toFixed(2)}
                   </Text>
+                  {hasDebt ? (
+                    <Text style={styles.cardDebtText}>
+                      Unpaid: {sym} {item.outstandingBalance.toFixed(2)}
+                    </Text>
+                  ) : null}
                 </View>
                 <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
               </Pressable>
@@ -193,7 +298,11 @@ export default function CustomersScreen() {
               </View>
               <Text style={styles.emptyTitle}>No Customers Found</Text>
               <Text style={styles.emptySubtitle}>
-                {search ? "No clients matched your search query." : "Tap 'Add Client' to register your first customer."}
+                {search
+                  ? "No clients matched your search query."
+                  : filterMode === "unpaid"
+                  ? "No clients have an outstanding debt balance."
+                  : "Tap 'Add Client' to register your first customer."}
               </Text>
             </View>
           ) : null}
@@ -209,7 +318,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: Colors.primaryBlue,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 7,
     borderRadius: Radius.pill,
     gap: 4,
   },
@@ -220,13 +329,13 @@ const styles = StyleSheet.create({
   },
   metricsRow: {
     flexDirection: "row",
-    gap: Spacing.sm,
+    gap: Spacing.xs,
   },
   metricCard: {
     flex: 1,
     backgroundColor: Colors.surface,
     borderRadius: Radius.card,
-    padding: Spacing.md,
+    padding: Spacing.sm + 2,
     borderWidth: 1,
     borderColor: "#e2e8f0",
     shadowColor: "#0f172a",
@@ -236,21 +345,54 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   metricLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
     color: Colors.textSecondary,
     textTransform: "uppercase",
   },
   metricValue: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: "900",
     color: Colors.textPrimary,
     marginTop: 4,
   },
   metricSub: {
-    fontSize: 11,
+    fontSize: 10,
     color: Colors.textMuted,
     marginTop: 2,
+  },
+  filterTabsRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginTop: Spacing.xs,
+  },
+  filterTab: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  filterTabActive: {
+    backgroundColor: Colors.primaryBlue,
+    borderColor: Colors.primaryBlue,
+  },
+  filterTabUnpaidActive: {
+    backgroundColor: "#dc2626",
+    borderColor: "#dc2626",
+  },
+  filterTabText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: Colors.textSecondary,
+  },
+  filterTabTextActive: {
+    color: Colors.white,
+    fontWeight: "700",
   },
   listHeader: {
     flexDirection: "row",
@@ -260,7 +402,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...Typography.title,
-    fontSize: 16,
+    fontSize: 15,
     color: Colors.textPrimary,
   },
   customerList: {
@@ -275,6 +417,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e2e8f0",
     gap: Spacing.sm,
+  },
+  customerCardDebt: {
+    borderColor: "#fecdd3",
+    backgroundColor: "#fffdfd",
   },
   avatarWrap: {
     width: 44,
@@ -296,6 +442,17 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: Colors.textPrimary,
   },
+  debtPill: {
+    backgroundColor: "#fee2e2",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  debtPillText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#dc2626",
+  },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -315,10 +472,16 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   spendValue: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "900",
     color: Colors.textPrimary,
     marginTop: 2,
+  },
+  cardDebtText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#dc2626",
+    marginTop: 1,
   },
   emptyBox: {
     alignItems: "center",
@@ -326,21 +489,21 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   emptyIconWrap: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     backgroundColor: Colors.background,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 4,
   },
   emptyTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "700",
     color: Colors.textPrimary,
   },
   emptySubtitle: {
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.textMuted,
     textAlign: "center",
     paddingHorizontal: Spacing.lg,

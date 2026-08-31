@@ -6,4 +6,4 @@ export { default as SyncQueueItem } from "./SyncQueueItem";
 export { default as ProductBatch } from "./ProductBatch";
 export { default as StockMovement } from "./StockMovement";
 export { default as PriceHistory } from "./PriceHistory";
-
+export { default as RegisterShift } from "./RegisterShift";

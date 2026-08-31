@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as Crypto from "expo-crypto";
 import NetInfo from "@react-native-community/netinfo";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
@@ -21,17 +20,15 @@ import {
   validateCartQuantities,
 } from "@/src/features/orders/stock";
 import { useAuthStore } from "@/src/store/authStore";
-import { useOrderDraftStore } from "@/src/store/orderDraftStore";
+import { useOrderDraftStore, type PaymentMethod } from "@/src/store/orderDraftStore";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
 
 import { enqueueChange } from "@/src/sync/enqueue";
-import { runSyncCycle } from "@/src/sync/syncEngine";
 import { database } from "@/src/database";
 import type Order from "@/src/database/models/Order";
 import type OrderItem from "@/src/database/models/OrderItem";
 import type Customer from "@/src/database/models/Customer";
-import type { PaymentMethod } from "@/src/store/orderDraftStore";
 
 function symbolFor(currency: string) {
   if (currency === "USD") return "$";
@@ -94,7 +91,7 @@ export default function OrderInfoScreen() {
               email: r.email,
               outstandingBalance: Number(r.outstandingBalance ?? 0),
               totalSpend: Number(r.totalSpend ?? 0),
-            }))
+            })),
           );
         }
       } catch {
@@ -117,11 +114,12 @@ export default function OrderInfoScreen() {
   const vat = taxedBase * (vatRate / 100);
   const service = taxedBase * (serviceRate / 100);
   const total = taxedBase + tax + vat + service;
+
   const change = Math.max(0, amountPaid - total);
   const balance = Math.max(0, total - amountPaid);
   const sym = symbolFor(currency);
 
-  // Sync amountPaid with total if amountPaid was not explicitly modified
+  // Sync default amountPaid with total if 0
   useEffect(() => {
     if (amountPaid === 0 && total > 0) {
       setAmountPaid(Number(total.toFixed(2)));
@@ -129,10 +127,15 @@ export default function OrderInfoScreen() {
   }, [total]);
 
   const matchedCustomers = useMemo(() => {
-    const q = (customerName || customerPhone || "").trim().toLowerCase();
-    if (!q || q.length < 2) return [];
+    const q = (customerName || "").trim().toLowerCase();
+    const qPhone = (customerPhone || "").trim();
+    if (!q && !qPhone) return [];
     return existingCustomers
-      .filter((c) => c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)))
+      .filter((c) => {
+        const nameMatch = q ? c.name.toLowerCase().includes(q) : false;
+        const phoneMatch = qPhone && c.phone ? c.phone.includes(qPhone) : false;
+        return nameMatch || phoneMatch;
+      })
       .slice(0, 4);
   }, [customerName, customerPhone, existingCustomers]);
 
@@ -147,7 +150,7 @@ export default function OrderInfoScreen() {
   async function updateCustomerCrmRecord(assignedCustomerId?: string) {
     if (!activeStoreId || !customerName?.trim()) return;
     const now = Date.now();
-    const paid = Number(amountPaid) || 0;
+    const paid = amountPaid;
     const unpaid = Math.max(0, total - paid);
 
     try {
@@ -164,7 +167,7 @@ export default function OrderInfoScreen() {
           .get<Customer>("customers")
           .query(
             Q.where("store_id", activeStoreId),
-            customerPhone ? Q.where("phone", customerPhone.trim()) : Q.where("name", customerName.trim())
+            customerPhone ? Q.where("phone", customerPhone.trim()) : Q.where("name", customerName.trim()),
           )
           .fetch();
         targetCust = matches[0] ?? null;
@@ -185,10 +188,9 @@ export default function OrderInfoScreen() {
 
         const custRemoteId = targetCust.remoteId || targetCust.id;
 
-        // Try direct sync
         try {
           const net = await NetInfo.fetch();
-          if (net.isConnected) {
+          if (net.isConnected && net.isInternetReachable !== false) {
             await supabase.from("customers").upsert(
               {
                 id: custRemoteId,
@@ -199,7 +201,7 @@ export default function OrderInfoScreen() {
                 total_spend: nextSpend,
                 outstanding_balance: nextBal,
               },
-              { onConflict: "id" }
+              { onConflict: "id" },
             );
           } else {
             await enqueueChange({
@@ -218,28 +220,13 @@ export default function OrderInfoScreen() {
             });
           }
         } catch {
-          await enqueueChange({
-            storeId: activeStoreId,
-            entity: "customers",
-            operation: "upsert",
-            recordId: targetCust.id,
-            payload: {
-              id: custRemoteId,
-              store_id: activeStoreId,
-              name: targetCust.name,
-              phone: targetCust.phone ?? null,
-              total_spend: nextSpend,
-              outstanding_balance: nextBal,
-            },
-          });
+          // fallback queue
         }
       } else if (saveToCrm) {
-        const newCustId = Crypto.randomUUID();
+        let createdCustomer: Customer;
         await database.write(async () => {
-          await database.get<Customer>("customers").create((rec) => {
-            rec._raw.id = newCustId;
+          createdCustomer = await database.get<Customer>("customers").create((rec) => {
             rec.storeId = activeStoreId;
-            rec.remoteId = newCustId;
             rec.name = customerName.trim();
             rec.phone = customerPhone?.trim() || undefined;
             rec.totalSpend = paid;
@@ -249,29 +236,25 @@ export default function OrderInfoScreen() {
           });
         });
 
-        // Try direct sync
         try {
           const net = await NetInfo.fetch();
-          if (net.isConnected) {
-            await supabase.from("customers").upsert(
-              {
-                id: newCustId,
-                store_id: activeStoreId,
-                name: customerName.trim(),
-                phone: customerPhone?.trim() || null,
-                total_spend: paid,
-                outstanding_balance: unpaid,
-              },
-              { onConflict: "id" }
-            );
+          if (net.isConnected && net.isInternetReachable !== false) {
+            await supabase.from("customers").insert({
+              id: createdCustomer!.id,
+              store_id: activeStoreId,
+              name: customerName.trim(),
+              phone: customerPhone?.trim() || null,
+              total_spend: paid,
+              outstanding_balance: unpaid,
+            });
           } else {
             await enqueueChange({
               storeId: activeStoreId,
               entity: "customers",
-              operation: "upsert",
-              recordId: newCustId,
+              operation: "insert",
+              recordId: createdCustomer!.id,
               payload: {
-                id: newCustId,
+                id: createdCustomer!.id,
                 store_id: activeStoreId,
                 name: customerName.trim(),
                 phone: customerPhone?.trim() || null,
@@ -281,20 +264,7 @@ export default function OrderInfoScreen() {
             });
           }
         } catch {
-          await enqueueChange({
-            storeId: activeStoreId,
-            entity: "customers",
-            operation: "upsert",
-            recordId: newCustId,
-            payload: {
-              id: newCustId,
-              store_id: activeStoreId,
-              name: customerName.trim(),
-              phone: customerPhone?.trim() || null,
-              total_spend: paid,
-              outstanding_balance: unpaid,
-            },
-          });
+          // offline queue
         }
       }
     } catch {
@@ -395,13 +365,11 @@ export default function OrderInfoScreen() {
       return;
     }
 
-    // Strict Validation: Only customers with an existing profile (customerId)
-    // or who have a valid name AND 'Save to directory' enabled qualify for credit / partial payment.
     const isProfileCustomer = Boolean(customerId || (customerName?.trim() && saveToCrm));
     if (!isProfileCustomer && (amountPaid < total - 0.01 || amountPaid <= 0)) {
       Alert.alert(
         "Full Payment Required for Walk-ins",
-        `Walk-in customers must make full payment (${sym} ${total.toFixed(2)}).\n\nTo allow partial payment or store credit, please assign a Customer Profile or enter a customer name and enable "Save customer to store directory".`
+        `Walk-in customers must make full payment (${sym} ${total.toFixed(2)}).\n\nTo allow partial payment or store credit, please assign a Customer Profile or enter a customer name and enable "Save customer to store directory".`,
       );
       return;
     }
@@ -423,60 +391,67 @@ export default function OrderInfoScreen() {
       await decrementStockForOrder(activeStoreId, lines);
       stockAdjusted = true;
 
-      try {
-        const { data: inserted, error: orderError } = await supabase
-          .from("orders")
-          .insert({
-            store_id: activeStoreId,
-            cashier_user_id: cashierUserId,
-            order_number: orderNumber,
-            status: orderStatus,
-            subtotal,
-            tax_rate: taxRate,
-            vat_rate: vatRate,
-            service_rate: serviceRate,
-            discount_mode: discountMode,
-            discount_value: discountValue,
-            total,
-            amount_paid: amountPaid,
-            change_due: change,
-            payment_method: paymentMethod,
-            customer_name: customerName || null,
-            customer_phone: customerPhone || null,
-            customer_id: customerId || null,
-            shipping_address: shippingAddress || null,
-          })
-          .select("id")
-          .single();
+      const net = await NetInfo.fetch();
+      const isOnline = Boolean(net.isConnected && net.isInternetReachable !== false);
 
-        if (orderError || !inserted) {
-          throw orderError ?? new Error("Cloud order creation failed.");
-        }
-
-        const itemsPayload = lines.map((line) => ({
-          order_id: inserted.id,
-          store_id: activeStoreId,
-          product_id: line.remoteId || line.id,
-          product_name: line.name,
-          sku: line.sku,
-          barcode: line.barcode,
-          unit_price: line.price,
-          quantity: line.quantity,
-          line_total: line.price * line.quantity,
-        }));
-
-        const { error: itemsError } = await supabase.from("order_items").insert(itemsPayload);
-        if (itemsError) {
-          throw itemsError;
-        }
-
-        void updateCustomerCrmRecord(customerId);
-
-        clearDraft();
-        router.push(`/pos/receipt/${inserted.id}`);
-      } catch (cloudErr) {
-        if (__DEV__) console.warn(`[OmniPOS] Cloud checkout failed, using offline fallback: ${cloudErr}`);
+      if (!isOnline) {
         await saveOrderOffline(orderNumber, cashierUserId);
+      } else {
+        try {
+          const { data: inserted, error: orderError } = await supabase
+            .from("orders")
+            .insert({
+              store_id: activeStoreId,
+              cashier_user_id: cashierUserId,
+              order_number: orderNumber,
+              status: orderStatus,
+              subtotal,
+              tax_rate: taxRate,
+              vat_rate: vatRate,
+              service_rate: serviceRate,
+              discount_mode: discountMode,
+              discount_value: discountValue,
+              total,
+              amount_paid: amountPaid,
+              change_due: change,
+              payment_method: paymentMethod,
+              customer_name: customerName || null,
+              customer_phone: customerPhone || null,
+              customer_id: customerId || null,
+              shipping_address: shippingAddress || null,
+            })
+            .select("id")
+            .single();
+
+          if (orderError || !inserted) {
+            throw orderError ?? new Error("Cloud order creation failed.");
+          }
+
+          const itemsPayload = lines.map((line) => ({
+            order_id: inserted.id,
+            store_id: activeStoreId,
+            product_id: line.remoteId || line.id,
+            product_name: line.name,
+            sku: line.sku,
+            barcode: line.barcode,
+            unit_price: line.price,
+            quantity: line.quantity,
+            line_total: line.price * line.quantity,
+          }));
+
+          const { error: itemsError } = await supabase.from("order_items").insert(itemsPayload);
+          if (itemsError) {
+            throw itemsError;
+          }
+
+          void updateCustomerCrmRecord(customerId);
+
+          clearDraft();
+          router.push(`/pos/receipt/${inserted.id}`);
+        } catch (cloudErr) {
+          if (__DEV__) console.warn(`[OmniPOS] Cloud checkout failed, using offline fallback: ${cloudErr}`);
+          await saveOrderOffline(orderNumber, cashierUserId);
+        }
       }
     } catch (error) {
       if (stockAdjusted) {
@@ -502,7 +477,7 @@ export default function OrderInfoScreen() {
     { key: "cash", label: "Cash", icon: "cash-outline" },
     { key: "card", label: "Card", icon: "card-outline" },
     { key: "transfer", label: "Transfer", icon: "send-outline" },
-    { key: "split", label: "Split", icon: "pie-chart-outline" },
+    { key: "momo", label: "MoMo", icon: "phone-portrait-outline" },
   ];
 
   return (
@@ -511,13 +486,17 @@ export default function OrderInfoScreen() {
       <View style={styles.totalHeroCard}>
         <View style={styles.totalHeroHeader}>
           <View style={styles.orderPill}>
-            <Text style={styles.orderPillText}>{lines.length} {lines.length === 1 ? "Item" : "Items"} in Cart</Text>
+            <Text style={styles.orderPillText}>
+              {lines.length} {lines.length === 1 ? "Item" : "Items"} in Cart
+            </Text>
           </View>
           <Text style={styles.totalHeroCurrency}>{currency}</Text>
         </View>
 
         <Text style={styles.totalHeroLabel}>TOTAL AMOUNT DUE</Text>
-        <Text style={styles.totalHeroValue}>{sym} {total.toFixed(2)}</Text>
+        <Text style={styles.totalHeroValue}>
+          {sym} {total.toFixed(2)}
+        </Text>
 
         <View style={styles.totalHeroBreakdown}>
           <Text style={styles.totalHeroBreakdownText}>
@@ -557,7 +536,7 @@ export default function OrderInfoScreen() {
         </View>
       </SectionCard>
 
-      {/* Discount & Tendered Amount */}
+      {/* Discount & Amount Paid */}
       <SectionCard>
         <Text style={styles.cardSectionTitle}>Discount & Tendered Amount</Text>
 
@@ -691,11 +670,14 @@ export default function OrderInfoScreen() {
                 label="Customer Full Name"
                 value={customerName}
                 onChangeText={(name) => setCustomer({ name, id: undefined })}
-                placeholder="e.g. Ama Serwaa (or Walk-in)"
+                placeholder="Walk-in Customer / Client Name"
                 leftIcon={<Ionicons name="person-outline" size={18} color={Colors.textMuted} />}
                 rightIcon={
-                  customerName ? (
-                    <Pressable onPress={() => setCustomer({ name: "", phone: "", id: undefined })} hitSlop={10}>
+                  customerId ? (
+                    <Pressable
+                      onPress={() => setCustomer({ name: "", phone: "", id: undefined })}
+                      hitSlop={10}
+                    >
                       <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
                     </Pressable>
                   ) : undefined
@@ -707,25 +689,24 @@ export default function OrderInfoScreen() {
               label="Phone Number"
               value={customerPhone}
               onChangeText={(phone) => setCustomer({ phone })}
-              placeholder="e.g. 0244000000"
+              placeholder="e.g. +233 24 000 0000"
               keyboardType="phone-pad"
               leftIcon={<Ionicons name="call-outline" size={18} color={Colors.textMuted} />}
             />
 
             <TextInput
-              label="Delivery / Shipping Address"
+              label="Shipping / Delivery Address"
               value={shippingAddress}
-              onChangeText={(value) => setCustomer({ shippingAddress: value })}
-              placeholder="e.g. House No. 12, Osu, Accra"
+              onChangeText={(shipping) => setCustomer({ shippingAddress: shipping })}
+              placeholder="House number, street, landmark (Optional)"
               leftIcon={<Ionicons name="location-outline" size={18} color={Colors.textMuted} />}
             />
 
-            {/* Save Customer Toggle */}
-            {!customerId && customerName?.trim() ? (
+            {!customerId && customerName.trim() ? (
               <View style={styles.saveToggleRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.saveToggleLabel}>Save customer to store directory</Text>
-                  <Text style={styles.saveToggleSub}>Enables future autofill, order tracking & credit balances.</Text>
+                  <Text style={styles.saveToggleSub}>Allows tracking total spend, loyalty, and store credit.</Text>
                 </View>
                 <Switch
                   value={saveToCrm}
@@ -771,14 +752,16 @@ export default function OrderInfoScreen() {
 
 const styles = StyleSheet.create({
   totalHeroCard: {
-    backgroundColor: "#0f172a",
+    backgroundColor: Colors.surface,
     borderRadius: Radius.card,
     padding: Spacing.lg,
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 4,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: Colors.navy,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
   },
   totalHeroHeader: {
     flexDirection: "row",
@@ -787,31 +770,33 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs,
   },
   orderPill: {
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    backgroundColor: Colors.primaryBluePale,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 20,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: "rgba(7, 103, 222, 0.15)",
   },
   orderPillText: {
-    color: "#e2e8f0",
+    color: Colors.primaryBlue,
     fontSize: 12,
     fontWeight: "700",
   },
   totalHeroCurrency: {
-    color: "#94a3b8",
+    color: Colors.textSecondary,
     fontSize: 12,
     fontWeight: "800",
     letterSpacing: 1,
   },
   totalHeroLabel: {
-    color: "#94a3b8",
+    color: Colors.textMuted,
     fontSize: 12,
     fontWeight: "700",
     letterSpacing: 0.8,
     marginTop: Spacing.xs,
   },
   totalHeroValue: {
-    color: "#ffffff",
+    color: Colors.navy,
     fontSize: 34,
     fontWeight: "900",
     marginTop: 2,
@@ -819,12 +804,12 @@ const styles = StyleSheet.create({
   },
   totalHeroBreakdown: {
     borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.12)",
+    borderTopColor: Colors.divider,
     marginTop: Spacing.sm,
     paddingTop: Spacing.xs,
   },
   totalHeroBreakdownText: {
-    color: "#94a3b8",
+    color: Colors.textSecondary,
     fontSize: 12,
   },
   cardSectionTitle: {

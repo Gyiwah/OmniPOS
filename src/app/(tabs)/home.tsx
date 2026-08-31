@@ -32,7 +32,7 @@ const SHORTCUTS: {
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
   bg: string;
-  href: "/inventory" | "/product/add" | "/pos/add-order" | "/analytics" | "/returns" | "/customers";
+  href: "/inventory" | "/product/add" | "/pos/add-order" | "/analytics" | "/returns" | "/customers" | "/pos/shifts";
 }[] = [
   {
     label: "Create Order",
@@ -41,6 +41,14 @@ const SHORTCUTS: {
     color: "#2563eb",
     bg: "#eff6ff",
     href: "/pos/add-order",
+  },
+  {
+    label: "Cash Drawer",
+    subtitle: "Shifts & Z-Reports",
+    icon: "cash-outline",
+    color: "#0284c7",
+    bg: "#e0f2fe",
+    href: "/pos/shifts",
   },
   {
     label: "Inventory",

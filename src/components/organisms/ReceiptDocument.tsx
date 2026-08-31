@@ -416,7 +416,7 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   grandTotalBlock: {
-    backgroundColor: "#0f172a",
+    backgroundColor: Colors.primaryBluePale,
     borderRadius: Radius.input,
     paddingVertical: 14,
     paddingHorizontal: Spacing.md,
@@ -424,17 +424,19 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginVertical: Spacing.sm,
+    borderWidth: 1,
+    borderColor: "rgba(7, 103, 222, 0.15)",
   },
   grandTotalLabel: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#cbd5e1",
+    color: Colors.primaryBlue,
     letterSpacing: 0.5,
   },
   grandTotalValue: {
     fontSize: 22,
     fontWeight: "900",
-    color: "#ffffff",
+    color: Colors.navy,
   },
   paymentBox: {
     backgroundColor: "#f8fafc",

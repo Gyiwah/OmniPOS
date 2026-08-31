@@ -1,4 +1,4 @@
-export type PrinterConnectionType = "classic" | "ble";
+export type PrinterConnectionType = "classic" | "ble" | "network";
 
 export type PrinterDevice = {
   id: string;

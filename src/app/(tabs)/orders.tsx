@@ -1,6 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { Q } from "@nozbe/watermelondb";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { TextInput } from "@/src/components/atoms/TextInput";
@@ -10,7 +11,10 @@ import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
-import { supabase } from "@/src/services/supabase";
+import { database } from "@/src/database";
+import type Order from "@/src/database/models/Order";
+import type OrderItem from "@/src/database/models/OrderItem";
+import { runSyncCycle } from "@/src/sync/syncEngine";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
 
@@ -38,55 +42,53 @@ export default function OrdersScreen() {
   const [statusFilter, setStatusFilter] = useState<OrderFilter>("all");
   const [sourceRows, setSourceRows] = useState<OrderRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    let mounted = true;
-    async function loadOrders() {
-      if (!activeStoreId) {
-        if (mounted) setSourceRows([]);
-        return;
-      }
-      setLoading(true);
-      const { data: orders, error } = await supabase
-        .from("orders")
-        .select("id, order_number, customer_name, customer_phone, created_at, total, amount_paid")
-        .eq("store_id", activeStoreId)
-        .order("created_at", { ascending: false })
-        .limit(100);
+  const loadLocalOrders = useCallback(async () => {
+    if (!activeStoreId) {
+      setSourceRows([]);
+      return;
+    }
+    setLoading(true);
+    try {
+      // 1. Fetch Orders from local WatermelonDB
+      const orders = await database
+        .get<Order>("orders")
+        .query(
+          Q.where("store_id", activeStoreId),
+          Q.sortBy("created_at", Q.desc),
+          Q.take(150),
+        )
+        .fetch();
 
-      if (error || !orders) {
-        if (mounted) setSourceRows([]);
-        setLoading(false);
-        return;
-      }
-
-      const orderIds = orders.map((o) => o.id as string);
+      // 2. Fetch Order Items count from local WatermelonDB
+      const orderIds = orders.map((o) => o.id);
       const counts = new Map<string, number>();
+
       if (orderIds.length > 0) {
-        const { data: items } = await supabase
-          .from("order_items")
-          .select("order_id, quantity")
-          .eq("store_id", activeStoreId)
-          .in("order_id", orderIds);
-        (items ?? []).forEach((item) => {
-          const id = item.order_id as string;
+        const items = await database
+          .get<OrderItem>("order_items")
+          .query(Q.where("store_id", activeStoreId))
+          .fetch();
+
+        items.forEach((item) => {
+          const id = item.orderId;
           const qty = Number(item.quantity ?? 0);
           counts.set(id, (counts.get(id) ?? 0) + qty);
         });
       }
 
-      if (!mounted) return;
       setSourceRows(
         orders.map((o) => {
           const total = Number(o.total ?? 0);
-          const paid = Number(o.amount_paid ?? total);
+          const paid = Number(o.amountPaid ?? total);
           const isPartPayment = paid + 0.0001 < total;
           return {
             id: String(o.id),
-            orderNumber: String(o.order_number || o.id.slice(0, 8)),
-            customerName: (o.customer_name as string | null) ?? null,
-            customerPhone: (o.customer_phone as string | null) ?? null,
-            dateLabel: new Date(String(o.created_at)).toLocaleString([], {
+            orderNumber: String(o.orderNumber || o.id.slice(0, 8)),
+            customerName: o.customerName ?? null,
+            customerPhone: o.customerPhone ?? null,
+            dateLabel: new Date(Number(o.createdAt)).toLocaleString([], {
               month: "short",
               day: "numeric",
               hour: "2-digit",
@@ -99,13 +101,33 @@ export default function OrdersScreen() {
           };
         }),
       );
+    } catch {
+      setSourceRows([]);
+    } finally {
       setLoading(false);
     }
-    void loadOrders();
-    return () => {
-      mounted = false;
-    };
   }, [activeStoreId]);
+
+  useEffect(() => {
+    void loadLocalOrders();
+    // Trigger non-blocking background sync
+    if (activeStoreId) {
+      void runSyncCycle(activeStoreId).then(() => {
+        void loadLocalOrders();
+      });
+    }
+  }, [activeStoreId, loadLocalOrders]);
+
+  const handleRefresh = async () => {
+    if (!activeStoreId) return;
+    setRefreshing(true);
+    try {
+      await runSyncCycle(activeStoreId);
+      await loadLocalOrders();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -131,7 +153,9 @@ export default function OrdersScreen() {
   return (
     <AppScrollScreen
       title="Orders & Sales"
-      subtitle="View completed transactions, track payments, and access receipts."
+      subtitle="Offline-first transaction registry, payments, and receipts."
+      refreshing={refreshing}
+      onRefresh={() => void handleRefresh()}
       right={
         <Pressable
           style={({ pressed }) => [styles.headerAddBtn, pressed && { opacity: 0.7 }]}
@@ -162,7 +186,7 @@ export default function OrdersScreen() {
           label="Search Orders"
           value={query}
           onChangeText={setQuery}
-          placeholder="Order #, customer name, phone, or date..."
+          placeholder="Order #, customer name, phone, or amount..."
           leftIcon={<Ionicons name="search-outline" size={18} color={Colors.textMuted} />}
           rightIcon={
             <Pressable onPress={() => setShowScanner((v) => !v)} hitSlop={10} style={{ padding: 4 }}>
@@ -305,8 +329,8 @@ const styles = StyleSheet.create({
   },
   headerAddText: {
     color: Colors.white,
-    fontSize: 13,
     fontWeight: "700",
+    fontSize: 13,
   },
   metricsRow: {
     flexDirection: "row",
@@ -315,15 +339,10 @@ const styles = StyleSheet.create({
   metricCard: {
     flex: 1,
     backgroundColor: Colors.surface,
-    borderRadius: Radius.card,
     padding: Spacing.md,
+    borderRadius: Radius.card,
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
   },
   metricLabel: {
     fontSize: 12,
@@ -339,41 +358,40 @@ const styles = StyleSheet.create({
   },
   scannerWrap: {
     marginTop: Spacing.sm,
+    height: 180,
     borderRadius: Radius.card,
     overflow: "hidden",
   },
   filterPillsRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: Spacing.xs,
-    marginTop: Spacing.xs,
+    marginTop: Spacing.sm,
   },
   filterPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.background,
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    borderRadius: Radius.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    backgroundColor: Colors.surface,
   },
   filterPillActive: {
+    backgroundColor: Colors.primaryBlue,
     borderColor: Colors.primaryBlue,
-    backgroundColor: Colors.primaryBluePale,
   },
   filterPillText: {
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "700",
     color: Colors.textSecondary,
   },
   filterPillTextActive: {
-    color: Colors.primaryBlue,
-    fontWeight: "800",
+    color: Colors.white,
   },
   listHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: Spacing.xs,
+    marginBottom: Spacing.sm,
   },
   sectionTitle: {
     ...Typography.title,
@@ -381,37 +399,31 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   ordersList: {
-    gap: Spacing.xs,
+    gap: Spacing.sm,
   },
   orderCard: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
     backgroundColor: Colors.surface,
-    borderRadius: Radius.card,
     padding: Spacing.md,
+    borderRadius: Radius.card,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    elevation: 1,
+    borderColor: "#f1f5f9",
   },
   orderCardPressed: {
     backgroundColor: "#f8fafc",
-    transform: [{ scale: 0.99 }],
   },
   orderLeft: {
-    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.sm,
+    flex: 1,
   },
   orderIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: Colors.primaryBluePale,
     alignItems: "center",
     justifyContent: "center",
@@ -424,45 +436,18 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   orderNumberText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "800",
     color: Colors.textPrimary,
-  },
-  statusBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 8,
-    alignSelf: "flex-end",
-    marginBottom: 2,
-  },
-  statusBadgePaid: {
-    backgroundColor: "#dcfce7",
-  },
-  statusBadgePart: {
-    backgroundColor: "#ffedd5",
-  },
-  statusBadgeText: {
-    fontSize: 10,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.3,
-  },
-  statusTextPaid: {
-    color: "#16a34a",
-  },
-  statusTextPart: {
-    color: "#ea580c",
   },
   customerNameText: {
     fontSize: 13,
-    color: Colors.textPrimary,
+    color: Colors.textSecondary,
     fontWeight: "600",
   },
   orderSubRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    marginTop: 1,
   },
   orderDateText: {
     fontSize: 11,
@@ -471,13 +456,32 @@ const styles = StyleSheet.create({
   orderUnitCount: {
     fontSize: 11,
     color: Colors.textMuted,
-    fontWeight: "600",
   },
   orderRight: {
     alignItems: "flex-end",
-    justifyContent: "center",
-    paddingLeft: Spacing.xs,
     gap: 2,
+    marginLeft: 8,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: Radius.pill,
+  },
+  statusBadgePaid: {
+    backgroundColor: "#dcfce7",
+  },
+  statusBadgePart: {
+    backgroundColor: "#ffedd5",
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  statusTextPaid: {
+    color: "#15803d",
+  },
+  statusTextPart: {
+    color: "#c2410c",
   },
   orderTotalText: {
     fontSize: 15,
@@ -486,33 +490,32 @@ const styles = StyleSheet.create({
   },
   paidText: {
     fontSize: 11,
-    color: Colors.accentOrange,
-    fontWeight: "700",
-    marginTop: 1,
+    color: Colors.textMuted,
   },
   emptyBox: {
     alignItems: "center",
+    justifyContent: "center",
     paddingVertical: Spacing.xl,
     gap: Spacing.xs,
   },
   emptyIconWrap: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: Colors.background,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
+    marginBottom: Spacing.xs,
   },
   emptyTitle: {
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "800",
     color: Colors.textPrimary,
   },
   emptySubtitle: {
     fontSize: 13,
     color: Colors.textMuted,
     textAlign: "center",
-    paddingHorizontal: Spacing.lg,
+    maxWidth: 240,
   },
 });

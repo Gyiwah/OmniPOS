@@ -2,15 +2,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { Q } from "@nozbe/watermelondb";
 import { useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
-import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { TextInput } from "@/src/components/atoms/TextInput";
 import { ProductCard } from "@/src/components/molecules/ProductCard";
 import { BarcodeScanner } from "@/src/components/organisms/BarcodeScanner";
 import { ExportPrintModal, type ExportProductItem } from "@/src/components/organisms/ExportPrintModal";
+import { ImportProductModal } from "@/src/components/organisms/ImportProductModal";
 import { Colors } from "@/src/constants/colors";
 import { Elevation } from "@/src/constants/elevation";
 import { Radius } from "@/src/constants/radius";
@@ -18,7 +18,6 @@ import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
 import { database } from "@/src/database";
 import type Product from "@/src/database/models/Product";
-import type ProductBatch from "@/src/database/models/ProductBatch";
 import type SyncQueueItem from "@/src/database/models/SyncQueueItem";
 import { calculateExpiryStatus, getAllStoreBatches } from "@/src/features/inventory/batchService";
 import { resolveProductImageUrl } from "@/src/services/storage";
@@ -40,7 +39,7 @@ type InventoryRow = {
   expiryDate?: string | null;
 };
 
-type StockFilterType = "all" | "in_stock" | "low" | "out" | "expiring_soon" | "expired";
+type StockFilterType = "all" | "in_stock" | "low" | "expiring_soon" | "expired" | "out";
 
 const FILTER_OPTIONS: {
   key: StockFilterType;
@@ -48,13 +47,13 @@ const FILTER_OPTIONS: {
   icon: keyof typeof Ionicons.glyphMap;
   color?: string;
 }[] = [
-  { key: "all", label: "All Products", icon: "cube-outline" },
-  { key: "in_stock", label: "In Stock", icon: "checkmark-circle-outline", color: "#16a34a" },
-  { key: "low", label: "Low Stock", icon: "warning-outline", color: "#d97706" },
-  { key: "out", label: "Out of Stock", icon: "close-circle-outline", color: "#dc2626" },
-  { key: "expiring_soon", label: "Expiring Soon (<30d)", icon: "time-outline", color: "#d97706" },
-  { key: "expired", label: "Expired", icon: "alert-circle-outline", color: "#dc2626" },
-];
+    { key: "all", label: "All Products", icon: "cube-outline" },
+    { key: "in_stock", label: "In Stock", icon: "checkmark-circle-outline", color: "#16a34a" },
+    { key: "low", label: "Low Stock", icon: "warning-outline", color: "#d97706" },
+    { key: "expiring_soon", label: "Expiring Soon (<30d)", icon: "time-outline", color: "#d97706" },
+    { key: "expired", label: "Expired", icon: "alert-circle-outline", color: "#dc2626" },
+    { key: "out", label: "Out of Stock", icon: "close-circle-outline", color: "#dc2626" },
+  ];
 
 export default function InventoryScreen() {
   const router = useRouter();
@@ -70,105 +69,128 @@ export default function InventoryScreen() {
   const [products, setProducts] = useState<InventoryRow[]>([]);
   const [exportModalVisible, setExportModalVisible] = useState(false);
 
+  // Add / Import Options Popup Modal State
+  const [addMenuVisible, setAddMenuVisible] = useState(false);
+  const [importModalVisible, setImportModalVisible] = useState(false);
+
   // Expiry metrics
   const [expiredCount, setExpiredCount] = useState(0);
   const [expiringSoonCount, setExpiringSoonCount] = useState(0);
 
+  const loadInventory = useCallback(async () => {
+    if (!activeStoreId) {
+      setProducts([]);
+      setExpiredCount(0);
+      setExpiringSoonCount(0);
+      return;
+    }
+    // 1. Fetch local WatermelonDB products immediately (instant offline access)
+    const rows = await database
+      .get<Product>("products")
+      .query(Q.where("store_id", activeStoreId))
+      .fetch();
+    const queueRows = await database
+      .get<SyncQueueItem>("sync_queue")
+      .query(Q.where("store_id", activeStoreId), Q.where("entity", "products"), Q.where("operation", "upsert"))
+      .fetch();
+    const batches = await getAllStoreBatches(activeStoreId);
+
+    // Group batch expiry by productId
+    const batchMapByProduct = new Map<string, { status: "good" | "expiring_soon" | "expired" | "no_expiry"; label: string; date: string }>();
+    let expCount = 0;
+    let soonCount = 0;
+
+    batches.forEach((b) => {
+      if (!b.expiryDate || (b.quantity ?? 0) <= 0) return;
+      const info = calculateExpiryStatus(b.expiryDate);
+      if (info.status === "expired") expCount++;
+      if (info.status === "expiring_soon") soonCount++;
+
+      const existing = batchMapByProduct.get(b.productId);
+      if (!existing || info.status === "expired" || (info.status === "expiring_soon" && existing.status !== "expired")) {
+        batchMapByProduct.set(b.productId, {
+          status: info.status,
+          label: info.label,
+          date: b.expiryDate,
+        });
+      }
+    });
+
+    setExpiredCount(expCount);
+    setExpiringSoonCount(soonCount);
+
+    const imageBySku = new Map<string, string>();
+    queueRows.forEach((row) => {
+      try {
+        const payload = JSON.parse(row.payload) as {
+          sku?: string;
+          image_url?: string | null;
+          local_image_uri?: string | null;
+        };
+        if (!payload.sku) return;
+        const pendingImage = payload.local_image_uri ?? payload.image_url;
+        if (pendingImage) {
+          imageBySku.set(payload.sku, pendingImage);
+        }
+      } catch {
+        // ignore malformed queue payload
+      }
+    });
+
+    const nextProducts = await Promise.all(
+      rows.map(async (p) => {
+        const rawImage = imageBySku.get(p.sku) ?? p.imageUrl ?? null;
+        const batchInfo = batchMapByProduct.get(p.id);
+
+        return {
+          id: p.id,
+          name: p.name,
+          sku: p.sku,
+          stockCount: Number(p.stock ?? 0),
+          lowStockThreshold: Number(p.reorderLevel ?? 5),
+          sellPrice: Number(p.sellPrice ?? 0),
+          costPrice: p.costPrice,
+          imageUrl: await resolveProductImageUrl(rawImage),
+          expiryStatus: batchInfo?.status ?? "no_expiry",
+          expiryLabel: batchInfo?.label,
+          expiryDate: batchInfo?.date,
+        };
+      }),
+    );
+    setProducts(nextProducts);
+  }, [activeStoreId]);
+
   useFocusEffect(
     useCallback(() => {
-      let mounted = true;
-      async function loadInventory() {
-        if (!activeStoreId) {
-          if (mounted) {
-            setProducts([]);
-            setExpiredCount(0);
-            setExpiringSoonCount(0);
-          }
-          return;
-        }
-        await runSyncCycle(activeStoreId);
-        const rows = await database
-          .get<Product>("products")
-          .query(Q.where("store_id", activeStoreId))
-          .fetch();
-        const queueRows = await database
-          .get<SyncQueueItem>("sync_queue")
-          .query(Q.where("store_id", activeStoreId), Q.where("entity", "products"), Q.where("operation", "upsert"))
-          .fetch();
-        const batches = await getAllStoreBatches(activeStoreId);
-
-        // Group batch expiry by productId
-        const batchMapByProduct = new Map<string, { status: "good" | "expiring_soon" | "expired" | "no_expiry"; label: string; date: string }>();
-        let expCount = 0;
-        let soonCount = 0;
-
-        batches.forEach((b) => {
-          if (!b.expiryDate || (b.quantity ?? 0) <= 0) return;
-          const info = calculateExpiryStatus(b.expiryDate);
-          if (info.status === "expired") expCount++;
-          if (info.status === "expiring_soon") soonCount++;
-
-          const existing = batchMapByProduct.get(b.productId);
-          if (!existing || info.status === "expired" || (info.status === "expiring_soon" && existing.status !== "expired")) {
-            batchMapByProduct.set(b.productId, {
-              status: info.status,
-              label: info.label,
-              date: b.expiryDate,
-            });
-          }
-        });
-
-        if (mounted) {
-          setExpiredCount(expCount);
-          setExpiringSoonCount(soonCount);
-        }
-
-        const imageBySku = new Map<string, string>();
-        queueRows.forEach((row) => {
-          try {
-            const payload = JSON.parse(row.payload) as {
-              sku?: string;
-              image_url?: string | null;
-              local_image_uri?: string | null;
-            };
-            if (!payload.sku) return;
-            const pendingImage = payload.local_image_uri ?? payload.image_url;
-            if (pendingImage) {
-              imageBySku.set(payload.sku, pendingImage);
-            }
-          } catch {
-            // ignore malformed queue payload
-          }
-        });
-        if (!mounted) return;
-        const nextProducts = await Promise.all(
-          rows.map(async (p) => {
-            const rawImage = imageBySku.get(p.sku) ?? p.imageUrl ?? null;
-            const batchInfo = batchMapByProduct.get(p.id);
-
-            return {
-              id: p.id,
-              name: p.name,
-              sku: p.sku,
-              stockCount: Number(p.stock ?? 0),
-              lowStockThreshold: Number(p.reorderLevel ?? 5),
-              sellPrice: Number(p.sellPrice ?? 0),
-              costPrice: p.costPrice,
-              imageUrl: await resolveProductImageUrl(rawImage),
-              expiryStatus: batchInfo?.status ?? "no_expiry",
-              expiryLabel: batchInfo?.label,
-              expiryDate: batchInfo?.date,
-            };
-          }),
-        );
-        setProducts(nextProducts);
-      }
       void loadInventory();
-      return () => {
-        mounted = false;
-      };
-    }, [activeStoreId]),
+    }, [loadInventory]),
   );
+
+  // Compute counts for filter dropdown options
+  const counts = useMemo(() => {
+    let inStock = 0;
+    let low = 0;
+    let out = 0;
+    let expiring = 0;
+    let expired = 0;
+
+    products.forEach((p) => {
+      if (p.stockCount > 0) inStock++;
+      if (p.stockCount <= 0) out++;
+      if (p.stockCount > 0 && p.stockCount <= p.lowStockThreshold) low++;
+      if (p.expiryStatus === "expiring_soon") expiring++;
+      if (p.expiryStatus === "expired") expired++;
+    });
+
+    return {
+      all: products.length,
+      in_stock: inStock,
+      low,
+      out,
+      expiring_soon: expiring,
+      expired,
+    };
+  }, [products]);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -203,13 +225,38 @@ export default function InventoryScreen() {
     }));
   }, [products]);
 
+  const selectedOption = FILTER_OPTIONS.find((f) => f.key === stockFilter) ?? FILTER_OPTIONS[0];
+
   return (
-    <AppScrollScreen title="Inventory" subtitle="Stock overview, batch tracking & exports.">
+    <AppScrollScreen
+      title="Inventory"
+      subtitle="Stock catalog, batch tracking & exports"
+      right={
+        <View style={styles.headerIconsRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Export or Print Inventory"
+            style={({ pressed }) => [styles.headerIconBtn, styles.exportIconBtn, pressed && styles.headerIconBtnPressed]}
+            onPress={() => setExportModalVisible(true)}
+          >
+            <Ionicons name="print-outline" size={20} color={Colors.primaryBlue} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add or Import Product"
+            style={({ pressed }) => [styles.headerIconBtn, styles.addIconBtn, pressed && styles.headerIconBtnPressed]}
+            onPress={() => setAddMenuVisible(true)}
+          >
+            <Ionicons name="add" size={22} color={Colors.white} />
+          </Pressable>
+        </View>
+      }
+    >
       {/* Expiry Alerts Banner */}
       {expiredCount > 0 || expiringSoonCount > 0 ? (
         <View style={styles.alertBanner}>
           <View style={styles.alertIconWrap}>
-            <Ionicons name="warning-outline" size={22} color="#dc2626" />
+            <Ionicons name="warning-outline" size={20} color="#dc2626" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.alertTitle}>Expiry Attention Needed</Text>
@@ -228,26 +275,34 @@ export default function InventoryScreen() {
         </View>
       ) : null}
 
+      {/* Search & Filter Section */}
       <SectionCard>
         <TextInput
-          label="Search"
+          label="Search Products"
           value={query}
           onChangeText={setQuery}
-          placeholder="SKU, name, or barcode"
-          leftIcon={<Ionicons name="search" size={20} color={Colors.textMuted} />}
+          placeholder="Search by SKU, name, or barcode..."
+          leftIcon={<Ionicons name="search" size={18} color={Colors.textMuted} />}
           rightIcon={
-            <Pressable onPress={() => setShowScanner((v) => !v)} hitSlop={10}>
-              <Ionicons
-                name={showScanner ? "close-circle-outline" : "scan-outline"}
-                size={20}
-                color={Colors.primaryBlue}
-              />
-            </Pressable>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              {query ? (
+                <Pressable onPress={() => setQuery("")} hitSlop={10}>
+                  <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
+                </Pressable>
+              ) : null}
+              <Pressable onPress={() => setShowScanner((v) => !v)} hitSlop={10}>
+                <Ionicons
+                  name={showScanner ? "close-circle-outline" : "scan-outline"}
+                  size={20}
+                  color={Colors.primaryBlue}
+                />
+              </Pressable>
+            </View>
           }
         />
         {showScanner ? (
           <BarcodeScanner
-            label="Scan product code to search inventory"
+            label="Scan product barcode to filter inventory"
             onScan={(payload) => {
               setQuery(payload);
               setShowScanner(false);
@@ -255,30 +310,26 @@ export default function InventoryScreen() {
           />
         ) : null}
 
-        {/* Filter Dropdown */}
+        {/* Status Filter Dropdown */}
         <View style={styles.filterDropdownSection}>
           <Text style={styles.filterSectionLabel}>Filter By Status</Text>
           <Pressable
-            style={styles.filterDropdownTrigger}
+            style={[styles.filterDropdownTrigger, filterDropdownOpen && styles.filterDropdownTriggerActive]}
             onPress={() => setFilterDropdownOpen((v) => !v)}
           >
             <View style={styles.filterDropdownLeft}>
               <Ionicons
-                name={
-                  FILTER_OPTIONS.find((f) => f.key === stockFilter)?.icon || "filter-outline"
-                }
+                name={selectedOption.icon}
                 size={18}
-                color={
-                  FILTER_OPTIONS.find((f) => f.key === stockFilter)?.color || Colors.primaryBlue
-                }
+                color={selectedOption.color || Colors.primaryBlue}
               />
               <Text style={styles.filterDropdownTriggerText}>
-                {FILTER_OPTIONS.find((f) => f.key === stockFilter)?.label ?? "All Products"}
+                {selectedOption.label}
               </Text>
             </View>
             <View style={styles.filterDropdownRight}>
               <View style={styles.filterCountBadge}>
-                <Text style={styles.filterCountText}>{rows.length}</Text>
+                <Text style={styles.filterCountText}>{counts[stockFilter]}</Text>
               </View>
               <Ionicons
                 name={filterDropdownOpen ? "chevron-up" : "chevron-down"}
@@ -292,6 +343,7 @@ export default function InventoryScreen() {
             <View style={styles.filterDropdownMenu}>
               {FILTER_OPTIONS.map((opt) => {
                 const isSelected = stockFilter === opt.key;
+                const optCount = counts[opt.key];
                 return (
                   <Pressable
                     key={opt.key}
@@ -317,9 +369,16 @@ export default function InventoryScreen() {
                         {opt.label}
                       </Text>
                     </View>
-                    {isSelected ? (
-                      <Ionicons name="checkmark" size={18} color={Colors.primaryBlue} />
-                    ) : null}
+                    <View style={styles.filterDropdownItemRight}>
+                      <View style={[styles.filterCountBadge, isSelected && styles.filterCountBadgeActive]}>
+                        <Text style={[styles.filterCountText, isSelected && styles.filterCountTextActive]}>
+                          {optCount}
+                        </Text>
+                      </View>
+                      {isSelected ? (
+                        <Ionicons name="checkmark" size={18} color={Colors.primaryBlue} />
+                      ) : null}
+                    </View>
                   </Pressable>
                 );
               })}
@@ -328,8 +387,16 @@ export default function InventoryScreen() {
         </View>
       </SectionCard>
 
+      {/* Product List */}
       <SectionCard>
-        <Text style={styles.sectionTitle}>Products ({rows.length})</Text>
+        <View style={styles.listHeader}>
+          <Text style={styles.sectionTitle}>
+            Products ({rows.length})
+          </Text>
+          <Text style={styles.filterActiveLabel}>
+            {selectedOption.label}
+          </Text>
+        </View>
 
         <View style={styles.list}>
           {rows.map((p) => (
@@ -337,33 +404,28 @@ export default function InventoryScreen() {
               key={p.id}
               imageUrl={p.imageUrl}
               name={p.name}
+              sku={p.sku}
               stockCount={p.stockCount}
               lowStockThreshold={p.lowStockThreshold}
               price={p.sellPrice}
+              costPrice={p.costPrice}
+              currencySymbol={currencySymbol}
               expiryStatus={p.expiryStatus}
               expiryLabel={p.expiryLabel}
               onPress={() => router.push(`/product/edit/${p.id}`)}
             />
           ))}
-          {rows.length === 0 ? <Text style={styles.empty}>No products match your search/filter.</Text> : null}
-        </View>
-
-        {/* Action Buttons Below Products List */}
-        <View style={styles.bottomActionsRow}>
-          <PrimaryButton
-            label="Export / Print"
-            variant="outline"
-            fullWidth={false}
-            style={styles.exportBtn}
-            onPress={() => setExportModalVisible(true)}
-          />
-          <PrimaryButton
-            label="+ Add Product"
-            variant="primary"
-            fullWidth={false}
-            style={styles.addBtn}
-            onPress={() => router.push("/product/add")}
-          />
+          {rows.length === 0 ? (
+            <View style={styles.emptyWrap}>
+              <Ionicons name="search-outline" size={36} color={Colors.textMuted} />
+              <Text style={styles.emptyTitle}>No matching products</Text>
+              <Text style={styles.emptySubtitle}>
+                {query
+                  ? `No products match "${query}".`
+                  : "No products found in this filter category."}
+              </Text>
+            </View>
+          ) : null}
         </View>
       </SectionCard>
 
@@ -375,11 +437,108 @@ export default function InventoryScreen() {
         currencySymbol={currencySymbol}
         storeName={shopName}
       />
+
+      {/* Add Product Options Pop-up Modal */}
+      <Modal
+        visible={addMenuVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setAddMenuVisible(false)}
+      >
+        <Pressable style={styles.popupBackdrop} onPress={() => setAddMenuVisible(false)}>
+          <View style={styles.popupCard}>
+            <View style={styles.popupHeader}>
+              <Text style={styles.popupTitle}>Product Options</Text>
+              <Pressable onPress={() => setAddMenuVisible(false)} hitSlop={8}>
+                <Ionicons name="close" size={20} color={Colors.textMuted} />
+              </Pressable>
+            </View>
+
+            <View style={styles.popupOptionsList}>
+              {/* Option A: Add Product */}
+              <Pressable
+                style={({ pressed }) => [styles.popupOptionItem, pressed && styles.popupOptionPressed]}
+                onPress={() => {
+                  setAddMenuVisible(false);
+                  router.push("/product/add");
+                }}
+              >
+                <View style={[styles.popupOptionIconWrap, { backgroundColor: Colors.primaryBluePale }]}>
+                  <Ionicons name="add-circle-outline" size={22} color={Colors.primaryBlue} />
+                </View>
+                <View style={styles.popupOptionBody}>
+                  <Text style={styles.popupOptionTitle}>Add Product</Text>
+                  <Text style={styles.popupOptionSubtitle}>Enter product details and stock manually</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+              </Pressable>
+
+              {/* Option B: Import Product */}
+              <Pressable
+                style={({ pressed }) => [styles.popupOptionItem, pressed && styles.popupOptionPressed]}
+                onPress={() => {
+                  setAddMenuVisible(false);
+                  setImportModalVisible(true);
+                }}
+              >
+                <View style={[styles.popupOptionIconWrap, { backgroundColor: "#f0fdf4" }]}>
+                  <Ionicons name="cloud-upload-outline" size={22} color="#16a34a" />
+                </View>
+                <View style={styles.popupOptionBody}>
+                  <Text style={styles.popupOptionTitle}>Import Product</Text>
+                  <Text style={styles.popupOptionSubtitle}>Bulk upload multiple products via CSV</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+              </Pressable>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Import Product Modal */}
+      {activeStoreId ? (
+        <ImportProductModal
+          visible={importModalVisible}
+          onClose={() => setImportModalVisible(false)}
+          storeId={activeStoreId}
+          onSuccess={() => void loadInventory()}
+          currencySymbol={currencySymbol}
+        />
+      ) : null}
     </AppScrollScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  headerIconsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  headerIconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: Radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  exportIconBtn: {
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  addIconBtn: {
+    backgroundColor: Colors.primaryBlue,
+  },
+  headerIconBtnPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.95 }],
+  },
   alertBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -389,12 +548,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#fecaca",
     gap: Spacing.sm,
-    marginBottom: Spacing.xs,
   },
   alertIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: "#fee2e2",
     alignItems: "center",
     justifyContent: "center",
@@ -403,54 +561,23 @@ const styles = StyleSheet.create({
     ...Typography.body,
     fontWeight: "700",
     color: "#b91c1c",
-    fontSize: 14,
+    fontSize: 13,
   },
   alertSubtitle: {
     ...Typography.caption,
     color: "#dc2626",
-    fontSize: 12,
+    fontSize: 11,
   },
   alertActionBtn: {
     backgroundColor: "#dc2626",
     paddingHorizontal: Spacing.sm,
-    paddingVertical: 5,
+    paddingVertical: 4,
     borderRadius: Radius.pill,
   },
   alertActionText: {
     color: Colors.textWhite,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
-  },
-  rowBetween: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: Spacing.sm,
-  },
-  sectionTitle: {
-    ...Typography.title,
-    color: Colors.textPrimary,
-    flex: 1,
-  },
-  bottomActionsRow: {
-    flexDirection: "row",
-    gap: Spacing.sm,
-    marginTop: Spacing.md,
-    paddingTop: Spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.divider,
-    justifyContent: "flex-end",
-  },
-  exportBtn: {
-    flex: 1,
-    borderColor: Colors.border,
-  },
-  addBtn: {
-    flex: 1,
-  },
-  list: {
-    gap: Spacing.sm,
-    marginTop: Spacing.xs,
   },
   filterDropdownSection: {
     marginTop: Spacing.xs,
@@ -470,8 +597,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm + 2,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: "#e2e8f0",
     minHeight: 46,
+  },
+  filterDropdownTriggerActive: {
+    borderColor: Colors.primaryBlue,
   },
   filterDropdownLeft: {
     flexDirection: "row",
@@ -490,21 +620,27 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   filterCountBadge: {
-    backgroundColor: Colors.primaryBluePale,
+    backgroundColor: "#e2e8f0",
     borderRadius: Radius.pill,
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
+  filterCountBadgeActive: {
+    backgroundColor: Colors.primaryBluePale,
+  },
   filterCountText: {
     fontSize: 11,
     fontWeight: "700",
+    color: Colors.textSecondary,
+  },
+  filterCountTextActive: {
     color: Colors.primaryBlue,
   },
   filterDropdownMenu: {
     backgroundColor: Colors.surface,
     borderRadius: Radius.card,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: "#e2e8f0",
     overflow: "hidden",
     marginTop: 4,
     ...Elevation.card,
@@ -525,6 +661,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.sm,
+    flex: 1,
+  },
+  filterDropdownItemRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
   },
   filterDropdownItemText: {
     fontSize: 14,
@@ -538,10 +680,111 @@ const styles = StyleSheet.create({
   filterDropdownExpiredText: {
     color: Colors.danger,
   },
-  empty: {
-    marginVertical: Spacing.md,
+  listHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: Spacing.xs,
+  },
+  sectionTitle: {
+    ...Typography.title,
+    fontSize: 15,
+    color: Colors.textPrimary,
+  },
+  filterActiveLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: Colors.primaryBlue,
+  },
+  list: {
+    gap: Spacing.xs,
+    marginTop: Spacing.xs,
+  },
+  emptyWrap: {
+    alignItems: "center",
+    paddingVertical: Spacing.xl,
+    gap: Spacing.xs,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  emptySubtitle: {
+    fontSize: 12,
     color: Colors.textMuted,
     textAlign: "center",
   },
+  popupBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: Spacing.lg,
+  },
+  popupCard: {
+    width: "100%",
+    maxWidth: 380,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.xl,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  popupHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingBottom: Spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+  },
+  popupTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: Colors.textPrimary,
+  },
+  popupOptionsList: {
+    gap: Spacing.xs,
+    marginTop: 4,
+  },
+  popupOptionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    padding: Spacing.sm + 2,
+    borderRadius: Radius.card,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  popupOptionPressed: {
+    opacity: 0.85,
+    backgroundColor: Colors.primaryBluePale,
+    borderColor: Colors.primaryBlue,
+  },
+  popupOptionIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  popupOptionBody: {
+    flex: 1,
+    gap: 2,
+  },
+  popupOptionTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: Colors.textPrimary,
+  },
+  popupOptionSubtitle: {
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
 });
-

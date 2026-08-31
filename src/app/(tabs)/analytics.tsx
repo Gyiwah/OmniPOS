@@ -1,5 +1,5 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
@@ -9,11 +9,10 @@ import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
-import { supabase } from "@/src/services/supabase";
+import { useStoreAnalytics } from "@/src/features/analytics/hooks";
+import type { TimeRange } from "@/src/features/analytics/types";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
-
-type TimeRange = "7d" | "30d" | "90d";
 
 export default function AnalyticsScreen() {
   const activeStoreId = useStoreSlice((s) => s.activeStoreId);
@@ -21,110 +20,28 @@ export default function AnalyticsScreen() {
   const symbol = useMemo(() => (currency === "USD" ? "$" : currency === "NGN" ? "₦" : "₵"), [currency]);
 
   const [range, setRange] = useState<TimeRange>("30d");
-  const [loading, setLoading] = useState(false);
-  const [metrics, setMetrics] = useState({
+
+  const { data: report, isLoading, refetch, isRefetching } = useStoreAnalytics(activeStoreId, range);
+
+  const metrics = report?.metrics ?? {
     netSales: 0,
     grossSales: 0,
     totalOrders: 0,
     totalReturns: 0,
+    orderCount: 0,
+    returnCount: 0,
+    returnAmount: 0,
     avgTicket: 0,
-  });
+    cogs: 0,
+    grossProfit: 0,
+    profitMarginPercent: 0,
+  };
 
-  const [salesChart, setSalesChart] = useState<{ label: string; value: number }[]>([]);
-  const [barWeek, setBarWeek] = useState<{ label: string; sales: number; returns: number }[]>([]);
-  const [bestSellers, setBestSellers] = useState<{ rank: number; name: string; unitsSold: number }[]>([]);
+  const salesChart = report?.salesChart ?? [];
+  const barWeek = report?.barWeek ?? [];
+  const bestSellers = report?.bestSellers ?? [];
 
   const daysCount = range === "7d" ? 7 : range === "30d" ? 30 : 90;
-
-  useEffect(() => {
-    let mounted = true;
-    async function loadAnalytics() {
-      if (!activeStoreId) return;
-      setLoading(true);
-
-      const since = new Date();
-      since.setDate(since.getDate() - (daysCount - 1));
-      since.setHours(0, 0, 0, 0);
-
-      const { data: orders } = await supabase
-        .from("orders")
-        .select("id, total, created_at")
-        .eq("store_id", activeStoreId)
-        .gte("created_at", since.toISOString());
-
-      const { data: returns } = await supabase
-        .from("returns")
-        .select("amount, created_at")
-        .eq("store_id", activeStoreId)
-        .gte("created_at", since.toISOString());
-
-      const { data: items } = await supabase
-        .from("order_items")
-        .select("product_name, quantity")
-        .eq("store_id", activeStoreId)
-        .gte("created_at", since.toISOString());
-
-      const orderRows = orders ?? [];
-      const returnRows = returns ?? [];
-      const grossSales = orderRows.reduce((sum, row) => sum + Number(row.total ?? 0), 0);
-      const totalRefunds = returnRows.reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
-      const netSales = Math.max(0, grossSales - totalRefunds);
-      const avgTicket = orderRows.length ? grossSales / orderRows.length : 0;
-
-      // Chart days mapping (up to 7 data points)
-      const chartPoints = Math.min(daysCount, 7);
-      const chartDays = Array.from({ length: chartPoints }).map((_, idx) => {
-        const d = new Date();
-        d.setDate(d.getDate() - (chartPoints - 1 - idx));
-        return d;
-      });
-
-      const line = chartDays.map((d) => {
-        const key = d.toISOString().slice(0, 10);
-        const value = orderRows
-          .filter((o) => String(o.created_at).slice(0, 10) === key)
-          .reduce((sum, o) => sum + Number(o.total ?? 0), 0);
-        return { label: d.toLocaleDateString(undefined, { weekday: "short" }).slice(0, 3), value };
-      });
-
-      const bars = chartDays.map((d) => {
-        const key = d.toISOString().slice(0, 10);
-        const sales = orderRows.filter((o) => String(o.created_at).slice(0, 10) === key).length;
-        const refunds = returnRows.filter((r) => String(r.created_at).slice(0, 10) === key).length;
-        return { label: d.toLocaleDateString(undefined, { weekday: "short" }).slice(0, 1), sales, returns: refunds };
-      });
-
-      const soldMap = new Map<string, number>();
-      (items ?? []).forEach((row) => {
-        const name = String(row.product_name ?? "Unknown product");
-        soldMap.set(name, (soldMap.get(name) ?? 0) + Number(row.quantity ?? 0));
-      });
-
-      const top = [...soldMap.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([name, unitsSold], idx) => ({ rank: idx + 1, name, unitsSold }));
-
-      if (!mounted) return;
-
-      setMetrics({
-        netSales,
-        grossSales,
-        totalOrders: orderRows.length,
-        totalReturns: returnRows.length,
-        avgTicket,
-      });
-      setSalesChart(line);
-      setBarWeek(bars);
-      setBestSellers(top);
-      setLoading(false);
-    }
-
-    void loadAnalytics();
-    return () => {
-      mounted = false;
-    };
-  }, [activeStoreId, daysCount]);
 
   const maxSold = useMemo(
     () => (bestSellers.length > 0 ? Math.max(...bestSellers.map((b) => b.unitsSold)) : 1),
@@ -134,7 +51,9 @@ export default function AnalyticsScreen() {
   return (
     <AppScrollScreen
       title="Store Analytics"
-      subtitle="Financial performance, sales velocity, and inventory insights."
+      subtitle="Offline-first financial performance, sales velocity, and inventory insights."
+      refreshing={isRefetching}
+      onRefresh={() => void refetch()}
     >
       {/* Time Range Selector */}
       <View style={styles.rangeSelectorContainer}>
@@ -156,7 +75,7 @@ export default function AnalyticsScreen() {
         >
           <Text style={[styles.rangePillText, range === "90d" && styles.rangePillTextActive]}>90 Days</Text>
         </Pressable>
-        {loading ? <ActivityIndicator size="small" color={Colors.primaryBlue} style={{ marginLeft: 8 }} /> : null}
+        {isLoading ? <ActivityIndicator size="small" color={Colors.primaryBlue} style={{ marginLeft: 8 }} /> : null}
       </View>
 
       {/* Hero KPI Grid */}
@@ -179,7 +98,7 @@ export default function AnalyticsScreen() {
             <Text style={[styles.kpiTitle, { color: "#2563eb" }]}>Total Orders</Text>
             <Ionicons name="bag-check-outline" size={18} color="#2563eb" />
           </View>
-          <Text style={[styles.kpiValue, { color: "#1d4ed8" }]}>{metrics.totalOrders}</Text>
+          <Text style={[styles.kpiValue, { color: "#1d4ed8" }]}>{metrics.orderCount}</Text>
           <Text style={styles.kpiSub}>Completed transactions</Text>
         </View>
 
@@ -201,9 +120,38 @@ export default function AnalyticsScreen() {
             <Text style={[styles.kpiTitle, { color: "#ea580c" }]}>Refunds / Returns</Text>
             <Ionicons name="return-down-back-outline" size={18} color="#ea580c" />
           </View>
-          <Text style={[styles.kpiValue, { color: "#c2410c" }]}>{metrics.totalReturns}</Text>
-          <Text style={styles.kpiSub}>Resolved refund cases</Text>
+          <Text style={[styles.kpiValue, { color: "#c2410c" }]}>{metrics.returnCount}</Text>
+          <Text style={styles.kpiSub}>Resolved refund cases ({symbol}{metrics.returnAmount.toFixed(0)})</Text>
         </View>
+
+        {/* Profit Margin & Estimated Profit */}
+        {metrics.cogs && metrics.cogs > 0 ? (
+          <View style={[styles.kpiCardFull, { backgroundColor: "#f8fafc", borderColor: "#e2e8f0" }]}>
+            <View style={styles.kpiTopRow}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Ionicons name="pie-chart-outline" size={18} color={Colors.primaryBlue} />
+                <Text style={[styles.kpiTitle, { color: Colors.textPrimary }]}>Gross Profit & Margin</Text>
+              </View>
+              <Text style={{ fontSize: 13, fontWeight: "800", color: "#16a34a" }}>
+                {(metrics.profitMarginPercent ?? 0).toFixed(1)}% Margin
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 8 }}>
+              <View>
+                <Text style={{ fontSize: 11, color: Colors.textMuted }}>Est. Gross Profit</Text>
+                <Text style={{ fontSize: 18, fontWeight: "900", color: Colors.textPrimary }}>
+                  {symbol} {(metrics.grossProfit ?? 0).toFixed(2)}
+                </Text>
+              </View>
+              <View style={{ alignItems: "flex-end" }}>
+                <Text style={{ fontSize: 11, color: Colors.textMuted }}>Cost of Goods (COGS)</Text>
+                <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.textSecondary }}>
+                  {symbol} {(metrics.cogs ?? 0).toFixed(2)}
+                </Text>
+              </View>
+            </View>
+          </View>
+        ) : null}
       </View>
 
       {/* Revenue Line Chart */}
@@ -317,6 +265,17 @@ const styles = StyleSheet.create({
   kpiCard: {
     width: "48%",
     flexGrow: 1,
+    borderRadius: Radius.card,
+    padding: Spacing.md,
+    borderWidth: 1,
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  kpiCardFull: {
+    width: "100%",
     borderRadius: Radius.card,
     padding: Spacing.md,
     borderWidth: 1,

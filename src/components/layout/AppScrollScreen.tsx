@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { ReactNode } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors } from "@/src/constants/colors";
 import { Elevation } from "@/src/constants/elevation";
@@ -16,6 +16,8 @@ type AppScrollScreenProps = {
   left?: ReactNode;
   showBack?: boolean;
   fixedHeader?: boolean;
+  refreshing?: boolean;
+  onRefresh?: () => void;
   children: ReactNode;
 };
 
@@ -26,6 +28,8 @@ export function AppScrollScreen({
   left,
   showBack,
   fixedHeader = true,
+  refreshing,
+  onRefresh,
   children,
 }: AppScrollScreenProps) {
   const insets = useSafeAreaInsets();
@@ -47,6 +51,7 @@ export function AppScrollScreen({
       )}
       <View style={styles.titleBlock}>
         <Text style={styles.title}>{title}</Text>
+        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       </View>
       {right ? <View style={styles.right}>{right}</View> : null}
     </View>
@@ -62,6 +67,16 @@ export function AppScrollScreen({
           { paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.xl },
         ]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          onRefresh !== undefined ? (
+            <RefreshControl
+              refreshing={Boolean(refreshing)}
+              onRefresh={onRefresh}
+              tintColor={Colors.primaryBlue}
+              colors={[Colors.primaryBlue]}
+            />
+          ) : undefined
+        }
       >
         {fixedHeader ? null : header}
         {children}
@@ -117,6 +132,10 @@ const styles = StyleSheet.create({
   title: {
     ...Typography.headline,
     color: Colors.textPrimary,
+  },
+  subtitle: {
+    ...Typography.caption,
+    color: Colors.textMuted,
   },
   right: {
     marginLeft: "auto",

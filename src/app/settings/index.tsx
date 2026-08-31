@@ -130,8 +130,8 @@ export default function SettingsScreen() {
           try {
             await authService.signOut();
             useAuthStore.getState().clearSession();
-            useStoreSlice.getState().setActiveStore(null);
             await AsyncStorage.removeItem(SYNC_STORAGE.activeStoreId);
+            await AsyncStorage.removeItem("omnipos:cached_auth_session");
             router.replace("/(auth)/sign-in");
           } catch (err) {
             Alert.alert("Sign Out Error", toErrorMessage(err, "Failed to sign out."));

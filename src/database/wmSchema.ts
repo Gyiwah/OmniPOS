@@ -1,6 +1,6 @@
 import { appSchema, tableSchema } from "@nozbe/watermelondb";
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export default appSchema({
   version: SCHEMA_VERSION,
@@ -118,6 +118,27 @@ export default appSchema({
         { name: "new_cost_price", type: "number", isOptional: true },
         { name: "reason", type: "string", isOptional: true },
         { name: "created_at", type: "number", isIndexed: true },
+        { name: "dirty", type: "boolean" },
+      ],
+    }),
+    tableSchema({
+      name: "register_shifts",
+      columns: [
+        { name: "store_id", type: "string", isIndexed: true },
+        { name: "remote_id", type: "string", isOptional: true, isIndexed: true },
+        { name: "cashier_user_id", type: "string", isIndexed: true },
+        { name: "opened_at", type: "number", isIndexed: true },
+        { name: "closed_at", type: "number", isOptional: true, isIndexed: true },
+        { name: "opening_float", type: "number" },
+        { name: "cash_sales", type: "number" },
+        { name: "cash_in", type: "number" },
+        { name: "cash_out", type: "number" },
+        { name: "expected_cash", type: "number" },
+        { name: "actual_cash", type: "number", isOptional: true },
+        { name: "discrepancy", type: "number", isOptional: true },
+        { name: "status", type: "string", isIndexed: true },
+        { name: "notes", type: "string", isOptional: true },
+        { name: "movements_json", type: "string", isOptional: true },
         { name: "dirty", type: "boolean" },
       ],
     }),

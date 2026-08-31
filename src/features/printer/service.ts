@@ -1,4 +1,4 @@
-import { PermissionsAndroid, Platform } from "react-native";
+import { NativeModules, PermissionsAndroid, Platform } from "react-native";
 
 import type { PrinterDevice, PrinterConnectionType, ReceiptPrintPayload, ScanPrintersResult } from "./types";
 import { buildReceiptPrintJob } from "./buildReceiptJob";
@@ -16,8 +16,13 @@ type ThermalPrinterModule = {
 };
 
 function loadThermalPrinter(): ThermalPrinterModule | null {
+  // If the native module or react-native-fs native bridge is unavailable (e.g. running in Expo Go),
+  // do NOT require the library because react-native-fs throws RNFSFileTypeRegular null error at module load.
+  if (!NativeModules?.RNThermalPrinter || !NativeModules?.RNFSManager) {
+    return null;
+  }
+
   try {
-    // Native module is unavailable in Expo Go.
     const mod = require("@finan-me/react-native-thermal-printer") as { ThermalPrinter?: ThermalPrinterModule };
     return mod.ThermalPrinter ?? null;
   } catch {

@@ -546,14 +546,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   previewBox: {
-    backgroundColor: "#1e293b",
+    backgroundColor: Colors.background,
     borderRadius: Radius.input,
     padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   monoText: {
     fontFamily: "monospace",
     fontSize: 11,
-    color: "#f8fafc",
+    color: Colors.textPrimary,
     lineHeight: 16,
   },
   footer: {

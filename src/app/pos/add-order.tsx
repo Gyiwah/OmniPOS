@@ -2,7 +2,15 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { Q } from "@nozbe/watermelondb";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 
 import { TextInput } from "@/src/components/atoms/TextInput";
@@ -23,6 +31,7 @@ import { runSyncCycle } from "@/src/sync/syncEngine";
 import { useOrderDraftStore } from "@/src/store/orderDraftStore";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
+import { useActiveShift } from "@/src/features/shifts/hooks";
 
 type CatalogItem = {
   id: string;
@@ -45,8 +54,24 @@ export default function AddOrderScreen() {
   const [search, setSearch] = useState("");
   const [showScanner, setShowScanner] = useState(false);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
-  const { lines, addOrIncrementLine, setLineQty, removeLine, clearDraft } = useOrderDraftStore();
+
+  const {
+    lines,
+    addOrIncrementLine,
+    setLineQty,
+    removeLine,
+    clearDraft,
+    parkedOrders,
+    parkCurrentCart,
+    resumeParkedCart,
+    deleteParkedCart,
+  } = useOrderDraftStore();
   const { currency } = useSettingsStore();
+  const { data: activeShift } = useActiveShift();
+
+  const [showParkModal, setShowParkModal] = useState(false);
+  const [parkTag, setParkTag] = useState("");
+  const [showParkedListModal, setShowParkedListModal] = useState(false);
 
   const stockById = useMemo(() => new Map(catalog.map((item) => [item.id, item.stock])), [catalog]);
 
@@ -55,7 +80,6 @@ export default function AddOrderScreen() {
       setCatalog([]);
       return;
     }
-    await runSyncCycle(activeStoreId);
     const rows = await database
       .get<Product>("products")
       .query(Q.where("store_id", activeStoreId))
@@ -71,6 +95,9 @@ export default function AddOrderScreen() {
         stock: Number(row.stock ?? 0),
       })),
     );
+
+    // Non-blocking sync in background
+    void runSyncCycle(activeStoreId);
   }, [activeStoreId]);
 
   useEffect(() => {
@@ -96,8 +123,8 @@ export default function AddOrderScreen() {
   async function tryAddFromCatalog(entry: CatalogItem) {
     const currentQty = lines.find((line) => line.id === entry.id)?.quantity ?? 0;
     const nextQty = currentQty + 1;
-
     let available = stockById.get(entry.id) ?? entry.stock;
+
     if (activeStoreId) {
       const fresh = await fetchStockByProductId(activeStoreId, [entry.id]);
       available = fresh.get(entry.id) ?? available;
@@ -110,11 +137,11 @@ export default function AddOrderScreen() {
 
     addOrIncrementLine({
       id: entry.id,
-      remoteId: entry.remoteId,
-      sku: entry.sku,
       name: entry.name,
       price: entry.price,
       barcode: entry.barcode,
+      remoteId: entry.remoteId,
+      sku: entry.sku,
     });
     void playScannerBeep();
     setSearch("");
@@ -152,8 +179,71 @@ export default function AddOrderScreen() {
     }
   }
 
+  function handleConfirmPark() {
+    const tag = parkTag.trim() || `Tab #${parkedOrders.length + 1}`;
+    parkCurrentCart(tag);
+    setShowParkModal(false);
+    setParkTag("");
+    Alert.alert("Cart Held / Parked", `Order "${tag}" has been held. You can resume it anytime.`);
+  }
+
+  function handleResumeParked(id: string) {
+    if (lines.length > 0) {
+      Alert.alert(
+        "Replace Active Cart?",
+        "Your current cart has items. Resuming this tab will overwrite your active cart.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Resume Tab",
+            onPress: () => {
+              resumeParkedCart(id);
+              setShowParkedListModal(false);
+            },
+          },
+        ],
+      );
+    } else {
+      resumeParkedCart(id);
+      setShowParkedListModal(false);
+    }
+  }
+
   return (
     <AppScrollScreen showBack title="Add Order" subtitle="Scan barcodes or search products to build cart.">
+      {/* Quick Action Top Bar: Shifts & Parked Orders */}
+      <View style={styles.topShortcutsRow}>
+        <Pressable
+          style={styles.shortcutBtn}
+          onPress={() => router.push("/pos/shifts")}
+        >
+          <View style={[styles.statusDot, { backgroundColor: activeShift ? "#4ade80" : "#f87171" }]} />
+          <Ionicons name="cash-outline" size={16} color={Colors.textPrimary} />
+          <Text style={styles.shortcutBtnText}>
+            {activeShift ? "Register Open" : "Register Closed"}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.shortcutBtn, parkedOrders.length > 0 && styles.shortcutBtnActive]}
+          onPress={() => setShowParkedListModal(true)}
+        >
+          <Ionicons
+            name="pause-circle-outline"
+            size={16}
+            color={parkedOrders.length > 0 ? "#38bdf8" : Colors.textPrimary}
+          />
+          <Text
+            style={[
+              styles.shortcutBtnText,
+              parkedOrders.length > 0 && { color: "#38bdf8", fontWeight: "700" },
+            ]}
+          >
+            Parked Tabs ({parkedOrders.length})
+          </Text>
+        </Pressable>
+      </View>
+
       {/* Search & Barcode Scanner Card */}
       <SectionCard>
         <TextInput
@@ -166,12 +256,12 @@ export default function AddOrderScreen() {
             <Pressable
               onPress={() => setShowScanner((v) => !v)}
               hitSlop={10}
-              style={({ pressed }) => [styles.scannerTrigger, pressed && { opacity: 0.7 }]}
+              style={styles.scannerTrigger}
             >
               <Ionicons
                 name={showScanner ? "close-circle" : "barcode-outline"}
                 size={22}
-                color={Colors.primaryBlue}
+                color={showScanner ? Colors.danger : Colors.primaryBlue}
               />
             </Pressable>
           }
@@ -180,71 +270,61 @@ export default function AddOrderScreen() {
         {showScanner ? (
           <View style={styles.scannerWrapper}>
             <BarcodeScanner
-              label="Point camera at product barcode"
-              onScan={(payload) => {
-                addFromSearchOrScan(payload);
+              onScan={(code) => {
+                addFromSearchOrScan(code);
                 setShowScanner(false);
               }}
             />
           </View>
         ) : null}
 
-        {/* Live Search Suggestions Dropdown */}
+        {/* Live Search Quick Results */}
         {matches.length > 0 ? (
           <View style={styles.matchesContainer}>
-            <Text style={styles.matchesTitle}>Matching Products ({matches.length})</Text>
+            <Text style={styles.matchesTitle}>Matching Catalog Items</Text>
             {matches.map((item) => {
-              const isOut = item.stock <= 0;
+              const inCartQty = lines.find((line) => line.id === item.id)?.quantity ?? 0;
+              const available = stockById.get(item.id) ?? item.stock;
+              const isOut = available <= 0 || inCartQty >= available;
+
               return (
                 <Pressable
                   key={item.id}
-                  onPress={() => void tryAddFromCatalog(item)}
                   style={({ pressed }) => [
                     styles.matchRow,
+                    pressed && styles.matchRowPressed,
                     isOut && styles.matchRowDisabled,
-                    pressed && !isOut && styles.matchRowPressed,
                   ]}
+                  onPress={() => void tryAddFromCatalog(item)}
                   disabled={isOut}
                 >
                   <View style={styles.matchThumb}>
-                    <Ionicons name="cube-outline" size={20} color={isOut ? Colors.textMuted : Colors.primaryBlue} />
+                    <Ionicons name="cube-outline" size={18} color={Colors.primaryBlue} />
                   </View>
-                  <View style={styles.matchInfo}>
+                  <View style={{ flex: 1 }}>
                     <Text style={styles.matchName} numberOfLines={1}>
                       {item.name}
                     </Text>
-                    <View style={styles.matchMetaRow}>
-                      <Text style={styles.matchBarcode}>{item.barcode || item.sku}</Text>
-                      <View style={[styles.stockBadge, isOut ? styles.stockBadgeOut : styles.stockBadgeIn]}>
-                        <Text style={[styles.stockBadgeText, isOut ? styles.stockTextOut : styles.stockTextIn]}>
-                          {isOut ? "Out of stock" : `${item.stock} in stock`}
-                        </Text>
-                      </View>
-                    </View>
+                    <Text style={styles.matchMeta}>
+                      SKU: {item.sku} • Stock: {available} {inCartQty > 0 ? `(${inCartQty} in cart)` : ""}
+                    </Text>
                   </View>
-                  <View style={styles.matchPriceWrap}>
-                    <Text style={styles.matchPrice}>{toMoney(item.price, currency)}</Text>
-                    {!isOut ? (
-                      <View style={styles.addPill}>
-                        <Ionicons name="add" size={14} color={Colors.white} />
-                        <Text style={styles.addPillText}>Add</Text>
-                      </View>
-                    ) : null}
-                  </View>
+                  <Text style={styles.matchPrice}>{toMoney(item.price, currency)}</Text>
+                  <Ionicons
+                    name={isOut ? "ban-outline" : "add-circle"}
+                    size={22}
+                    color={isOut ? Colors.textMuted : Colors.primaryBlue}
+                  />
                 </Pressable>
               );
             })}
           </View>
         ) : null}
-
-        {!showScanner && catalog.length === 0 ? (
-          <Text style={styles.emptyNotice}>No inventory products found for this store.</Text>
-        ) : null}
       </SectionCard>
 
-      {/* Cart Items List */}
+      {/* Cart Items Section */}
       <SectionCard>
-        <View style={styles.cartHeader}>
+        <View style={styles.cartSectionHeader}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Ionicons name="cart" size={20} color={Colors.primaryBlue} />
             <Text style={styles.sectionTitle}>Cart Items</Text>
@@ -296,7 +376,11 @@ export default function AddOrderScreen() {
                           style={({ pressed }) => [styles.stepBtn, pressed && styles.stepBtnPressed]}
                           onPress={() => void tryChangeQuantity(line.id, line.quantity - 1)}
                         >
-                          <Ionicons name={line.quantity === 1 ? "trash-outline" : "remove"} size={14} color={line.quantity === 1 ? Colors.danger : Colors.textPrimary} />
+                          <Ionicons
+                            name={line.quantity === 1 ? "trash-outline" : "remove"}
+                            size={14}
+                            color={line.quantity === 1 ? Colors.danger : Colors.textPrimary}
+                          />
                         </Pressable>
                         <Text style={styles.stepCount}>{line.quantity}</Text>
                         <Pressable
@@ -308,7 +392,11 @@ export default function AddOrderScreen() {
                           onPress={() => void tryChangeQuantity(line.id, line.quantity + 1)}
                           disabled={line.quantity >= available}
                         >
-                          <Ionicons name="add" size={14} color={line.quantity >= available ? Colors.textMuted : Colors.primaryBlue} />
+                          <Ionicons
+                            name="add"
+                            size={14}
+                            color={line.quantity >= available ? Colors.textMuted : Colors.primaryBlue}
+                          />
                         </Pressable>
                       </View>
                     </View>
@@ -336,18 +424,31 @@ export default function AddOrderScreen() {
               <Text style={styles.totalLabelSmall}>Order Total</Text>
               <Text style={styles.totalValueLarge}>{toMoney(total, currency)}</Text>
             </View>
-            <Pressable
-              style={styles.clearBtn}
-              onPress={() => {
-                Alert.alert("Clear Order", "Are you sure you want to remove all items from this order?", [
-                  { text: "Cancel", style: "cancel" },
-                  { text: "Clear", style: "destructive", onPress: clearDraft },
-                ]);
-              }}
-            >
-              <Ionicons name="trash-outline" size={16} color={Colors.danger} />
-              <Text style={styles.clearBtnText}>Clear</Text>
-            </Pressable>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <Pressable
+                style={styles.parkBtn}
+                onPress={() => {
+                  setParkTag(`Tab #${parkedOrders.length + 1}`);
+                  setShowParkModal(true);
+                }}
+              >
+                <Ionicons name="pause-circle-outline" size={16} color="#38bdf8" />
+                <Text style={styles.parkBtnText}>Hold Tab</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.clearBtn}
+                onPress={() => {
+                  Alert.alert("Clear Order", "Are you sure you want to remove all items from this order?", [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Clear", style: "destructive", onPress: clearDraft },
+                  ]);
+                }}
+              >
+                <Ionicons name="trash-outline" size={16} color={Colors.danger} />
+                <Text style={styles.clearBtnText}>Clear</Text>
+              </Pressable>
+            </View>
           </View>
 
           <Pressable
@@ -364,11 +465,137 @@ export default function AddOrderScreen() {
           </Pressable>
         </View>
       ) : null}
+
+      {/* PARK CURRENT CART MODAL */}
+      <Modal visible={showParkModal} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Park / Hold Order</Text>
+            <Text style={styles.modalSub}>
+              Save this customer&apos;s cart temporarily so you can ring up the next customer in line.
+            </Text>
+
+            <TextInput
+              label="Tab / Customer Label *"
+              placeholder="e.g. Table 4, Kwame Mensah, Bar Seat 2"
+              value={parkTag}
+              onChangeText={setParkTag}
+            />
+
+            <View style={styles.modalBtnRow}>
+              <Pressable style={styles.modalCancelBtn} onPress={() => setShowParkModal(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={styles.modalConfirmBtn} onPress={handleConfirmPark}>
+                <Text style={styles.modalConfirmText}>Hold Cart</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* PARKED TABS LIST MODAL */}
+      <Modal visible={showParkedListModal} transparent animationType="slide">
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { maxHeight: "80%" }]}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Parked Tabs ({parkedOrders.length})</Text>
+              <Pressable onPress={() => setShowParkedListModal(false)}>
+                <Ionicons name="close-circle-outline" size={24} color="#94a3b8" />
+              </Pressable>
+            </View>
+
+            {parkedOrders.length === 0 ? (
+              <View style={styles.emptyParkedBox}>
+                <Ionicons name="receipt-outline" size={40} color="#64748b" />
+                <Text style={styles.emptyParkedText}>No parked orders currently on hold.</Text>
+              </View>
+            ) : (
+              <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
+                {parkedOrders.map((p) => {
+                  const pTotal = p.lines.reduce((s, l) => s + l.price * l.quantity, 0);
+                  const pUnits = p.lines.reduce((s, l) => s + l.quantity, 0);
+                  return (
+                    <View key={p.id} style={styles.parkedItemCard}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.parkedTag}>{p.tag}</Text>
+                        <Text style={styles.parkedMeta}>
+                          {pUnits} items • {toMoney(pTotal, currency)} • Held at{" "}
+                          {new Date(p.parkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: "row", gap: 6 }}>
+                        <Pressable
+                          style={styles.resumeBtn}
+                          onPress={() => handleResumeParked(p.id)}
+                        >
+                          <Ionicons name="play" size={14} color={Colors.white} />
+                          <Text style={styles.resumeBtnText}>Resume</Text>
+                        </Pressable>
+                        <Pressable
+                          style={styles.discardBtn}
+                          onPress={() => {
+                            Alert.alert("Discard Tab", `Delete "${p.tag}"?`, [
+                              { text: "Cancel", style: "cancel" },
+                              { text: "Discard", style: "destructive", onPress: () => deleteParkedCart(p.id) },
+                            ]);
+                          }}
+                        >
+                          <Ionicons name="trash-outline" size={16} color={Colors.danger} />
+                        </Pressable>
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+
+            <Pressable
+              style={styles.modalCloseDoneBtn}
+              onPress={() => setShowParkedListModal(false)}
+            >
+              <Text style={styles.modalCloseDoneText}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </AppScrollScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  topShortcutsRow: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  shortcutBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: Colors.surface,
+    paddingVertical: 10,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  shortcutBtnActive: {
+    borderColor: Colors.primaryBlueLight,
+    backgroundColor: Colors.primaryBluePale,
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  shortcutBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: Colors.textPrimary,
+  },
   sectionTitle: {
     ...Typography.title,
     fontSize: 16,
@@ -417,119 +644,67 @@ const styles = StyleSheet.create({
   matchThumb: {
     width: 36,
     height: 36,
-    borderRadius: 8,
-    backgroundColor: Colors.primaryBluePale,
+    borderRadius: Radius.sm,
+    backgroundColor: "#f0fdf4",
     alignItems: "center",
     justifyContent: "center",
   },
-  matchInfo: {
-    flex: 1,
-  },
   matchName: {
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "600",
     color: Colors.textPrimary,
   },
-  matchMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+  matchMeta: {
+    fontSize: 11,
+    color: Colors.textMuted,
     marginTop: 2,
   },
-  matchBarcode: {
-    fontSize: 11,
-    color: Colors.textMuted,
-  },
-  stockBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  stockBadgeIn: {
-    backgroundColor: "#dcfce7",
-  },
-  stockBadgeOut: {
-    backgroundColor: "#fee2e2",
-  },
-  stockBadgeText: {
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  stockTextIn: {
-    color: "#16a34a",
-  },
-  stockTextOut: {
-    color: "#dc2626",
-  },
-  matchPriceWrap: {
-    alignItems: "flex-end",
-    gap: 4,
-  },
   matchPrice: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: Colors.textPrimary,
-  },
-  addPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: Colors.primaryBlue,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-    gap: 2,
-  },
-  addPillText: {
-    color: Colors.white,
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  emptyNotice: {
-    textAlign: "center",
-    color: Colors.textMuted,
     fontSize: 13,
-    paddingVertical: Spacing.sm,
-  },
-  cartHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: Spacing.xs,
-  },
-  itemCountBadge: {
-    backgroundColor: Colors.primaryBluePale,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  itemCountBadgeText: {
-    fontSize: 12,
     fontWeight: "700",
     color: Colors.primaryBlue,
   },
+  cartSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  itemCountBadge: {
+    backgroundColor: "#f1f5f9",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.pill,
+  },
+  itemCountBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: Colors.textMuted,
+  },
   cartList: {
-    gap: Spacing.xs,
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
   },
   cartCard: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: Colors.surface,
-    borderRadius: Radius.input,
-    padding: Spacing.sm,
-    gap: Spacing.sm,
+    borderRadius: Radius.card,
+    padding: Spacing.md,
+    gap: Spacing.md,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: "#f1f5f9",
   },
   cartThumb: {
-    width: 42,
-    height: 42,
-    borderRadius: 10,
-    backgroundColor: Colors.primaryBluePale,
+    width: 44,
+    height: 44,
+    borderRadius: Radius.md,
+    backgroundColor: "#eff6ff",
     alignItems: "center",
     justifyContent: "center",
   },
   cartDetails: {
     flex: 1,
+    gap: 2,
   },
   itemName: {
     fontSize: 14,
@@ -538,86 +713,61 @@ const styles = StyleSheet.create({
   },
   itemUnitPrice: {
     fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 2,
+    color: Colors.textMuted,
   },
   itemStockNotice: {
     fontSize: 11,
-    color: Colors.textMuted,
-    marginTop: 1,
+    color: "#64748b",
   },
   cartRightSection: {
     alignItems: "flex-end",
     gap: 6,
   },
   cartLineTotal: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "800",
     color: Colors.textPrimary,
   },
   stepperContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: Colors.background,
-    borderRadius: 8,
+    backgroundColor: "#f8fafc",
+    borderRadius: Radius.pill,
     borderWidth: 1,
     borderColor: Colors.border,
     padding: 2,
+    gap: 6,
   },
   stepBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: Colors.surface,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   stepBtnPressed: {
-    backgroundColor: "#e2e8f0",
+    backgroundColor: "#f1f5f9",
   },
   stepBtnDisabled: {
     opacity: 0.3,
   },
   stepCount: {
-    paddingHorizontal: 8,
     fontSize: 13,
-    fontWeight: "800",
-    color: Colors.textPrimary,
-    minWidth: 26,
-    textAlign: "center",
-  },
-  emptyCartBox: {
-    alignItems: "center",
-    paddingVertical: Spacing.lg,
-    gap: Spacing.xs,
-  },
-  emptyCartIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: Colors.background,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-  emptyCartTitle: {
-    fontSize: 16,
     fontWeight: "700",
     color: Colors.textPrimary,
-  },
-  emptyCartSubtitle: {
-    fontSize: 13,
-    color: Colors.textMuted,
+    minWidth: 16,
     textAlign: "center",
-    paddingHorizontal: Spacing.lg,
   },
   swipeDeleteAction: {
     backgroundColor: Colors.danger,
-    borderRadius: Radius.input,
     justifyContent: "center",
     alignItems: "center",
-    width: 72,
-    marginVertical: 2,
+    width: 76,
+    borderRadius: Radius.card,
+    marginLeft: Spacing.sm,
     gap: 2,
   },
   swipeDeleteText: {
@@ -625,20 +775,50 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
   },
+  emptyCartBox: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.xl,
+    gap: Spacing.xs,
+  },
+  emptyCartIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#f8fafc",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: Spacing.xs,
+  },
+  emptyCartTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  emptyCartSubtitle: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    textAlign: "center",
+    maxWidth: 240,
+  },
   bottomBar: {
-    marginTop: Spacing.xs,
-    gap: Spacing.sm,
-    paddingBottom: Spacing.lg,
+    marginTop: Spacing.md,
+    gap: Spacing.md,
   },
   totalPreviewBox: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
     backgroundColor: Colors.surface,
-    borderRadius: Radius.card,
     padding: Spacing.md,
+    borderRadius: Radius.lg,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: Colors.border,
+    shadowColor: Colors.navy,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
   },
   totalLabelSmall: {
     fontSize: 12,
@@ -646,34 +826,48 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   totalValueLarge: {
-    fontSize: 24,
-    fontWeight: "900",
+    fontSize: 22,
+    fontWeight: "800",
     color: Colors.textPrimary,
+  },
+  parkBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.primaryBluePale,
+    borderWidth: 1,
+    borderColor: Colors.primaryBlue,
+  },
+  parkBtnText: {
+    fontSize: 12,
+    color: Colors.primaryBlue,
+    fontWeight: "700",
   },
   clearBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: "#fef2f2",
-    borderWidth: 1,
-    borderColor: "#fecaca",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: Radius.md,
+    backgroundColor: "#fee2e2",
   },
   clearBtnText: {
     fontSize: 12,
-    fontWeight: "700",
     color: Colors.danger,
+    fontWeight: "700",
   },
   checkoutButton: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     backgroundColor: Colors.primaryBlue,
-    borderRadius: Radius.pill,
-    paddingVertical: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 14,
     paddingHorizontal: Spacing.lg,
+    borderRadius: Radius.lg,
     shadowColor: Colors.primaryBlue,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
@@ -681,8 +875,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   checkoutButtonPressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.99 }],
+    opacity: 0.85,
   },
   checkoutLeft: {
     flexDirection: "row",
@@ -690,19 +883,148 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   checkoutUnitBadge: {
-    backgroundColor: "rgba(255, 255, 255, 0.25)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
   },
   checkoutUnitText: {
     color: Colors.white,
-    fontSize: 13,
-    fontWeight: "800",
+    fontSize: 12,
+    fontWeight: "700",
   },
   checkoutBtnText: {
     color: Colors.white,
-    fontSize: 16,
-    fontWeight: "800",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(4, 35, 88, 0.45)",
+    justifyContent: "center",
+    padding: Spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.xl,
+    padding: Spacing.xl,
+    gap: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: Colors.navy,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 6,
+  },
+  modalHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  modalSub: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontWeight: "400",
+    lineHeight: 18,
+  },
+  modalBtnRow: {
+    flexDirection: "row",
+    gap: Spacing.md,
+    marginTop: Spacing.sm,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: Radius.lg,
+    alignItems: "center",
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  modalCancelText: {
+    color: Colors.textSecondary,
+    fontWeight: "600",
+  },
+  modalConfirmBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: Radius.lg,
+    alignItems: "center",
+    backgroundColor: Colors.primaryBlue,
+  },
+  modalConfirmText: {
+    color: Colors.white,
+    fontWeight: "700",
+  },
+  emptyParkedBox: {
+    paddingVertical: Spacing.xl,
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  emptyParkedText: {
+    color: Colors.textMuted,
+    fontSize: 13,
+    fontWeight: "400",
+  },
+  parkedItemCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.background,
+    padding: Spacing.md,
+    borderRadius: Radius.lg,
+    marginBottom: Spacing.sm,
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  parkedTag: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  parkedMeta: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  resumeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: Colors.success,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Radius.md,
+  },
+  resumeBtnText: {
+    color: Colors.white,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  discardBtn: {
+    padding: 6,
+    borderRadius: Radius.md,
+    backgroundColor: "#fee2e2",
+  },
+  modalCloseDoneBtn: {
+    backgroundColor: Colors.background,
+    paddingVertical: 12,
+    borderRadius: Radius.lg,
+    alignItems: "center",
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  modalCloseDoneText: {
+    color: Colors.textSecondary,
+    fontWeight: "600",
   },
 });
