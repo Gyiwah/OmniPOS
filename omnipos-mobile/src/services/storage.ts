@@ -2,6 +2,8 @@ import * as FileSystem from "expo-file-system/legacy";
 
 import { isLocalImageUri } from "@/src/core/images";
 import { supabase } from "@/src/services/supabase";
+import { usingLaravel } from "@/src/core/api/config";
+import { laravelStorageService } from "./laravelStorage";
 
 export { isLocalImageUri };
 
@@ -72,7 +74,7 @@ export function buildStoreLogoPath(storeId: string, extension: string): string {
   return `${storeId}/branding/logo.${extension}`;
 }
 
-export async function uploadProductImageFromUri(input: {
+async function supabase_uploadProductImageFromUri(input: {
   storeId: string;
   productId: string;
   localUri: string;
@@ -91,7 +93,7 @@ export async function uploadProductImageFromUri(input: {
   return objectPath;
 }
 
-export async function resolveProductImageUrl(imageRef: string | null | undefined): Promise<string | null> {
+async function supabase_resolveProductImageUrl(imageRef: string | null | undefined): Promise<string | null> {
   if (!imageRef) return null;
   const trimmed = imageRef.trim();
   if (!trimmed) return null;
@@ -106,7 +108,7 @@ export async function resolveProductImageUrl(imageRef: string | null | undefined
   return data.signedUrl;
 }
 
-export async function uploadStoreLogoFromUri(input: {
+async function supabase_uploadStoreLogoFromUri(input: {
   storeId: string;
   localUri: string;
   mimeType?: string | null;
@@ -124,13 +126,49 @@ export async function uploadStoreLogoFromUri(input: {
   return objectPath;
 }
 
-export async function resolveStoreLogoUrl(logoRef: string | null | undefined): Promise<string | null> {
+async function supabase_resolveStoreLogoUrl(logoRef: string | null | undefined): Promise<string | null> {
   return resolveProductImageUrl(logoRef);
 }
+
+/*
+ * Which backend stores images is decided once, here.
+ *
+ * Both keep the same {store_id}/... object paths, so a reference already held on
+ * a product or a store resolves under either — nothing has to be rewritten at
+ * cutover, and a half-migrated install still renders its catalogue.
+ */
+
+export const uploadProductImageFromUri = usingLaravel
+  ? laravelStorageService.uploadProductImageFromUri
+  : supabase_uploadProductImageFromUri;
+
+export const uploadStoreLogoFromUri = usingLaravel
+  ? laravelStorageService.uploadStoreLogoFromUri
+  : supabase_uploadStoreLogoFromUri;
+
+export const resolveProductImageUrl = usingLaravel
+  ? laravelStorageService.resolveProductImageUrl
+  : supabase_resolveProductImageUrl;
+
+export const resolveStoreLogoUrl = usingLaravel
+  ? laravelStorageService.resolveStoreLogoUrl
+  : supabase_resolveStoreLogoUrl;
+
+/**
+ * Headers an <Image> needs to load a stored object.
+ *
+ * Laravel serves media behind authentication, so a bare URI renders as a broken
+ * image with no indication why. Empty on Supabase, whose signed URLs carry their
+ * own authorisation.
+ */
+export const imageAuthHeaders = usingLaravel
+  ? laravelStorageService.imageAuthHeaders
+  : async (): Promise<Record<string, string>> => ({});
 
 export const storageService = {
   uploadProductImageFromUri,
   uploadStoreLogoFromUri,
   resolveProductImageUrl,
   resolveStoreLogoUrl,
+  imageAuthHeaders,
 };

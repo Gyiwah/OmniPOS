@@ -5,6 +5,7 @@ import type Product from "@/src/database/models/Product";
 import { supabase } from "@/src/services/supabase";
 import { enqueueChange } from "@/src/sync/enqueue";
 import type { ReturnLineInput } from "./types";
+import { usingLaravel } from "@/src/core/api/config";
 
 async function findLocalProduct(
   storeId: string,
@@ -75,6 +76,14 @@ export async function restoreStockForReturn(storeId: string, lines: ReturnLineIn
       },
     });
   }
+
+  /*
+   * Under Laravel the server owns stock: ReturnHandler posts the RETURN
+   * movements and recomputes products.stock from the ledger. Writing an
+   * absolute quantity from here would reintroduce the race the ledger removes —
+   * two tills each pushing what they believe the total is.
+   */
+  if (usingLaravel) return;
 
   for (const line of activeLines) {
     if (!line.productId) continue;

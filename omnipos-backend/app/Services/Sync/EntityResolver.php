@@ -8,6 +8,7 @@ use App\Services\Sync\Handlers\PriceHistoryHandler;
 use App\Services\Sync\Handlers\ProductBatchHandler;
 use App\Services\Sync\Handlers\ProductHandler;
 use App\Services\Sync\Handlers\RegisterShiftHandler;
+use App\Services\Sync\Handlers\ReturnHandler;
 use App\Services\Sync\Handlers\StockMovementHandler;
 use Illuminate\Contracts\Container\Container;
 use InvalidArgumentException;
@@ -34,6 +35,7 @@ class EntityResolver
         'stock_movements' => StockMovementHandler::class,
         'price_history' => PriceHistoryHandler::class,
         'register_shifts' => RegisterShiftHandler::class,
+        'returns' => ReturnHandler::class,
     ];
 
     public function __construct(private readonly Container $container)

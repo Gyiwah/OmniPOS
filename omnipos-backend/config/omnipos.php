@@ -19,6 +19,17 @@ return [
         'max_push_operations' => 500,
     ],
 
+    'media' => [
+        /*
+         * Where product images and store logos live.
+         *
+         * The store-scoped path layout ({store_id}/products/…) is identical on
+         * every disk, so moving from local to S3 needs no data rewrite — only
+         * this value and the AWS credentials.
+         */
+        'disk' => env('OMNIPOS_MEDIA_DISK', 'local'),
+    ],
+
     'inventory' => [
         /*
          * Whether to reject a sale that would drive stock negative.

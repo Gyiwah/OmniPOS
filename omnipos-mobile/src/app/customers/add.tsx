@@ -17,6 +17,7 @@ import { useStoreSlice } from "@/src/store/storeSlice";
 import { enqueueChange } from "@/src/sync/enqueue";
 import { synchronise } from "@/src/sync";
 import { supabase } from "@/src/services/supabase";
+import { usingLaravel } from "@/src/core/api/config";
 
 export default function AddCustomerScreen() {
   const router = useRouter();
@@ -59,10 +60,17 @@ export default function AddCustomerScreen() {
         });
       });
 
-      // Attempt direct cloud insert if online
+      /*
+       * Optimistic direct write, Supabase only.
+       *
+       * Under Laravel the queued operation below is the single path to the
+       * server. Writing here as well would put the same customer into two
+       * backends, and whichever the app later reads from would look right while
+       * the other silently drifted.
+       */
       let syncedDirectly = false;
       const net = await NetInfo.fetch();
-      if (net.isConnected) {
+      if (!usingLaravel && net.isConnected) {
         try {
           const { error: insertErr } = await supabase.from("customers").upsert(
             {

@@ -1,5 +1,7 @@
 import { supabase } from "@/src/services/supabase";
 import { Store } from "@/src/types/store";
+import { usingLaravel } from "@/src/core/api/config";
+import { laravelStoresService } from "./laravelStores";
 
 type MembershipRow = {
   store_id: string;
@@ -15,7 +17,7 @@ function mapStore(row: any): Store {
   };
 }
 
-export const storesService = {
+const supabaseStoresService = {
   async list(): Promise<Store[]> {
     const { data: memberships, error: membershipError } = await supabase
       .from("store_members")
@@ -102,3 +104,11 @@ export const storesService = {
     return mapStore(createdStore);
   },
 };
+
+/**
+ * Which implementation answers is decided once, here, from build configuration.
+ *
+ * Callers import storesService and never learn the transport, so retiring
+ * Supabase is a deletion plus one edit rather than a change at every call site.
+ */
+export const storesService = usingLaravel ? (laravelStoresService as typeof supabaseStoresService) : supabaseStoresService;

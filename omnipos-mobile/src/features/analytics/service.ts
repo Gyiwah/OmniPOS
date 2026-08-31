@@ -12,8 +12,10 @@ import type {
   SalesTrendPoint,
   TimeRange,
 } from "./types";
+import { usingLaravel } from "@/src/core/api/config";
+import { laravelAnalyticsService } from "./laravelAnalytics";
 
-export const analyticsService = {
+const supabaseAnalyticsService = {
   async getStoreAnalytics(storeId: string, range: TimeRange = "30d"): Promise<AnalyticsReport> {
     if (!storeId) {
       return emptyReport();
@@ -223,3 +225,11 @@ function emptyReport(): AnalyticsReport {
     bestSellers: [],
   };
 }
+
+/**
+ * Which implementation answers is decided once, here, from build configuration.
+ *
+ * Callers import analyticsService and never learn the transport, so retiring
+ * Supabase is a deletion plus one edit rather than a change at every call site.
+ */
+export const analyticsService = usingLaravel ? (laravelAnalyticsService as typeof supabaseAnalyticsService) : supabaseAnalyticsService;

@@ -6,6 +6,8 @@ import { SYNC_STORAGE } from "@/src/sync/keys";
 import { useAuthStore } from "@/src/store/authStore";
 import { useBootstrapStore } from "@/src/store/bootstrapStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
+import { usingLaravel } from "@/src/core/api/config";
+import { restoreSession } from "@/src/features/auth/laravelAuth";
 
 const AUTH_CACHE_KEY = "omnipos:cached_auth_session";
 
@@ -52,70 +54,96 @@ export function useAuthBootstrap(): void {
 
       // 2. REMOTE VERIFICATION & REFRESH (Graceful offline fallback)
       try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const session = sessionData?.session;
+        if (usingLaravel) {
+          // The token is the session. restoreSession returns null when it is
+          // missing, revoked, or simply unreachable — all of which leave the
+          // cached session above in place so the till still opens and sells.
+          const restored = await restoreSession();
 
-        if (session?.user) {
-          const userId = session.user.id;
+          if (restored) {
+            useAuthStore
+              .getState()
+              .setSession(restored.userId, restored.role as any, restored.isSuperAdmin);
 
-          try {
-            await supabase.rpc("accept_pending_store_invites");
-          } catch {
-            // Ignore if RPC fails during offline state
-          }
-
-          let membershipRole: string | null = null;
-          let remoteStoreId: string | null = null;
-          let isSuperAdmin = false;
-
-          try {
-            const { data: memberships } = await supabase
-              .from("store_members")
-              .select("store_id, role")
-              .eq("user_id", userId)
-              .limit(1);
-
-            const membership = memberships?.[0];
-            if (membership) {
-              membershipRole = membership.role;
-              remoteStoreId = membership.store_id;
+            if (restored.storeId && !useStoreSlice.getState().activeStoreId) {
+              useStoreSlice.getState().setActiveStore(restored.storeId);
             }
-          } catch {
-            // Offline: retain existing role
-            membershipRole = useAuthStore.getState().role;
+
+            void storage.setItem(
+              AUTH_CACHE_KEY,
+              JSON.stringify({
+                userId: restored.userId,
+                role: restored.role,
+                isSuperAdmin: restored.isSuperAdmin,
+                storeId: restored.storeId,
+              }),
+            );
           }
+        } else {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const session = sessionData?.session;
 
-          try {
-            const { data: profile } = await supabase
-              .from("profiles")
-              .select("is_super_admin")
-              .eq("id", userId)
-              .maybeSingle();
+          if (session?.user) {
+            const userId = session.user.id;
 
-            isSuperAdmin = Boolean(profile?.is_super_admin);
-          } catch {
-            isSuperAdmin = useAuthStore.getState().isSuperAdmin;
+            try {
+              await supabase.rpc("accept_pending_store_invites");
+            } catch {
+              // Ignore if RPC fails during offline state
+            }
+
+            let membershipRole: string | null = null;
+            let remoteStoreId: string | null = null;
+            let isSuperAdmin = false;
+
+            try {
+              const { data: memberships } = await supabase
+                .from("store_members")
+                .select("store_id, role")
+                .eq("user_id", userId)
+                .limit(1);
+
+              const membership = memberships?.[0];
+              if (membership) {
+                membershipRole = membership.role;
+                remoteStoreId = membership.store_id;
+              }
+            } catch {
+              // Offline: retain existing role
+              membershipRole = useAuthStore.getState().role;
+            }
+
+            try {
+              const { data: profile } = await supabase
+                .from("profiles")
+                .select("is_super_admin")
+                .eq("id", userId)
+                .maybeSingle();
+
+              isSuperAdmin = Boolean(profile?.is_super_admin);
+            } catch {
+              isSuperAdmin = useAuthStore.getState().isSuperAdmin;
+            }
+
+            const resolvedRole = membershipRole ?? (isSuperAdmin ? "super_admin" : null);
+            useAuthStore.getState().setSession(userId, resolvedRole as any, isSuperAdmin);
+
+            const storedStoreId = await storage.getItem(SYNC_STORAGE.activeStoreId);
+            const resolvedStoreId = storedStoreId ?? remoteStoreId ?? useStoreSlice.getState().activeStoreId;
+            if (resolvedStoreId && !useStoreSlice.getState().activeStoreId) {
+              useStoreSlice.getState().setActiveStore(resolvedStoreId);
+            }
+
+            void storage.setItem(
+              AUTH_CACHE_KEY,
+              JSON.stringify({
+                userId,
+                role: resolvedRole,
+                isSuperAdmin,
+                storeId: resolvedStoreId,
+              }),
+            );
           }
-
-          const resolvedRole = membershipRole ?? (isSuperAdmin ? "super_admin" : null);
-          useAuthStore.getState().setSession(userId, resolvedRole as any, isSuperAdmin);
-
-          const storedStoreId = await storage.getItem(SYNC_STORAGE.activeStoreId);
-          const resolvedStoreId = storedStoreId ?? remoteStoreId ?? useStoreSlice.getState().activeStoreId;
-          if (resolvedStoreId && !useStoreSlice.getState().activeStoreId) {
-            useStoreSlice.getState().setActiveStore(resolvedStoreId);
-          }
-
-          // Cache the latest verified session for offline restarts
-          void storage.setItem(
-            AUTH_CACHE_KEY,
-            JSON.stringify({
-              userId,
-              role: resolvedRole,
-              isSuperAdmin,
-              storeId: resolvedStoreId,
-            }),
-          );
         }
       } catch (error) {
         if (__DEV__) {

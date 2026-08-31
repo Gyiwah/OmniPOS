@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\InventoryController;
+use App\Http\Controllers\Api\MediaController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\RegisterShiftController;
@@ -142,6 +143,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('register-shifts', [RegisterShiftController::class, 'open']);
         Route::post('register-shifts/{shift}/cash-movement', [RegisterShiftController::class, 'cashMovement']);
         Route::post('register-shifts/{shift}/close', [RegisterShiftController::class, 'close']);
+
+        /*
+        | Images. Reads are authorised by the store id that prefixes the path,
+        | which is what replaces the RLS policy that guarded the Supabase bucket.
+        */
+        Route::post('media', [MediaController::class, 'store']);
+        Route::post('media/store-logo', [MediaController::class, 'storeLogo']);
+        Route::get('media/{path}', [MediaController::class, 'show'])->where('path', '.*');
+        Route::delete('media/{path}', [MediaController::class, 'destroy'])->where('path', '.*');
 
         // Reports
         Route::get('reports/dashboard', [ReportController::class, 'dashboard']);

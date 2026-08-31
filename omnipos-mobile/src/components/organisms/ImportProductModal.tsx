@@ -28,6 +28,7 @@ import { createProductBatch } from "@/src/features/inventory/batchService";
 import { supabase } from "@/src/services/supabase";
 import { enqueueChange } from "@/src/sync/enqueue";
 import { synchronise } from "@/src/sync";
+import { usingLaravel } from "@/src/core/api/config";
 
 type ParsedProduct = {
   name: string;
@@ -285,7 +286,12 @@ export function ImportProductModal({
 
           if (isOnline) {
             try {
-              void supabase.from("products").upsert(payload, { onConflict: "id" });
+              // Supabase only: the queued operation below is the sole path
+              // to the Laravel server, and writing to both would split the
+              // catalogue across two backends.
+              if (!usingLaravel) {
+                void supabase.from("products").upsert(payload, { onConflict: "id" });
+              }
             } catch {
               // fallback to queue
             }

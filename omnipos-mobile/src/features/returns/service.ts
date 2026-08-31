@@ -7,6 +7,8 @@ import type OrderItem from "@/src/database/models/OrderItem";
 import { supabase } from "@/src/services/supabase";
 import { restoreStockForReturn } from "./stock";
 import type { OrderForReturn, ReturnDetail, ReturnLineInput, ReturnListRow } from "./types";
+import { usingLaravel } from "@/src/core/api/config";
+import { enqueueChange } from "@/src/sync/enqueue";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -449,39 +451,77 @@ export async function processReturn(input: {
     // ignore
   }
 
-  // 4. Try remote sync if online
-  try {
-    await supabase.from("profiles").upsert({ id: input.processedByUserId }, { onConflict: "id" });
-
-    const { data: inserted, error } = await supabase
-      .from("returns")
-      .insert({
+  // 4. Get it to the server.
+  if (usingLaravel) {
+    /*
+     * Queued, not posted.
+     *
+     * A refund is money that has already left the drawer, so it must survive
+     * the app being closed, the network being down, and the phone being
+     * restarted. The outbox gives it the same delivery guarantee a sale has:
+     * retried until accepted, idempotent on the queue row's id, and surfaced as
+     * a conflict rather than dropped if the server refuses it — which it will if
+     * another till has already refunded these items.
+     */
+    await enqueueChange({
+      storeId: input.storeId,
+      entity: "returns",
+      operation: "upsert",
+      recordId: localReturnId,
+      payload: {
         id: localReturnId,
-        store_id: input.storeId,
         order_id: input.orderId,
         processed_by_user_id: input.processedByUserId,
         reason: fullReasonWithManifest,
         amount,
-      })
-      .select("id")
-      .single();
+        refund_method: "cash",
+        client_created_at: new Date().toISOString(),
+        items: input.lines.map((line) => ({
+          id: uuidv7(),
+          order_item_id: line.orderItemId,
+          product_id: line.productId ?? null,
+          product_name: line.name,
+          unit_price: line.unitPrice,
+          quantity: line.quantity,
+          line_total: line.unitPrice * line.quantity,
+          restock: true,
+        })),
+      },
+    });
+  } else {
+    try {
+      await supabase.from("profiles").upsert({ id: input.processedByUserId }, { onConflict: "id" });
 
-    if (!error && inserted?.id) {
-      const itemsPayload = input.lines.map((line) => ({
-        return_id: String(inserted.id),
-        store_id: input.storeId,
-        order_item_id: isUuid(line.orderItemId) ? line.orderItemId : null,
-        product_id: line.productId && isUuid(line.productId) ? line.productId : null,
-        product_name: line.name,
-        unit_price: line.unitPrice,
-        quantity: line.quantity,
-        line_total: line.unitPrice * line.quantity,
-      }));
+      const { data: inserted, error } = await supabase
+        .from("returns")
+        .insert({
+          id: localReturnId,
+          store_id: input.storeId,
+          order_id: input.orderId,
+          processed_by_user_id: input.processedByUserId,
+          reason: fullReasonWithManifest,
+          amount,
+        })
+        .select("id")
+        .single();
 
-      await supabase.from("return_items").insert(itemsPayload);
+      if (!error && inserted?.id) {
+        const itemsPayload = input.lines.map((line) => ({
+          return_id: String(inserted.id),
+          store_id: input.storeId,
+          order_item_id: isUuid(line.orderItemId) ? line.orderItemId : null,
+          product_id: line.productId && isUuid(line.productId) ? line.productId : null,
+          product_name: line.name,
+          unit_price: line.unitPrice,
+          quantity: line.quantity,
+          line_total: line.unitPrice * line.quantity,
+        }));
+
+        await supabase.from("return_items").insert(itemsPayload);
+      }
+    } catch {
+      // Offline mode: Return is recorded locally and stock restored safely
     }
-  } catch {
-    // Offline mode: Return is recorded locally and stock restored safely
   }
 
   return localReturnId;

@@ -39,6 +39,11 @@ const ALLOWED = new Set([
   // Uploads read from the device filesystem. The web client will supply its own
   // implementation behind the same exported function names.
   "src/services/storage.ts",
+  // Same reason, for the Laravel backend: streaming a file straight from a
+  // device URI is inherently native. A browser uploads a File from an input,
+  // which is a different mechanism, not the same one behind an adapter — so
+  // this is a platform implementation rather than a boundary violation.
+  "src/services/laravelStorage.ts",
 ]);
 
 const FORBIDDEN = [

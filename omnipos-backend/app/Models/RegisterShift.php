@@ -68,24 +68,25 @@ class RegisterShift extends Model
     }
 
     /**
-     * What the drawer should hold: float, plus cash taken, plus paid-ins, less
-     * paid-outs. Computed from the payments ledger rather than from the client's
-     * cash_sales figure, so a device that synced late cannot understate the till.
+     * What the drawer should hold: float, plus net cash movement, plus paid-ins,
+     * less paid-outs.
+     *
+     * Derived from the payments ledger rather than the client's cash_sales
+     * figure, so a device that synced late cannot understate the till.
+     *
+     * Refunds are NOT subtracted separately here. They are negative rows in the
+     * same ledger, so summing cash payments already nets them out; subtracting
+     * them again would remove every refund from the drawer twice and make an
+     * honest till look short by exactly the day's refunds.
      */
     public function computeExpectedCash(): string
     {
-        $cashTaken = (string) $this->payments()->cash()->sum('amount');
+        $netCash = (string) $this->payments()->cash()->sum('amount');
 
-        $refunded = (string) SaleReturn::query()
-            ->where('register_shift_id', $this->id)
-            ->where('refund_method', 'cash')
-            ->sum('amount');
-
-        $expected = bcadd((string) $this->opening_float, $cashTaken, 2);
+        $expected = bcadd((string) $this->opening_float, $netCash, 2);
         $expected = bcadd($expected, (string) $this->cash_in, 2);
-        $expected = bcsub($expected, (string) $this->cash_out, 2);
 
-        return bcsub($expected, $refunded, 2);
+        return bcsub($expected, (string) $this->cash_out, 2);
     }
 
     public function scopeOpen($query)

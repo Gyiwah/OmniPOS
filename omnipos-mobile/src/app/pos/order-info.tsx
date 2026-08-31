@@ -29,6 +29,7 @@ import { database } from "@/src/database";
 import type Order from "@/src/database/models/Order";
 import type OrderItem from "@/src/database/models/OrderItem";
 import type Customer from "@/src/database/models/Customer";
+import { usingLaravel } from "@/src/core/api/config";
 
 function symbolFor(currency: string) {
   if (currency === "USD") return "$";
@@ -190,7 +191,9 @@ export default function OrderInfoScreen() {
 
         try {
           const net = await NetInfo.fetch();
-          if (net.isConnected && net.isInternetReachable !== false) {
+          // Under Laravel the queued branch is the only path to the server;
+          // writing directly as well would split data across two backends.
+          if (!usingLaravel && net.isConnected && net.isInternetReachable !== false) {
             await supabase.from("customers").upsert(
               {
                 id: custRemoteId,
@@ -238,7 +241,9 @@ export default function OrderInfoScreen() {
 
         try {
           const net = await NetInfo.fetch();
-          if (net.isConnected && net.isInternetReachable !== false) {
+          // Under Laravel the queued branch is the only path to the server;
+          // writing directly as well would split data across two backends.
+          if (!usingLaravel && net.isConnected && net.isInternetReachable !== false) {
             await supabase.from("customers").insert({
               id: createdCustomer!.id,
               store_id: activeStoreId,
@@ -392,7 +397,13 @@ export default function OrderInfoScreen() {
       stockAdjusted = true;
 
       const net = await NetInfo.fetch();
-      const isOnline = Boolean(net.isConnected && net.isInternetReachable !== false);
+      /*
+       * Under Laravel every sale goes down the offline path — which is not a
+       * fallback but the normal route: it writes locally and queues, and the
+       * sync engine delivers it idempotently. Inserting straight into Supabase
+       * would put the sale in the wrong database entirely.
+       */
+      const isOnline = !usingLaravel && Boolean(net.isConnected && net.isInternetReachable !== false);
 
       if (!isOnline) {
         await saveOrderOffline(orderNumber, cashierUserId);

@@ -10,6 +10,8 @@ import type {
   StoreSettings,
   StoreSettingsInput,
 } from "./types";
+import { usingLaravel } from "@/src/core/api/config";
+import { laravelSettingsService } from "./laravelSettings";
 
 const STORE_SETTINGS_SELECT =
   "id, name, email, logo_url, language, currency, timezone, tax_profile, app_mode_dark, tax_rate, vat_rate, service_rate";
@@ -53,7 +55,7 @@ function mapInvite(row: Record<string, unknown>): PendingInvite {
   };
 }
 
-export const settingsService = {
+const supabaseSettingsService = {
   async getByStoreId(storeId: string): Promise<StoreSettings | null> {
     const { data, error } = await supabase
       .from("stores")
@@ -225,3 +227,11 @@ export const settingsService = {
     return lines.join("\n");
   },
 };
+
+/**
+ * Which implementation answers is decided once, here, from build configuration.
+ *
+ * Callers import settingsService and never learn the transport, so retiring
+ * Supabase is a deletion plus one edit rather than a change at every call site.
+ */
+export const settingsService = usingLaravel ? (laravelSettingsService as typeof supabaseSettingsService) : supabaseSettingsService;

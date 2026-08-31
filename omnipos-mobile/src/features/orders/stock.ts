@@ -6,6 +6,7 @@ import { recordStockMovement } from "@/src/features/inventory/stockMovementServi
 import { supabase } from "@/src/services/supabase";
 import { enqueueChange } from "@/src/sync/enqueue";
 import type { DraftLine } from "@/src/store/orderDraftStore";
+import { usingLaravel } from "@/src/core/api/config";
 
 export type StockCheckLine = Pick<DraftLine, "id" | "name" | "quantity">;
 
@@ -116,6 +117,18 @@ export async function restoreStockForOrder(storeId: string, lines: DraftLine[]):
     });
   }
 
+  /*
+   * Under Laravel the server owns stock: it derives products.stock from the
+   * stock_movements ledger, and the order/return push posts those movements
+   * itself. Pushing an absolute quantity from here would be the very race the
+   * ledger exists to remove — two offline tills each writing what they believe
+   * the total is, and the later one winning.
+   *
+   * The local figure has already been updated above so the next customer sees a
+   * truthful number; the server reconciles from the ledger.
+   */
+  if (usingLaravel) return;
+
   for (const line of lines) {
     const remoteId = line.remoteId ?? line.id;
     const { data: remoteProduct, error: readError } = await supabase
@@ -206,6 +219,18 @@ export async function decrementStockForOrder(storeId: string, lines: DraftLine[]
       },
     });
   }
+
+  /*
+   * Under Laravel the server owns stock: it derives products.stock from the
+   * stock_movements ledger, and the order/return push posts those movements
+   * itself. Pushing an absolute quantity from here would be the very race the
+   * ledger exists to remove — two offline tills each writing what they believe
+   * the total is, and the later one winning.
+   *
+   * The local figure has already been updated above so the next customer sees a
+   * truthful number; the server reconciles from the ledger.
+   */
+  if (usingLaravel) return;
 
   for (const line of lines) {
     const remoteId = line.remoteId ?? line.id;
