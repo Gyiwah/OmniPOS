@@ -1,7 +1,5 @@
-import { isLocalImageUri } from "@/src/services/storage";
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+import { isUuid } from "@/src/core/ids";
+import { isLocalImageUri } from "@/src/core/images";
 
 export type ProductUpsertPayload = {
   id?: string;
@@ -21,9 +19,8 @@ export type ProductUpsertPayload = {
   is_active?: boolean;
 };
 
-export function isUuid(value: string): boolean {
-  return UUID_RE.test(value);
-}
+/** Re-exported so existing sync call sites keep a single import surface. */
+export { isUuid };
 
 /** Accept remote http(s) URLs or Supabase storage object paths. */
 export function storedImageRef(url: string | null | undefined): string | null {

@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { storage } from "@/src/core/platform";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -21,7 +21,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "omnipos-auth-v1",
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => storage),
     },
   ),
 );

@@ -1,4 +1,4 @@
-import * as Crypto from "expo-crypto";
+import { uuidv7 } from "@/src/core/ids";
 import { Q } from "@nozbe/watermelondb";
 
 import { database } from "@/src/database";
@@ -16,7 +16,7 @@ export async function createProductBatch(params: {
   costPrice?: number;
   expiryDate?: string;
 }): Promise<ProductBatch> {
-  const batchId = Crypto.randomUUID();
+  const batchId = uuidv7();
   const now = Date.now();
 
   let batchRecord: ProductBatch | null = null;

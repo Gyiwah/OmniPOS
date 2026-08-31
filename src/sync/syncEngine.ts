@@ -1,5 +1,6 @@
 import { Q } from "@nozbe/watermelondb";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { network, storage } from "@/src/core/platform";
+
 import type Product from "@/src/database/models/Product";
 import type SyncQueueItem from "@/src/database/models/SyncQueueItem";
 import { database } from "@/src/database";
@@ -58,6 +59,21 @@ export type SyncCycleResult = {
   lastError?: string;
 };
 
+function isNetworkError(error: unknown): boolean {
+  if (!error) return false;
+  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return (
+    msg.includes("network request failed") ||
+    msg.includes("failed to fetch") ||
+    msg.includes("network error") ||
+    msg.includes("timeout") ||
+    msg.includes("abort") ||
+    msg.includes("connection refused") ||
+    msg.includes("network_error") ||
+    msg.includes("typeerror: network")
+  );
+}
+
 async function ensureSupabaseSession(): Promise<boolean> {
   try {
     const { data, error } = await supabase.auth.getSession();
@@ -72,10 +88,21 @@ async function ensureSupabaseSession(): Promise<boolean> {
 
 /** Push outbound queue + pull Postgres products & customers into SQLite */
 export async function runSyncCycle(storeIdHint?: string | null): Promise<SyncCycleResult> {
-  const fromStorage = await AsyncStorage.getItem(SYNC_STORAGE.activeStoreId);
+  const fromStorage = await storage.getItem(SYNC_STORAGE.activeStoreId);
   const storeId = storeIdHint ?? fromStorage ?? null;
   if (!storeId) {
     return { ok: true, pushed: 0, failed: 0 };
+  }
+
+  // Check network connectivity first before attempting remote requests
+  try {
+    const net = await network.getState();
+    if (net.isConnected === false || net.isInternetReachable === false) {
+      useSyncStore.getState().setSyncStatus("idle");
+      return { ok: true, pushed: 0, failed: 0 };
+    }
+  } catch {
+    // ignore netinfo errors
   }
 
   useSyncStore.getState().setSyncStatus("running");
@@ -108,20 +135,32 @@ export async function runSyncCycle(storeIdHint?: string | null): Promise<SyncCyc
       lastError: pRes.lastError || oRes.lastError || cRes.lastError || bRes.lastError || smRes.lastError || phRes.lastError,
     };
 
-    await pullProducts(storeId);
-    await pullCustomers(storeId);
-    await pullBatches(storeId);
+    try {
+      await pullProducts(storeId);
+      await pullCustomers(storeId);
+      await pullBatches(storeId);
+    } catch (pullErr) {
+      if (!isNetworkError(pullErr) && __DEV__) {
+        console.warn("[OmniPOS] Cloud pull notice:", pullErr);
+      }
+    }
+
     useSyncStore.getState().markSynced(new Date().toISOString());
     useSyncStore.getState().setSyncStatus(flushResult.ok ? "idle" : "error");
     if (!flushResult.ok && flushResult.lastError) {
       useSyncStore.getState().setLastError(flushResult.lastError);
     }
-    await AsyncStorage.setItem(SYNC_STORAGE.activeStoreId, storeId);
+    await storage.setItem(SYNC_STORAGE.activeStoreId, storeId);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "sync failed";
-    flushResult = { ok: false, pushed: flushResult.pushed, failed: flushResult.failed + 1, lastError: message };
-    useSyncStore.getState().setSyncStatus("error");
-    useSyncStore.getState().setLastError(message);
+    if (isNetworkError(error)) {
+      flushResult = { ok: true, pushed: flushResult.pushed, failed: 0, lastError: "Offline" };
+      useSyncStore.getState().setSyncStatus("idle");
+    } else {
+      const message = error instanceof Error ? error.message : "sync failed";
+      flushResult = { ok: false, pushed: flushResult.pushed, failed: flushResult.failed + 1, lastError: message };
+      useSyncStore.getState().setSyncStatus("error");
+      useSyncStore.getState().setLastError(message);
+    }
   } finally {
     useSyncStore.getState().setSyncing(false);
     await refreshPendingSyncCount();
@@ -228,9 +267,8 @@ async function flushProductQueue(storeId: string): Promise<SyncCycleResult> {
             imageRef = uploadedRef;
           }
         } catch (imageError) {
-          if (__DEV__) {
+          if (__DEV__ && !isNetworkError(imageError)) {
             const message = imageError instanceof Error ? imageError.message : "image upload failed";
-            // eslint-disable-next-line no-console -- operator-facing sync diagnostics
             console.warn(`[OmniPOS] Product saved to cloud; image upload failed: ${message}`);
           }
         }
@@ -277,11 +315,14 @@ async function flushProductQueue(storeId: string): Promise<SyncCycleResult> {
       });
       pushed += 1;
     } catch (e) {
+      if (isNetworkError(e)) {
+        // Device is offline: keep item pending and abort further remote requests
+        return { ok: false, pushed, failed: 0, lastError: "Offline" };
+      }
       const message = e instanceof Error ? e.message : "sync failed";
       lastError = message;
       failed += 1;
       if (__DEV__) {
-        // eslint-disable-next-line no-console -- operator-facing sync diagnostics
         console.warn(`[OmniPOS] Sync queue item failed (${item.entity}/${item.operation}): ${message}`);
       }
       await database.write(async () => {
@@ -301,7 +342,7 @@ async function pullProducts(storeId: string): Promise<void> {
   const cursorKey = `${SYNC_STORAGE.productsCursorIso}:${storeId}`;
   const localCount = await database.get<Product>("products").query(Q.where("store_id", storeId)).fetchCount();
   const useFullPull = localCount === 0;
-  const cursor = useFullPull ? null : await AsyncStorage.getItem(cursorKey);
+  const cursor = useFullPull ? null : await storage.getItem(cursorKey);
 
   let qb = supabase.from("products").select("*").eq("store_id", storeId);
   if (cursor) {
@@ -318,53 +359,59 @@ async function pullProducts(storeId: string): Promise<void> {
     for (const row of rows) {
       const ts = Date.parse(row.updated_at);
       const resolvedTs = Number.isFinite(ts) ? ts : Date.now();
-      const match = await productsCol.query(Q.where("store_id", row.store_id), Q.where("sku", row.sku)).fetch();
+      // Match on the server id first. Clients mint their own UUIDs, so a pulled
+      // row and its local counterpart share one identity; the natural key is only
+      // a fallback for legacy rows created before client-minted ids existed.
+      const byId = await productsCol.query(Q.where("id", row.id)).fetch();
+      const existing = byId.length
+        ? byId
+        : await productsCol.query(Q.where("store_id", storeId), Q.where("sku", row.sku)).fetch();
 
-      const found = match[0];
-      if (found) {
-        if (found.dirty) continue;
-        await found.update((rec) => {
-          rec.remoteId = row.id;
+      const current = existing[0];
+      if (current) {
+        if (current.dirty) {
+          continue;
+        }
+        await current.update((rec) => {
           rec.name = row.name;
-          rec.stock = row.stock;
-          rec.sellPrice = Number(row.price);
-          rec.costPrice = row.cost_price == null ? undefined : Number(row.cost_price);
           rec.barcode = row.barcode ?? undefined;
+          rec.stock = row.stock;
+          rec.sellPrice = row.price;
+          rec.costPrice = row.cost_price ?? undefined;
           rec.imageUrl = row.image_url ?? undefined;
-          if ((row as Record<string, unknown>).reorder_level != null) {
-            rec.reorderLevel = Number((row as Record<string, unknown>).reorder_level);
-          }
-          if ((row as Record<string, unknown>).tags != null) {
-            const rawTags = (row as Record<string, unknown>).tags;
-            rec.tags = Array.isArray(rawTags) ? rawTags.join(", ") : typeof rawTags === "string" ? rawTags : undefined;
-          }
+          rec.tags = row.tags?.join(", ") ?? undefined;
+          rec.remoteId = row.id;
           rec.updatedAt = resolvedTs;
           rec.dirty = false;
         });
       } else {
         await productsCol.create((rec) => {
+          // Adopt the server id as the local primary key so local id === server id.
           rec._raw.id = row.id;
-          rec.storeId = row.store_id;
+          rec.storeId = storeId;
           rec.remoteId = row.id;
           rec.name = row.name;
           rec.sku = row.sku;
+          rec.barcode = row.barcode ?? undefined;
           rec.stock = row.stock;
-          rec.sellPrice = Number(row.price);
+          rec.sellPrice = row.price;
+          rec.costPrice = row.cost_price ?? undefined;
+          rec.imageUrl = row.image_url ?? undefined;
+          rec.tags = row.tags?.join(", ") ?? undefined;
+          rec.reorderLevel = 5;
           rec.updatedAt = resolvedTs;
           rec.dirty = false;
-          rec.costPrice = row.cost_price == null ? undefined : Number(row.cost_price);
-          rec.barcode = row.barcode ?? undefined;
-          rec.imageUrl = row.image_url ?? undefined;
-          rec.reorderLevel = (row as Record<string, unknown>).reorder_level != null ? Number((row as Record<string, unknown>).reorder_level) : 5;
-          const rawTags = (row as Record<string, unknown>).tags;
-          rec.tags = Array.isArray(rawTags) ? rawTags.join(", ") : typeof rawTags === "string" ? rawTags : undefined;
         });
       }
     }
   });
 
-  const newest = rows.reduce((m, row) => (row.updated_at > m ? row.updated_at : m), rows[0].updated_at);
-  await AsyncStorage.setItem(cursorKey, newest);
+  const latestUpdated = rows.reduce((latest, r) => {
+    return !latest || r.updated_at > latest ? r.updated_at : latest;
+  }, "");
+  if (latestUpdated) {
+    await storage.setItem(cursorKey, latestUpdated);
+  }
 }
 
 async function flushOrderQueue(storeId: string): Promise<SyncCycleResult> {
@@ -379,36 +426,48 @@ async function flushOrderQueue(storeId: string): Promise<SyncCycleResult> {
 
   for (const item of pending.slice(0, 20)) {
     try {
-      if (item.operation === "upsert" || item.operation === "insert") {
+      if (item.operation === "insert" || item.operation === "upsert") {
         const payload = JSON.parse(item.payload) as OrderInsertPayload;
-        const row = buildOrderRowForSupabase(payload);
+        const row = buildOrderRowForSupabase({ ...payload, store_id: storeId });
 
-        const { data: inserted, error: orderErr } = await supabase
-          .from("orders")
-          .upsert(row, { onConflict: "store_id,order_number" })
-          .select("id")
-          .single();
+        let orderId = payload.id;
+        if (row.id) {
+          const { data: inserted, error: ordErr } = await supabase
+            .from("orders")
+            .upsert(row, { onConflict: "id" })
+            .select("id")
+            .single();
 
-        if (orderErr) throw new Error(orderErr.message);
-        const orderId = inserted?.id ?? payload.id;
+          if (ordErr) throw new Error(ordErr.message);
+          orderId = inserted?.id ?? payload.id;
+        } else {
+          const { data: inserted, error: ordErr } = await supabase
+            .from("orders")
+            .insert(row)
+            .select("id")
+            .single();
 
-        if (orderId && Array.isArray(payload.items) && payload.items.length > 0) {
-          const linesPayload = payload.items.map((line) => ({
+          if (ordErr) throw new Error(ordErr.message);
+          orderId = inserted?.id;
+        }
+
+        const orderItems = payload.items || (payload as any).lines || [];
+        if (orderItems.length > 0 && orderId) {
+          const linesPayload = orderItems.map((line: any) => ({
             order_id: orderId,
             store_id: storeId,
-            product_id: line.product_id ?? null,
-            sku: line.sku ?? null,
-            barcode: line.barcode ?? null,
-            product_name: line.product_name,
-            unit_price: line.unit_price,
+            product_id: isUuid(line.productId || line.product_id) ? (line.productId || line.product_id) : null,
+            product_name: line.name || line.product_name,
+            sku: line.sku,
+            barcode: line.barcode,
+            unit_price: line.unitPrice ?? line.unit_price,
             quantity: line.quantity,
-            line_total: line.line_total,
+            line_total: line.lineTotal ?? line.line_total ?? (Number(line.unitPrice ?? line.unit_price ?? 0) * Number(line.quantity ?? 1)),
           }));
 
           const { error: lineErr } = await supabase.from("order_items").insert(linesPayload);
-          if (lineErr && !lineErr.message.toLowerCase().includes("order_items")) {
-            // ignore duplicate line errors if already inserted
-            if (__DEV__) console.warn(`[OmniPOS] order_items sync notice: ${lineErr.message}`);
+          if (lineErr && !lineErr.message.toLowerCase().includes("duplicate")) {
+            if (__DEV__ && !isNetworkError(lineErr)) console.warn(`[OmniPOS] order_items sync notice: ${lineErr.message}`);
           }
         }
 
@@ -435,6 +494,9 @@ async function flushOrderQueue(storeId: string): Promise<SyncCycleResult> {
       });
       pushed += 1;
     } catch (e) {
+      if (isNetworkError(e)) {
+        return { ok: false, pushed, failed: 0, lastError: "Offline" };
+      }
       const message = e instanceof Error ? e.message : "order sync failed";
       lastError = message;
       failed += 1;
@@ -511,6 +573,9 @@ async function flushCustomerQueue(storeId: string): Promise<SyncCycleResult> {
       });
       pushed += 1;
     } catch (e) {
+      if (isNetworkError(e)) {
+        return { ok: false, pushed, failed: 0, lastError: "Offline" };
+      }
       const message = e instanceof Error ? e.message : "customer sync failed";
       lastError = message;
       failed += 1;
@@ -528,17 +593,17 @@ async function flushCustomerQueue(storeId: string): Promise<SyncCycleResult> {
 }
 
 async function pullCustomers(storeId: string): Promise<void> {
-  const cursorKey = `omnipos:cursor:customers:${storeId}`;
+  const cursorKey = `${SYNC_STORAGE.customersCursorIso}:${storeId}`;
   const localCount = await database.get<Customer>("customers").query(Q.where("store_id", storeId)).fetchCount();
   const useFullPull = localCount === 0;
-  const cursor = useFullPull ? null : await AsyncStorage.getItem(cursorKey);
+  const cursor = useFullPull ? null : await storage.getItem(cursorKey);
 
   let qb = supabase.from("customers").select("*").eq("store_id", storeId);
   if (cursor) {
     qb = qb.gte("updated_at", cursor);
   }
   const { data, error } = await qb;
-  if (error) return; // fallback silently if table not deployed yet
+  if (error) throw error;
 
   const rows = data as RemoteCustomer[] | null;
   if (!rows?.length) return;
@@ -548,30 +613,38 @@ async function pullCustomers(storeId: string): Promise<void> {
     for (const row of rows) {
       const ts = Date.parse(row.updated_at);
       const resolvedTs = Number.isFinite(ts) ? ts : Date.now();
-      const match = await custCol
+
+      const existing = await custCol
         .query(
-          Q.where("store_id", row.store_id),
-          Q.or(Q.where("id", row.id), Q.where("remote_id", row.id), Q.where("name", row.name))
+          Q.where("store_id", storeId),
+          Q.or(
+            Q.where("id", row.id),
+            Q.where("remote_id", row.id),
+            row.phone ? Q.where("phone", row.phone) : Q.where("id", row.id),
+          ),
         )
         .fetch();
 
-      const found = match[0];
-      if (found) {
-        await found.update((rec) => {
-          rec.remoteId = row.id;
+      const current = existing[0];
+      if (current) {
+        if (current.dirty) {
+          continue;
+        }
+        await current.update((rec) => {
           rec.name = row.name;
           rec.phone = row.phone ?? undefined;
           rec.email = row.email ?? undefined;
           rec.totalSpend = Number(row.total_spend ?? 0);
           rec.outstandingBalance = Number(row.outstanding_balance ?? 0);
           rec.notes = row.notes ?? undefined;
+          rec.remoteId = row.id;
           rec.updatedAt = resolvedTs;
           rec.dirty = false;
         });
       } else {
         await custCol.create((rec) => {
           rec._raw.id = row.id;
-          rec.storeId = row.store_id;
+          rec.storeId = storeId;
           rec.remoteId = row.id;
           rec.name = row.name;
           rec.phone = row.phone ?? undefined;
@@ -586,16 +659,20 @@ async function pullCustomers(storeId: string): Promise<void> {
     }
   });
 
-  const newest = rows.reduce((m, row) => (row.updated_at > m ? row.updated_at : m), rows[0].updated_at);
-  await AsyncStorage.setItem(cursorKey, newest);
+  const latestUpdated = rows.reduce((latest, r) => {
+    return !latest || r.updated_at > latest ? r.updated_at : latest;
+  }, "");
+  if (latestUpdated) {
+    await storage.setItem(cursorKey, latestUpdated);
+  }
 }
 
 async function resolveRemoteProductId(storeId: string, productIdOrLocalId: string): Promise<string> {
-  if (!productIdOrLocalId) return productIdOrLocalId;
+  if (isUuid(productIdOrLocalId)) return productIdOrLocalId;
   try {
-    const localProduct = await database.get<Product>("products").find(productIdOrLocalId);
-    if (localProduct?.remoteId && isUuid(localProduct.remoteId)) {
-      return localProduct.remoteId;
+    const product = await database.get<Product>("products").find(productIdOrLocalId);
+    if (product?.remoteId && isUuid(product.remoteId)) {
+      return product.remoteId;
     }
   } catch {
     // maybe it's already a remote ID
@@ -686,6 +763,9 @@ async function flushBatchQueue(storeId: string): Promise<SyncCycleResult> {
       });
       pushed += 1;
     } catch (e) {
+      if (isNetworkError(e)) {
+        return { ok: false, pushed, failed: 0, lastError: "Offline" };
+      }
       const message = e instanceof Error ? e.message : "batch sync failed";
       lastError = message;
       failed += 1;
@@ -761,6 +841,9 @@ async function flushStockMovementQueue(storeId: string): Promise<SyncCycleResult
       });
       pushed += 1;
     } catch (e) {
+      if (isNetworkError(e)) {
+        return { ok: false, pushed, failed: 0, lastError: "Offline" };
+      }
       const message = e instanceof Error ? e.message : "stock movement sync failed";
       lastError = message;
       failed += 1;
@@ -832,6 +915,9 @@ async function flushPriceHistoryQueue(storeId: string): Promise<SyncCycleResult>
       });
       pushed += 1;
     } catch (e) {
+      if (isNetworkError(e)) {
+        return { ok: false, pushed, failed: 0, lastError: "Offline" };
+      }
       const message = e instanceof Error ? e.message : "price history sync failed";
       lastError = message;
       failed += 1;
@@ -849,17 +935,17 @@ async function flushPriceHistoryQueue(storeId: string): Promise<SyncCycleResult>
 }
 
 async function pullBatches(storeId: string): Promise<void> {
-  const cursorKey = `omnipos:cursor:batches:${storeId}`;
+  const cursorKey = `${SYNC_STORAGE.batchesCursorIso}:${storeId}`;
   const localCount = await database.get<ProductBatch>("product_batches").query(Q.where("store_id", storeId)).fetchCount();
   const useFullPull = localCount === 0;
-  const cursor = useFullPull ? null : await AsyncStorage.getItem(cursorKey);
+  const cursor = useFullPull ? null : await storage.getItem(cursorKey);
 
   let qb = supabase.from("product_batches").select("*").eq("store_id", storeId);
   if (cursor) {
     qb = qb.gte("updated_at", cursor);
   }
   const { data, error } = await qb;
-  if (error) return; // table might not be deployed on Supabase yet
+  if (error) throw error;
 
   const rows = data as Array<{
     id: string;
@@ -876,36 +962,46 @@ async function pullBatches(storeId: string): Promise<void> {
   if (!rows?.length) return;
 
   await database.write(async () => {
-    const batchCol = database.get<ProductBatch>("product_batches");
+    const batchesCol = database.get<ProductBatch>("product_batches");
     for (const row of rows) {
       const ts = Date.parse(row.updated_at);
       const resolvedTs = Number.isFinite(ts) ? ts : Date.now();
-      const match = await batchCol.query(Q.where("store_id", row.store_id), Q.where("remote_id", row.id)).fetch();
 
-      const found = match[0];
-      if (found) {
-        if (found.dirty) continue;
-        await found.update((rec) => {
-          rec.remoteId = row.id;
-          rec.productId = row.product_id;
-          rec.batchNumber = row.batch_number;
-          rec.quantity = Number(row.quantity ?? 0);
-          rec.costPrice = row.cost_price == null ? undefined : Number(row.cost_price);
+      // Server id first (see pullProducts); batch_number + product_id is the
+      // legacy fallback and must not be allowed to miss into a duplicate insert.
+      const byId = await batchesCol.query(Q.where("id", row.id)).fetch();
+      const existing = byId.length
+        ? byId
+        : await batchesCol
+            .query(
+              Q.where("store_id", storeId),
+              Q.where("batch_number", row.batch_number),
+              Q.where("product_id", row.product_id),
+            )
+            .fetch();
+
+      const current = existing[0];
+      if (current) {
+        if (current.dirty) continue;
+        await current.update((rec) => {
+          rec.quantity = row.quantity;
+          rec.costPrice = row.cost_price ?? undefined;
           rec.expiryDate = row.expiry_date ?? undefined;
+          rec.remoteId = row.id;
           rec.updatedAt = resolvedTs;
           rec.dirty = false;
         });
       } else {
-        await batchCol.create((rec) => {
+        await batchesCol.create((rec) => {
           rec._raw.id = row.id;
-          rec.storeId = row.store_id;
+          rec.storeId = storeId;
           rec.remoteId = row.id;
           rec.productId = row.product_id;
           rec.batchNumber = row.batch_number;
-          rec.quantity = Number(row.quantity ?? 0);
-          rec.costPrice = row.cost_price == null ? undefined : Number(row.cost_price);
+          rec.quantity = row.quantity;
+          rec.costPrice = row.cost_price ?? undefined;
           rec.expiryDate = row.expiry_date ?? undefined;
-          rec.createdAt = Date.parse(row.created_at) || resolvedTs;
+          rec.createdAt = Date.parse(row.created_at) || Date.now();
           rec.updatedAt = resolvedTs;
           rec.dirty = false;
         });
@@ -913,7 +1009,10 @@ async function pullBatches(storeId: string): Promise<void> {
     }
   });
 
-  const newest = rows.reduce((m, row) => (row.updated_at > m ? row.updated_at : m), rows[0].updated_at);
-  await AsyncStorage.setItem(cursorKey, newest);
+  const latestUpdated = rows.reduce((latest, r) => {
+    return !latest || r.updated_at > latest ? r.updated_at : latest;
+  }, "");
+  if (latestUpdated) {
+    await storage.setItem(cursorKey, latestUpdated);
+  }
 }
-

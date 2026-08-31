@@ -1,4 +1,4 @@
-import * as Crypto from "expo-crypto";
+import { uuidv7 } from "@/src/core/ids";
 import { Q } from "@nozbe/watermelondb";
 
 import { database } from "@/src/database";
@@ -37,7 +37,7 @@ export async function recordStockMovement(params: {
   reason: string;
   notes?: string;
 }): Promise<StockMovement> {
-  const movementId = Crypto.randomUUID();
+  const movementId = uuidv7();
   const now = Date.now();
 
   let record: StockMovement | null = null;

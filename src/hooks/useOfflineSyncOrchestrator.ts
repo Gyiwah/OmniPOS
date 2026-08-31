@@ -1,5 +1,5 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import NetInfo from "@react-native-community/netinfo";
+import { network, storage } from "@/src/core/platform";
+
 import { useEffect } from "react";
 import { AppState } from "react-native";
 
@@ -11,7 +11,7 @@ import { refreshPendingSyncCount } from "@/src/sync/syncCounters";
 import { useStoreSlice } from "@/src/store/storeSlice";
 
 /**
- * NetInfo + AppState + initial hydration hooks for OmniPOS offline engine.
+ * Connectivity + AppState + initial hydration hooks for OmniPOS offline engine.
  */
 export function useOfflineSyncOrchestrator(appReady = true): void {
   const activeStoreId = useStoreSlice((s) => s.activeStoreId);
@@ -25,12 +25,12 @@ export function useOfflineSyncOrchestrator(appReady = true): void {
 
   useEffect(() => {
     if (!appReady || !activeStoreId) return;
-    void AsyncStorage.setItem(SYNC_STORAGE.activeStoreId, activeStoreId);
+    void storage.setItem(SYNC_STORAGE.activeStoreId, activeStoreId);
   }, [activeStoreId, appReady]);
 
   useEffect(() => {
     if (!appReady || !activeStoreId) return;
-    const unsub = NetInfo.addEventListener((state) => {
+    const unsub = network.subscribe((state) => {
       if (state.isConnected) {
         void runSyncCycle(activeStoreId);
       }

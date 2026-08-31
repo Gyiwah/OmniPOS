@@ -1,5 +1,5 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import * as Crypto from "expo-crypto";
+import { uuidv7 } from "@/src/core/ids";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
@@ -40,7 +40,7 @@ export default function AddCustomerScreen() {
     setSubmitting(true);
     try {
       const now = Date.now();
-      const customerId = Crypto.randomUUID();
+      const customerId = uuidv7();
 
       await database.write(async () => {
         const custCol = database.get<Customer>("customers");

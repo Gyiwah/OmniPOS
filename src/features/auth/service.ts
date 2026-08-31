@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { storage } from "@/src/core/platform";
 
 import { settingsService } from "@/src/features/settings/service";
 import { supabase } from "@/src/services/supabase";
@@ -114,7 +114,7 @@ export const authService = {
         allowBootstrap: accepted.length === 0,
       });
 
-      await AsyncStorage.setItem(SYNC_STORAGE.activeStoreId, membership.store_id);
+      await storage.setItem(SYNC_STORAGE.activeStoreId, membership.store_id);
 
       return {
         ...data,
@@ -137,7 +137,7 @@ export const authService = {
     }
 
     const membership = await ensureMembershipAndBootstrap({ allowBootstrap: true });
-    await AsyncStorage.setItem(SYNC_STORAGE.activeStoreId, membership.store_id);
+    await storage.setItem(SYNC_STORAGE.activeStoreId, membership.store_id);
 
     return {
       userId: data.user.id,

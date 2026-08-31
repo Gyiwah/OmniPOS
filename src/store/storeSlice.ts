@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { storage } from "@/src/core/platform";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -15,7 +15,7 @@ export const useStoreSlice = create<StoreSlice>()(
     }),
     {
       name: "omnipos-store-slice-v1",
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => storage),
     },
   ),
 );

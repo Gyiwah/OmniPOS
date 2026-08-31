@@ -1,19 +1,15 @@
 import * as FileSystem from "expo-file-system/legacy";
 
+import { isLocalImageUri } from "@/src/core/images";
 import { supabase } from "@/src/services/supabase";
+
+export { isLocalImageUri };
 
 export const OMNIPOS_ASSETS_BUCKET = "omnipos-assets";
 
 const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24;
 
-export function isLocalImageUri(uri: string): boolean {
-  return (
-    uri.startsWith("file://") ||
-    uri.startsWith("content://") ||
-    uri.startsWith("ph://") ||
-    uri.startsWith("assets-library://")
-  );
-}
+
 
 function inferExtension(uri: string, mimeType?: string | null): string {
   if (mimeType) {

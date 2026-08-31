@@ -1,7 +1,7 @@
 import { Database } from "@nozbe/watermelondb";
 import LokiJSAdapter from "@nozbe/watermelondb/adapters/lokijs";
-import { NativeModules, Platform } from "react-native";
 
+import { getPlatform } from "@/src/core/platform";
 import {
   Product,
   Order,
@@ -11,33 +11,26 @@ import {
   ProductBatch,
   StockMovement,
   PriceHistory,
+  RegisterShift,
 } from "./models";
 import migrations from "./migrations";
 import wmSchema from "./wmSchema";
+
 let warnedMissingBridge = false;
 
-function hasWatermelonNativeBridge(): boolean {
-  return Boolean(
-    (NativeModules as { WMDatabaseBridge?: object }).WMDatabaseBridge,
-  );
-}
-
 /**
- * SQLite needs a native rebuild (`npx expo run:android` / `run:ios`) after adding
- * `@morrowdigital/watermelondb-expo-plugin`. Expo Go and older dev clients omit `WMDatabaseBridge`.
+ * Adapter selection is driven by the registered platform adapter rather than by a
+ * direct `react-native` import, so this module is safe to load in a browser build
+ * of the shared core.
+ *
+ *   native + SQLite bridge -> SQLiteAdapter   (device, persistent)
+ *   web                    -> LokiJS/IndexedDB (browser, persistent)
+ *   anything else          -> LokiJS in-memory (Expo Go, tests; resets on reload)
  */
 function createAdapter() {
-  if (Platform.OS === "web") {
-    return new LokiJSAdapter({
-      schema: wmSchema,
-      migrations,
-      dbName: "omnipos",
-      useWebWorker: false,
-      useIncrementalIndexedDB: true,
-    });
-  }
+  const platform = getPlatform();
 
-  if (hasWatermelonNativeBridge()) {
+  if (platform.capabilities.sqlite) {
     const SQLiteAdapter = require("@nozbe/watermelondb/adapters/sqlite").default;
     return new SQLiteAdapter({
       schema: wmSchema,
@@ -47,8 +40,20 @@ function createAdapter() {
     });
   }
 
-  const isDevOrTest = typeof __DEV__ === "undefined" || __DEV__ || process.env.NODE_ENV === "test";
-  if (isDevOrTest) {
+  if (platform.name === "web") {
+    return new LokiJSAdapter({
+      schema: wmSchema,
+      migrations,
+      dbName: "omnipos",
+      useWebWorker: false,
+      useIncrementalIndexedDB: true,
+    });
+  }
+
+  const isDevOrTest =
+    typeof __DEV__ === "undefined" || __DEV__ || process.env.NODE_ENV === "test";
+
+  if (platform.name === "native" && isDevOrTest) {
     if (!warnedMissingBridge && process.env.NODE_ENV !== "test") {
       warnedMissingBridge = true;
       // eslint-disable-next-line no-console -- intentional operator-facing warning
@@ -56,18 +61,19 @@ function createAdapter() {
         "[OmniPOS] WMDatabaseBridge missing — using in-memory Loki (data resets on reload). Rebuild native: `npx expo run:android` or `npm run dev:android`.",
       );
     }
-    return new LokiJSAdapter({
-      schema: wmSchema,
-      migrations,
-      dbName: "omnipos",
-      useWebWorker: false,
-      useIncrementalIndexedDB: false,
-    });
+  } else if (platform.name === "native") {
+    throw new Error(
+      "WatermelonDB native module is missing. Create a dev/production build with `npx expo run:android` (or EAS Build), not Expo Go.",
+    );
   }
 
-  throw new Error(
-    "WatermelonDB native module is missing. Create a dev/production build with `npx expo run:android` (or EAS Build), not Expo Go.",
-  );
+  return new LokiJSAdapter({
+    schema: wmSchema,
+    migrations,
+    dbName: "omnipos",
+    useWebWorker: false,
+    useIncrementalIndexedDB: false,
+  });
 }
 
 export function createWatermelonDb() {
@@ -82,6 +88,7 @@ export function createWatermelonDb() {
       ProductBatch,
       StockMovement,
       PriceHistory,
+      RegisterShift,
     ],
   });
 }

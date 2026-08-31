@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { storage } from "@/src/core/platform";
 
 type SettingsState = {
   shopName: string;
@@ -61,7 +61,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: "omnipos-settings-v1",
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => storage),
       partialize: (s) => ({
         shopName: s.shopName,
         shopEmail: s.shopEmail,

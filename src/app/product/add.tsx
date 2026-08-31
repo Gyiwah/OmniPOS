@@ -1,5 +1,5 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import * as Crypto from "expo-crypto";
+import { uuidv7 } from "@/src/core/ids";
 import * as ImagePicker from "expo-image-picker";
 import { Q } from "@nozbe/watermelondb";
 import { useRouter } from "expo-router";
@@ -158,7 +158,7 @@ export default function AddProductScreen() {
       }
 
       const now = Date.now();
-      const productId = Crypto.randomUUID();
+      const productId = uuidv7();
       const parsedTags = tags
         .split(",")
         .map((x) => x.trim())

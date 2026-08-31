@@ -1,4 +1,8 @@
-import { canIncreaseQuantity, validateCartQuantities } from "../features/orders/stock";
+import {
+  canIncreaseQuantity,
+  InsufficientStockError,
+  validateCartQuantities,
+} from "../features/orders/stock";
 import { calculateExpiryStatus } from "../features/inventory/batchService";
 
 describe("stock logic", () => {
@@ -31,7 +35,10 @@ describe("stock logic", () => {
     const lines = [{ id: "p1", name: "Widget A", price: 10, quantity: 5 }];
     const stockById = new Map([["p1", 2]]);
 
-    expect(() => validateCartQuantities(lines, stockById)).toThrow(/Insufficient stock/);
+    expect(() => validateCartQuantities(lines, stockById)).toThrow(InsufficientStockError);
+    expect(() => validateCartQuantities(lines, stockById)).toThrow(
+      '"Widget A" only has 2 in stock (requested 5).',
+    );
   });
 });
 

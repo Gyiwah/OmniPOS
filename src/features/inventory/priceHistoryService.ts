@@ -1,4 +1,4 @@
-import * as Crypto from "expo-crypto";
+import { uuidv7 } from "@/src/core/ids";
 import { Q } from "@nozbe/watermelondb";
 
 import { database } from "@/src/database";
@@ -22,7 +22,7 @@ export async function recordPriceChange(params: {
     return null;
   }
 
-  const historyId = Crypto.randomUUID();
+  const historyId = uuidv7();
   const now = Date.now();
 
   let record: PriceHistory | null = null;
