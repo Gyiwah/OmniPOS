@@ -198,8 +198,8 @@ function OpenDrawer({
 
   const report = useLiveQuery(
     async () => {
-      const { orders, refunds } = await shiftActivity(storeId, shift.id);
-      return buildZReport(shift, orders, refunds);
+      const { orders, refunds, settlements } = await shiftActivity(storeId, shift.id);
+      return buildZReport(shift, orders, refunds, settlements);
     },
     [storeId, shift],
     null,
@@ -218,6 +218,10 @@ function OpenDrawer({
             <div><dt>Cashier</dt><dd>{shift.cashier_name}</dd></div>
             <div><dt>Opening float</dt><dd>{formatMoney(toMinor(shift.opening_float), currency)}</dd></div>
             <div><dt>Cash sales</dt><dd>{report ? formatMoney(report.drawer.cashSales, currency) : "—"}</dd></div>
+            <div>
+              <dt>Cash on account</dt>
+              <dd>{report ? formatMoney(report.drawer.cashSettlements, currency) : "—"}</dd>
+            </div>
             <div><dt>Cash refunds</dt><dd>{report ? `−${formatMoney(report.drawer.cashRefunds, currency)}` : "—"}</dd></div>
             <div><dt>Paid in</dt><dd>{report ? formatMoney(report.drawer.paidIn, currency) : "—"}</dd></div>
             <div><dt>Paid out</dt><dd>{report ? `−${formatMoney(report.drawer.paidOut, currency)}` : "—"}</dd></div>
@@ -244,6 +248,14 @@ function OpenDrawer({
                 <div><dt>Sales</dt><dd>{report.orderCount}</dd></div>
                 <div><dt>Gross</dt><dd>{formatMoney(report.grossSales, currency)}</dd></div>
                 <div><dt>Refunds</dt><dd>{report.refundCount} · −{formatMoney(report.refundTotal, currency)}</dd></div>
+                {report.settlementCount > 0 && (
+                  <div>
+                    {/* Kept out of the net: a debt paid today is cash in the
+                        drawer but it is not trade done today. */}
+                    <dt>Settled on account</dt>
+                    <dd>{report.settlementCount} · {formatMoney(report.settlementTotal, currency)}</dd>
+                  </div>
+                )}
                 <div className="cart-total"><dt>Net</dt><dd>{formatMoney(report.netSales, currency)}</dd></div>
               </dl>
               {report.byMethod.length > 0 && (

@@ -1,5 +1,12 @@
 import { uuidv7 } from "@/core/uuidv7";
-import { db, type LocalCashMovement, type LocalOrder, type LocalReturn, type LocalShift } from "@/db/schema";
+import {
+  db,
+  type LocalCashMovement,
+  type LocalOrder,
+  type LocalPayment,
+  type LocalReturn,
+  type LocalShift,
+} from "@/db/schema";
 import { toDecimal } from "@/features/pos/cart";
 import { enqueue } from "@/sync/engine";
 import { movementTotals, summariseDrawer } from "./shift";
@@ -137,13 +144,13 @@ export async function closeShift(input: {
   countedCash: number;
   notes?: string | null;
 }): Promise<LocalShift> {
-  return db.transaction("rw", [db.shifts, db.orders, db.returns, db.outbox], async () => {
+  return db.transaction("rw", [db.shifts, db.orders, db.returns, db.payments, db.outbox], async () => {
     const shift = await db.shifts.get(input.shiftId);
     if (!shift) throw new Error("That drawer session is no longer on this till.");
     if (shift.status === "closed") throw new Error("This drawer is already closed.");
 
-    const { orders, refunds } = await shiftActivity(input.storeId, input.shiftId);
-    const drawer = summariseDrawer(shift, orders, refunds);
+    const { orders, refunds, settlements } = await shiftActivity(input.storeId, input.shiftId);
+    const drawer = summariseDrawer(shift, orders, refunds, settlements);
 
     const updated: LocalShift = {
       ...shift,
@@ -185,17 +192,21 @@ export async function currentShift(storeId: string, cashierUserId: string): Prom
 export async function shiftActivity(
   storeId: string,
   shiftId: string,
-): Promise<{ orders: LocalOrder[]; refunds: LocalReturn[] }> {
-  const [orders, refunds] = await Promise.all([
+): Promise<{ orders: LocalOrder[]; refunds: LocalReturn[]; settlements: LocalPayment[] }> {
+  const [orders, refunds, settlements] = await Promise.all([
     db.orders.where("store_id").equals(storeId).toArray(),
     db.returns.where("store_id").equals(storeId).toArray(),
+    db.payments.where("store_id").equals(storeId).toArray(),
   ]);
+
+  const inThisShift = (id: string | null, state: string) => id === shiftId && state !== "discarded";
 
   return {
     // Discarded sales are excluded: a sale a manager threw away is not money in
     // the drawer, and counting it would leave the cashier short on paper.
-    orders: orders.filter((o) => o.register_shift_id === shiftId && o._state !== "discarded"),
-    refunds: refunds.filter((r) => r.register_shift_id === shiftId && r._state !== "discarded"),
+    orders: orders.filter((o) => inThisShift(o.register_shift_id, o._state)),
+    refunds: refunds.filter((r) => inThisShift(r.register_shift_id, r._state)),
+    settlements: settlements.filter((p) => inThisShift(p.register_shift_id, p._state)),
   };
 }
 

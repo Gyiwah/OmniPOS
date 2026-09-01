@@ -166,6 +166,33 @@ export interface LocalReturn {
 }
 
 /**
+ * Money taken against a customer's account, outside a sale.
+ *
+ * Held locally for two reasons. A shop that lets customers buy on credit will
+ * have them come back on Saturday to pay some of it off, and that cannot depend
+ * on a connection. And a cash settlement is cash in the drawer — if the till did
+ * not know about it, its own reconciliation would come out short by every debt
+ * paid during the shift, while the server's came out right.
+ *
+ * Tenders taken as part of a sale are NOT here; they live on the order.
+ */
+export interface LocalPayment {
+  id: string;
+  store_id: string;
+  customer_id: string;
+  customer_name: string;
+  /** Set when the settlement is against one specific invoice. */
+  order_id: string | null;
+  register_shift_id: string | null;
+  method: string;
+  amount: string;
+  reference: string | null;
+  notes: string | null;
+  client_created_at: string;
+  _state: SyncState;
+}
+
+/**
  * The outbox.
  *
  * Every local write that the server needs to know about lands here first. Each
@@ -199,6 +226,7 @@ export class OmniposDatabase extends Dexie {
   orders!: Table<LocalOrder, string>;
   shifts!: Table<LocalShift, string>;
   returns!: Table<LocalReturn, string>;
+  payments!: Table<LocalPayment, string>;
   outbox!: Table<SyncOperation, string>;
   meta!: Table<MetaRow, string>;
 
@@ -237,6 +265,17 @@ export class OmniposDatabase extends Dexie {
       shifts: "id, store_id, status, opened_at, cashier_user_id, _state",
       returns: "id, store_id, order_id, client_created_at, _state",
     });
+
+    /*
+     * v4 adds settlements against a customer's account.
+     *
+     * Indexed by register_shift_id because the drawer needs them: a cash
+     * settlement taken mid-shift is money in the box, and a till that could not
+     * see it would reconcile short by every debt paid that day.
+     */
+    this.version(4).stores({
+      payments: "id, store_id, customer_id, register_shift_id, client_created_at, _state",
+    });
   }
 }
 
@@ -263,7 +302,7 @@ export async function setMeta(key: string, value: unknown): Promise<void> {
 export async function clearLocalData(): Promise<void> {
   await db.transaction(
     "rw",
-    [db.products, db.categories, db.customers, db.orders, db.shifts, db.returns, db.outbox, db.meta],
+    [db.products, db.categories, db.customers, db.orders, db.shifts, db.returns, db.payments, db.outbox, db.meta],
     async () => {
       await db.products.clear();
       await db.categories.clear();
@@ -271,6 +310,7 @@ export async function clearLocalData(): Promise<void> {
       await db.orders.clear();
       await db.shifts.clear();
       await db.returns.clear();
+      await db.payments.clear();
       await db.outbox.clear();
       await db.meta.clear();
     },

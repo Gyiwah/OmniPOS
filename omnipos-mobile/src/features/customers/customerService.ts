@@ -8,6 +8,7 @@ import { supabase } from "@/src/services/supabase";
 import { enqueueChange } from "@/src/sync/enqueue";
 import { synchronise } from "@/src/sync";
 import { usingLaravel } from "@/src/core/api/config";
+import { settleCustomerBalanceViaLaravel } from "./laravelSettlement";
 
 export type CustomerProfileData = {
   id: string;
@@ -252,7 +253,25 @@ export async function getCustomerWithHistory(
 /**
  * Settles outstanding balance for a customer across selected orders
  */
+/**
+ * Which implementation answers is decided once, from build configuration.
+ *
+ * The Supabase path below writes the new balance itself. The Laravel server
+ * refuses a client's figure for outstanding_balance — it derives it from the
+ * ledger — so under Laravel a settlement has to be recorded as a payment, which
+ * is what laravelSettlement does.
+ */
 export async function settleCustomerBalance(
+  payload: SettleBalancePayload
+): Promise<{ totalPaid: number; remainingBalance: number }> {
+  if (usingLaravel) {
+    return settleCustomerBalanceViaLaravel(payload);
+  }
+
+  return settleViaSupabase(payload);
+}
+
+async function settleViaSupabase(
   payload: SettleBalancePayload
 ): Promise<{ totalPaid: number; remainingBalance: number }> {
   const { storeId, customerId, payments } = payload;

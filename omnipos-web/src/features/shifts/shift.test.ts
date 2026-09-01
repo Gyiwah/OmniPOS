@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { LocalOrder, LocalReturn } from "@/db/schema";
+import type { LocalOrder, LocalPayment, LocalReturn } from "@/db/schema";
 import { buildZReport, cashTakenIn, discrepancy, expectedCash, summariseDrawer } from "./shift";
 
 function order(payments: Array<{ method: string; amount: string }>, total = "0.00"): LocalOrder {
@@ -24,6 +24,14 @@ function refund(amount: string, method = "cash"): LocalReturn {
   };
 }
 
+function settlement(amount: string, method = "cash"): LocalPayment {
+  return {
+    id: "s", store_id: "s", customer_id: "c", customer_name: "Ama Mensah",
+    order_id: null, register_shift_id: "shift", method, amount,
+    reference: null, notes: null, client_created_at: "2026-09-01T12:00:00Z", _state: "clean",
+  };
+}
+
 const shift = { opening_float: "200.00", movements: [], actual_cash: null };
 
 describe("what reaches the drawer", () => {
@@ -43,7 +51,10 @@ describe("what reaches the drawer", () => {
 describe("expected cash", () => {
   it("is float plus cash sales less refunds, adjusted for paid in and out", () => {
     expect(
-      expectedCash({ openingFloat: 20000, cashSales: 45000, cashRefunds: 5000, paidIn: 1000, paidOut: 3000 }),
+      expectedCash({
+        openingFloat: 20000, cashSales: 45000, cashSettlements: 0,
+        cashRefunds: 5000, paidIn: 1000, paidOut: 3000,
+      }),
     ).toBe(58000);
   });
 
@@ -60,6 +71,22 @@ describe("expected cash", () => {
     expect(withRefund.cashSales).toBe(5000);
     expect(withRefund.cashRefunds).toBe(2000);
     expect(withRefund.expected).toBe(20000 + 5000 - 2000);
+  });
+
+  /**
+   * A customer paying off a tab puts cash in the box exactly as a sale does. A
+   * drawer that did not count it would come out short by every debt settled
+   * during the shift — while the server, which does count it, came out right.
+   */
+  it("counts a cash settlement against an account", () => {
+    const summary = summariseDrawer(shift, [], [], [settlement("35.00")]);
+
+    expect(summary.cashSettlements).toBe(3500);
+    expect(summary.expected).toBe(20000 + 3500);
+  });
+
+  it("ignores a settlement taken on a card", () => {
+    expect(summariseDrawer(shift, [], [], [settlement("35.00", "card")]).cashSettlements).toBe(0);
   });
 
   it("ignores a refund that was not paid out in cash", () => {
@@ -105,6 +132,25 @@ describe("the Z-report", () => {
     expect(report.byMethod.find((m) => m.method === "card")?.amount).toBe(1500);
     expect(report.byMethod.find((m) => m.method === "cash")?.amount).toBe(6000);
     expect(report.netSales).toBe(10000 - 2500);
+  });
+
+  /**
+   * Settlements are cash, but they are not trade done today. Folding them into
+   * the day's takings would report business the shop did not do.
+   */
+  it("keeps settlements out of net sales while still counting them in the drawer", () => {
+    const report = buildZReport(
+      shift,
+      [order([{ method: "cash", amount: "40.00" }], "40.00")],
+      [],
+      [settlement("60.00")],
+    );
+
+    expect(report.netSales).toBe(4000);
+    expect(report.settlementTotal).toBe(6000);
+    expect(report.drawer.expected).toBe(20000 + 4000 + 6000);
+    // The cash channel has to account for all of it, trade or not.
+    expect(report.byMethod.find((m) => m.method === "cash")?.amount).toBe(10000);
   });
 
   it("reports no variance until cash has actually been counted", () => {

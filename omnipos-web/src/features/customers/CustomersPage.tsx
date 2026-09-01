@@ -6,6 +6,7 @@ import { formatMoney, toMinor } from "@/features/pos/cart";
 import { useSession } from "@/state/session";
 import { useSync } from "@/state/sync";
 import { CustomerForm } from "./CustomerForm";
+import { PaymentForm } from "./PaymentForm";
 
 export function CustomersPage() {
   const storeId = useSession((s) => s.storeId);
@@ -14,6 +15,7 @@ export function CustomersPage() {
   const [query, setQuery] = useState("");
   const [debtOnly, setDebtOnly] = useState(false);
   const [editing, setEditing] = useState<LocalCustomer | "new" | null>(null);
+  const [settling, setSettling] = useState<LocalCustomer | null>(null);
 
   const customers = useLiveQuery(
     async () => {
@@ -69,6 +71,10 @@ export function CustomersPage() {
               </td>
               <td>{c._state === "pending" && <span className="pill pill-pending">Queued</span>}</td>
               <td className="row-actions">
+                {/* Only offered where there is something to settle. */}
+                {Number(c.outstanding_balance) > 0 && (
+                  <button type="button" className="link" onClick={() => setSettling(c)}>Take payment</button>
+                )}
                 <button type="button" className="link" onClick={() => setEditing(c)}>Edit</button>
               </td>
             </tr>
@@ -77,6 +83,19 @@ export function CustomersPage() {
       </table>
 
       {customers.length === 0 && <p className="muted">No customers match.</p>}
+
+      {settling && storeId && (
+        <PaymentForm
+          storeId={storeId}
+          currency={currency}
+          customer={settling}
+          onClose={() => setSettling(null)}
+          onSaved={() => {
+            setSettling(null);
+            void useSync.getState().sync(storeId);
+          }}
+        />
+      )}
 
       {editing && storeId && (
         <CustomerForm

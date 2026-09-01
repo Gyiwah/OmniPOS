@@ -24,21 +24,29 @@ class CustomerLedger
      *
      * Where an order is named, the order's amount_paid moves too, so a credit
      * sale settles both the invoice and the account in one transaction.
+     *
+     * `id` and `client_created_at` are accepted so a till that took the money
+     * while offline can push its own record through the sync queue and have this
+     * be the same code path. Without that there would be two implementations of
+     * settlement — one for the counter and one for the browser — and they would
+     * drift.
      */
     public function settle(Customer $customer, array $data, User $user): Payment
     {
         return DB::transaction(function () use ($customer, $data, $user) {
             $payment = Payment::create([
+                'id' => $data['id'] ?? null,
                 'store_id' => $customer->store_id,
                 'order_id' => $data['order_id'] ?? null,
                 'customer_id' => $customer->id,
                 'register_shift_id' => $data['register_shift_id'] ?? null,
                 'received_by_user_id' => $user->id,
+                'device_id' => $data['device_id'] ?? null,
                 'method' => $data['method'],
                 'amount' => $data['amount'],
                 'reference' => $data['reference'] ?? null,
                 'notes' => $data['notes'] ?? null,
-                'client_created_at' => now(),
+                'client_created_at' => $data['client_created_at'] ?? now(),
             ]);
 
             if (! empty($data['order_id'])) {

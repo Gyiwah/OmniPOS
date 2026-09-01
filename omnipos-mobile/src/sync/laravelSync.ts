@@ -45,6 +45,12 @@ const SUPPORTED = new Set([
   "stock_movements",
   "price_history",
   "register_shifts",
+  // Refunds. Their absence here meant every return processed on a phone was
+  // marked failed and never reached the books — the goods went back on the
+  // shelf and the money left the drawer, with nothing on the server to show it.
+  "returns",
+  // Settlements against a customer's balance.
+  "payments",
 ]);
 
 export type SyncOutcome = {

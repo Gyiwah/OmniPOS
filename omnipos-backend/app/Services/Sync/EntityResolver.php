@@ -4,6 +4,7 @@ namespace App\Services\Sync;
 
 use App\Services\Sync\Handlers\CustomerHandler;
 use App\Services\Sync\Handlers\OrderHandler;
+use App\Services\Sync\Handlers\PaymentHandler;
 use App\Services\Sync\Handlers\PriceHistoryHandler;
 use App\Services\Sync\Handlers\ProductBatchHandler;
 use App\Services\Sync\Handlers\ProductHandler;
@@ -36,6 +37,10 @@ class EntityResolver
         'price_history' => PriceHistoryHandler::class,
         'register_shifts' => RegisterShiftHandler::class,
         'returns' => ReturnHandler::class,
+        // Settlements against a customer's balance only. Tenders taken as part
+        // of a sale are written by OrderHandler in the same transaction as the
+        // order, and refunds by ReturnHandler as negative rows.
+        'payments' => PaymentHandler::class,
     ];
 
     public function __construct(private readonly Container $container)

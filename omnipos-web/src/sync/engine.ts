@@ -158,7 +158,7 @@ async function pushOutbox(storeId: string): Promise<{ applied: number; conflicts
     // not declare.
     await db.transaction(
       "rw",
-      [db.outbox, db.orders, db.customers, db.shifts, db.returns, db.products],
+      [db.outbox, db.orders, db.customers, db.shifts, db.returns, db.payments, db.products],
       async () => {
         for (const op of batch) {
           const result = byId.get(op.operation_id);
@@ -259,6 +259,8 @@ async function markClean(op: SyncOperation): Promise<void> {
     await db.shifts.update(op.record_id, { _state: "clean" });
   } else if (op.entity === "returns") {
     await db.returns.update(op.record_id, { _state: "clean" });
+  } else if (op.entity === "payments") {
+    await db.payments.update(op.record_id, { _state: "clean" });
   }
 }
 
@@ -321,7 +323,7 @@ async function applyChanges(
 ): Promise<void> {
   await db.transaction(
     "rw",
-    [db.products, db.categories, db.customers, db.orders, db.shifts, db.returns, db.outbox],
+    [db.products, db.categories, db.customers, db.orders, db.shifts, db.returns, db.payments, db.outbox],
     async () => {
       for (const change of changes) {
         if (change.action === "delete") {
@@ -351,6 +353,9 @@ async function applyChanges(
             break;
           case "returns":
             await adoptServerReturn(change.record_id);
+            break;
+          case "payments":
+            await adoptServerPayment(change.record_id);
             break;
           default:
             // Entities the till does not keep locally (price history, movements)
@@ -435,6 +440,20 @@ async function adoptServerReturn(recordId: string): Promise<void> {
   if (!local || local._state === "pending") return;
 
   await db.returns.update(recordId, { _state: "clean" });
+}
+
+/**
+ * A settlement the server has accepted.
+ *
+ * As with a refund, only the state is taken. The amount was counted out at the
+ * counter and the server does not alter it; what the server does change is the
+ * customer's balance, and that arrives as its own change on the customer record.
+ */
+async function adoptServerPayment(recordId: string): Promise<void> {
+  const local = await db.payments.get(recordId);
+  if (!local || local._state === "pending") return;
+
+  await db.payments.update(recordId, { _state: "clean" });
 }
 
 /**
