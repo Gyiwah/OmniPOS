@@ -23,7 +23,17 @@ class Product extends Model
     use HasClientMintedUuid;
     use SoftDeletes;
 
+    /**
+     * `id` is fillable because clients mint it.
+     *
+     * The sync handlers reach this model through firstOrNew(['id' => ...]),
+     * which mass-assigns the key when the record is new. Without it here that
+     * throws, and creating a product or customer from a till fails while
+     * updating an existing one succeeds — the kind of gap a test that only
+     * edits existing rows will never find.
+     */
     protected $fillable = [
+        'id',
         'store_id',
         'category_id',
         'name',

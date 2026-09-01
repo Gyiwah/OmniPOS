@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Device;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Store;
 use App\Models\StoreMember;
@@ -96,6 +97,18 @@ class SyncTest extends TestCase
         ];
     }
 
+    private function manager(): User
+    {
+        $manager = User::create([
+            'name' => 'Manager', 'email' => 'mgr-'.Str::uuid7().'@test', 'password' => 'x',
+        ]);
+        StoreMember::create([
+            'store_id' => $this->store->id, 'user_id' => $manager->id, 'role' => StoreMember::ROLE_MANAGER,
+        ]);
+
+        return $manager->load('memberships');
+    }
+
     private function sync(): SyncService
     {
         return app(SyncService::class);
@@ -184,6 +197,108 @@ class SyncTest extends TestCase
 
         $this->assertSame(1, $result['conflicts'], 'cashier must not be able to write products');
         $this->assertNull(Product::find($op['record_id']));
+    }
+
+    /**
+     * Creating a record from a till, as opposed to editing one that already
+     * exists.
+     *
+     * This gap survived because every other product test either edits an
+     * existing row or asserts a rejection. Nothing pushed a NEW product as
+     * someone allowed to create one — so a mass-assignment failure on the
+     * client-minted id looked exactly like a passing suite, while in the field
+     * no till could ever add a product.
+     */
+    public function test_a_manager_can_create_a_new_product_from_a_till(): void
+    {
+        $manager = $this->manager();
+        $recordId = (string) Str::uuid7();
+
+        $result = $this->sync()->push($this->store->id, $manager, $this->device, [[
+            'operation_id' => (string) Str::uuid7(),
+            'entity' => 'products',
+            'action' => 'upsert',
+            'record_id' => $recordId,
+            'payload' => ['id' => $recordId, 'name' => 'Ginger Biscuits', 'sku' => 'GB-1', 'price' => 3.5],
+        ]]);
+
+        $this->assertSame(1, $result['applied'], $result['results'][0]['reason'] ?? 'should have applied');
+
+        $product = Product::find($recordId);
+        $this->assertNotNull($product, "the till's own id must be the server id");
+        $this->assertSame('Ginger Biscuits', $product->name);
+        // Stock arrives through the ledger, never as an attribute.
+        $this->assertSame(0, (int) $product->stock);
+    }
+
+    public function test_a_cashier_can_register_a_new_customer_from_a_till(): void
+    {
+        $recordId = (string) Str::uuid7();
+
+        $result = $this->sync()->push($this->store->id, $this->cashier, $this->device, [[
+            'operation_id' => (string) Str::uuid7(),
+            'entity' => 'customers',
+            'action' => 'upsert',
+            'record_id' => $recordId,
+            'payload' => ['id' => $recordId, 'name' => 'Akosua Boateng', 'phone' => '0244000111'],
+        ]]);
+
+        $this->assertSame(1, $result['applied'], $result['results'][0]['reason'] ?? 'should have applied');
+        $this->assertSame('Akosua Boateng', Customer::find($recordId)?->name);
+    }
+
+    /**
+     * The opening count for a product created moments earlier.
+     *
+     * Pushed as one batch, which is how a till actually sends it: the product
+     * and the delivery that stocked it are entered together.
+     */
+    public function test_a_new_product_and_its_opening_stock_apply_in_one_batch(): void
+    {
+        $manager = $this->manager();
+        $productId = (string) Str::uuid7();
+
+        $result = $this->sync()->push($this->store->id, $manager, $this->device, [
+            [
+                'operation_id' => (string) Str::uuid7(),
+                'entity' => 'products',
+                'action' => 'upsert',
+                'record_id' => $productId,
+                'payload' => ['id' => $productId, 'name' => 'Ginger Biscuits', 'sku' => 'GB-2', 'price' => 3.5],
+            ],
+            [
+                'operation_id' => (string) Str::uuid7(),
+                'entity' => 'stock_movements',
+                'action' => 'upsert',
+                'record_id' => (string) Str::uuid7(),
+                'payload' => ['product_id' => $productId, 'type' => 'STOCK_IN', 'quantity' => 48, 'reason' => 'Opening delivery'],
+            ],
+        ]);
+
+        $this->assertSame(2, $result['applied'], json_encode($result['results']));
+        $this->assertSame(48, (int) Product::find($productId)->stock);
+    }
+
+    /**
+     * A type the schema does not allow must come back as a sentence, not as a
+     * check violation the till can only report as "could not be applied" and
+     * then retry for ever.
+     */
+    public function test_an_unknown_stock_movement_type_is_refused_with_a_readable_reason(): void
+    {
+        $product = $this->product(5);
+
+        $result = $this->sync()->push($this->store->id, $this->cashier, $this->device, [[
+            'operation_id' => (string) Str::uuid7(),
+            'entity' => 'stock_movements',
+            'action' => 'upsert',
+            'record_id' => (string) Str::uuid7(),
+            'payload' => ['product_id' => $product->id, 'type' => 'PURCHASE', 'quantity' => 4, 'reason' => 'x'],
+        ]]);
+
+        $this->assertSame(1, $result['conflicts']);
+        $this->assertStringContainsString('Unknown stock movement type', $result['results'][0]['reason']);
+        $this->assertSame(5, (int) $product->fresh()->stock);
     }
 
     public function test_a_client_cannot_send_an_absolute_stock_value_to_overwrite_the_ledger(): void

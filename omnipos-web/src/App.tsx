@@ -8,6 +8,9 @@ import { PosPage } from "@/features/pos/PosPage";
 import { OrdersPage } from "@/features/orders/OrdersPage";
 import { ProductsPage } from "@/features/products/ProductsPage";
 import { CustomersPage } from "@/features/customers/CustomersPage";
+import { ReturnsPage } from "@/features/returns/ReturnsPage";
+import { ShiftPage } from "@/features/shifts/ShiftPage";
+import { ReceiptPage } from "@/features/receipt/ReceiptPage";
 import { SyncPage } from "@/features/sync/SyncPage";
 import { useSession } from "@/state/session";
 import { startSyncScheduler } from "@/state/sync";
@@ -41,6 +44,9 @@ export default function App() {
         <Route path="/orders" element={<Protected><OrdersPage /></Protected>} />
         <Route path="/products" element={<Protected><ProductsPage /></Protected>} />
         <Route path="/customers" element={<Protected><CustomersPage /></Protected>} />
+        <Route path="/returns" element={<Protected><ReturnsPage /></Protected>} />
+        <Route path="/shift" element={<Protected><ShiftPage /></Protected>} />
+        <Route path="/receipt/:orderId" element={<Protected><ReceiptPage /></Protected>} />
         <Route path="/sync" element={<Protected><SyncPage /></Protected>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

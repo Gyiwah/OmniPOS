@@ -4,6 +4,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db, type LocalCustomer } from "@/db/schema";
 import { formatMoney, toMinor } from "@/features/pos/cart";
 import { useSession } from "@/state/session";
+import { useSync } from "@/state/sync";
+import { CustomerForm } from "./CustomerForm";
 
 export function CustomersPage() {
   const storeId = useSession((s) => s.storeId);
@@ -11,6 +13,7 @@ export function CustomersPage() {
 
   const [query, setQuery] = useState("");
   const [debtOnly, setDebtOnly] = useState(false);
+  const [editing, setEditing] = useState<LocalCustomer | "new" | null>(null);
 
   const customers = useLiveQuery(
     async () => {
@@ -42,6 +45,8 @@ export function CustomersPage() {
             <input type="checkbox" checked={debtOnly} onChange={(e) => setDebtOnly(e.target.checked)} />
             Owing only
           </label>
+          {/* Cashiers register customers at the counter, as the server allows. */}
+          <button type="button" className="pay-button" onClick={() => setEditing("new")}>Add customer</button>
         </div>
       </header>
 
@@ -51,7 +56,7 @@ export function CustomersPage() {
 
       <table className="table">
         <thead>
-          <tr><th>Name</th><th>Phone</th><th>Total spend</th><th>Outstanding</th></tr>
+          <tr><th>Name</th><th>Phone</th><th>Total spend</th><th>Outstanding</th><th /><th /></tr>
         </thead>
         <tbody>
           {customers.map((c) => (
@@ -62,12 +67,28 @@ export function CustomersPage() {
               <td className={Number(c.outstanding_balance) > 0 ? "danger-text" : undefined}>
                 {formatMoney(toMinor(c.outstanding_balance), currency)}
               </td>
+              <td>{c._state === "pending" && <span className="pill pill-pending">Queued</span>}</td>
+              <td className="row-actions">
+                <button type="button" className="link" onClick={() => setEditing(c)}>Edit</button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
 
       {customers.length === 0 && <p className="muted">No customers match.</p>}
+
+      {editing && storeId && (
+        <CustomerForm
+          storeId={storeId}
+          customer={editing === "new" ? undefined : editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            void useSync.getState().sync(storeId);
+          }}
+        />
+      )}
     </div>
   );
 }

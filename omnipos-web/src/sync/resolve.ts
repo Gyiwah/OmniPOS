@@ -1,7 +1,6 @@
 import { api, ApiError } from "@/api/client";
 import { uuidv7 } from "@/core/uuidv7";
 import { db, type LocalOrder, type SyncOperation } from "@/db/schema";
-import { nextOrderNumber } from "@/features/pos/checkout";
 
 /**
  * Settling a rejected operation.
@@ -32,8 +31,16 @@ export type ConflictResolution = "reissued" | "retried" | "discarded";
  * from local state can clash again, and again, once per attempt.
  *
  * The local fallback is for the case where the server cannot be reached. It
- * takes the highest number this device knows about INCLUDING the one that just
- * clashed, so a retry at least advances instead of proposing the same number.
+ * stays within the CLASHED number's own date prefix and takes the highest
+ * sequence this device has seen under it.
+ *
+ * Staying within that prefix is the whole point. An earlier version compared the
+ * clashed sequence against today's next number, which is a comparison across two
+ * different date prefixes and therefore meaningless: settling a conflict on
+ * yesterday's OM-20260831-0001 against today's OM-20260901-0001 found 1 was not
+ * greater than 1 and proposed -0002 — then proposed -0002 again for the next
+ * conflict, because nothing it looked at had changed. Two sales, one number,
+ * offline, which is exactly the failure being resolved.
  */
 async function freeReceiptNumber(storeId: string, clashedWith: string): Promise<string> {
   try {
@@ -43,13 +50,20 @@ async function freeReceiptNumber(storeId: string, clashedWith: string): Promise<
     // Fall through to the local estimate.
   }
 
-  const local = await nextOrderNumber(storeId);
-
   const seq = (value: string) => Number.parseInt(value.slice(value.lastIndexOf("-") + 1), 10) || 0;
-  if (seq(local) > seq(clashedWith)) return local;
-
   const prefix = clashedWith.slice(0, clashedWith.lastIndexOf("-") + 1);
-  return `${prefix}${String(seq(clashedWith) + 1).padStart(4, "0")}`;
+
+  // Every number this device has issued under the same prefix, plus the one that
+  // just clashed. Successive re-issues therefore keep advancing.
+  const sameDay = await db.orders
+    .where("store_id")
+    .equals(storeId)
+    .filter((o) => o.order_number.startsWith(prefix))
+    .toArray();
+
+  const highest = sameDay.reduce((max, o) => Math.max(max, seq(o.order_number)), seq(clashedWith));
+
+  return `${prefix}${String(highest + 1).padStart(4, "0")}`;
 }
 
 /**

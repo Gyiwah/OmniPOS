@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { Link, useNavigate } from "react-router-dom";
 
 import { db, type LocalCategory, type LocalProduct } from "@/db/schema";
 import { uuidv7 } from "@/core/uuidv7";
@@ -22,6 +23,7 @@ import {
   type DiscountMode,
   type TenderLine,
 } from "./cart";
+import { useCurrentShift } from "@/features/shifts/useCurrentShift";
 import { completeSale, nextOrderNumber } from "./checkout";
 import { PaymentPanel } from "./PaymentPanel";
 
@@ -53,6 +55,11 @@ export function PosPage() {
   const [paying, setPaying] = useState(false);
   const [notice, setNotice] = useState<{ kind: "ok" | "warn" | "error"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Kept so the cashier can print the receipt for the sale they just rang up. */
+  const [lastOrderId, setLastOrderId] = useState<string | null>(null);
+
+  const shift = useCurrentShift();
+  const navigate = useNavigate();
 
   const searchRef = useRef<HTMLInputElement>(null);
   const focusSearch = useCallback(() => searchRef.current?.focus(), []);
@@ -161,10 +168,14 @@ export function PosPage() {
         if (paying) setPaying(false);
         else focusSearch();
       }
+      if (event.key === "F4" && lastOrderId) {
+        event.preventDefault();
+        navigate(`/receipt/${lastOrderId}?print=1`);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [lines.length, paying, focusSearch]);
+  }, [lines.length, paying, focusSearch, lastOrderId, navigate]);
 
   const reset = useCallback(() => {
     setLines([]);
@@ -195,9 +206,13 @@ export function PosPage() {
         rates,
         tenders,
         customer,
-        registerShiftId: null,
+        // Null when no drawer is open. The sale still completes — see the
+        // banner above the cart for why that is deliberate.
+        registerShiftId: shift?.id ?? null,
         orderNumber,
       });
+
+      setLastOrderId(order.id);
 
       const change = changeDue(totals.total, tenders);
       const owed = balanceDue(totals.total, tenders);
@@ -223,7 +238,7 @@ export function PosPage() {
     } finally {
       setBusy(false);
     }
-  }, [storeId, busy, totals.total, tenders, customer, lines, discountMode, discountValue, rates, currency, reset]);
+  }, [storeId, busy, totals.total, tenders, customer, lines, discountMode, discountValue, rates, currency, reset, shift]);
 
   if (!storeId) {
     return <div className="pos-empty">Select a store to start selling.</div>;
@@ -289,6 +304,19 @@ export function PosPage() {
       </section>
 
       <section className="pos-cart" aria-label="Current sale">
+        {/*
+          A warning, not a block. Refusing to sell because nobody counted the
+          float would stop the shop trading over a bookkeeping detail; an
+          unattributed sale is recoverable, a queue of turned-away customers is
+          not. The cost is stated plainly instead.
+        */}
+        {!shift && (
+          <p className="warn">
+            No drawer open. Sales will not be counted in any cash reconciliation.{" "}
+            <Link to="/shift">Open one</Link>.
+          </p>
+        )}
+
         <header className="cart-header">
           <h2>Current sale</h2>
           {customer ? (
@@ -379,7 +407,17 @@ export function PosPage() {
           <div className="cart-total"><dt>Total</dt><dd>{formatMoney(totals.total, currency)}</dd></div>
         </dl>
 
-        {notice && <p className={`notice notice-${notice.kind}`} role="status">{notice.text}</p>}
+        {notice && (
+          <p className={`notice notice-${notice.kind}`} role="status">
+            {notice.text}
+            {notice.kind === "ok" && lastOrderId && (
+              <>
+                {" "}
+                <Link to={`/receipt/${lastOrderId}?print=1`}>Print receipt</Link>
+              </>
+            )}
+          </p>
+        )}
 
         <button
           type="button"

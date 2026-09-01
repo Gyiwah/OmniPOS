@@ -103,6 +103,69 @@ export interface LocalOrder {
 }
 
 /**
+ * A cash drawer session.
+ *
+ * Held locally because opening and closing a drawer must work with no
+ * connection — that is precisely the shift a shop most needs to reconcile. The
+ * server recomputes expected_cash from the payments ledger and sends it back
+ * through the changefeed, so the figure shown after a sync is the server's, not
+ * this till's guess.
+ */
+export interface LocalCashMovement {
+  id: string;
+  direction: "in" | "out";
+  amount: string;
+  reason: string;
+  at: string;
+}
+
+export interface LocalShift {
+  id: string;
+  store_id: string;
+  cashier_user_id: string;
+  cashier_name: string;
+  opened_at: string;
+  closed_at: string | null;
+  opening_float: string;
+  cash_in: string;
+  cash_out: string;
+  /** What was actually counted at close. Null while the shift is open. */
+  actual_cash: string | null;
+  /** The server's figure once it has been pulled back; null until then. */
+  expected_cash: string | null;
+  status: "open" | "closed";
+  notes: string | null;
+  movements: LocalCashMovement[];
+  _state: SyncState;
+}
+
+export interface LocalReturnLine {
+  id: string;
+  /** The sold line this refunds. The server checks eligibility against it. */
+  order_item_id: string;
+  product_id: string | null;
+  product_name: string;
+  unit_price: string;
+  quantity: number;
+  line_total: string;
+  restock: boolean;
+}
+
+export interface LocalReturn {
+  id: string;
+  store_id: string;
+  order_id: string;
+  order_number: string;
+  register_shift_id: string | null;
+  reason: string;
+  amount: string;
+  refund_method: string;
+  items: LocalReturnLine[];
+  client_created_at: string;
+  _state: SyncState;
+}
+
+/**
  * The outbox.
  *
  * Every local write that the server needs to know about lands here first. Each
@@ -134,6 +197,8 @@ export class OmniposDatabase extends Dexie {
   categories!: Table<LocalCategory, string>;
   customers!: Table<LocalCustomer, string>;
   orders!: Table<LocalOrder, string>;
+  shifts!: Table<LocalShift, string>;
+  returns!: Table<LocalReturn, string>;
   outbox!: Table<SyncOperation, string>;
   meta!: Table<MetaRow, string>;
 
@@ -160,6 +225,18 @@ export class OmniposDatabase extends Dexie {
     this.version(2).stores({
       outbox: "operation_id, store_id, entity, status, record_id, created_at",
     });
+
+    /*
+     * v3 adds the drawer and the refunds.
+     *
+     * Both are money paths, so both are local-first for the same reason sales
+     * are: a shop with no connection still opens its till in the morning and
+     * still takes goods back over the counter. Neither may wait on a request.
+     */
+    this.version(3).stores({
+      shifts: "id, store_id, status, opened_at, cashier_user_id, _state",
+      returns: "id, store_id, order_id, client_created_at, _state",
+    });
   }
 }
 
@@ -184,12 +261,18 @@ export async function setMeta(key: string, value: unknown): Promise<void> {
  * ran — a half-signed-out till.
  */
 export async function clearLocalData(): Promise<void> {
-  await db.transaction("rw", [db.products, db.categories, db.customers, db.orders, db.outbox, db.meta], async () => {
-    await db.products.clear();
-    await db.categories.clear();
-    await db.customers.clear();
-    await db.orders.clear();
-    await db.outbox.clear();
-    await db.meta.clear();
-  });
+  await db.transaction(
+    "rw",
+    [db.products, db.categories, db.customers, db.orders, db.shifts, db.returns, db.outbox, db.meta],
+    async () => {
+      await db.products.clear();
+      await db.categories.clear();
+      await db.customers.clear();
+      await db.orders.clear();
+      await db.shifts.clear();
+      await db.returns.clear();
+      await db.outbox.clear();
+      await db.meta.clear();
+    },
+  );
 }

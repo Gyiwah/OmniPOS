@@ -1,4 +1,5 @@
 import { useLiveQuery } from "dexie-react-hooks";
+import { Link } from "react-router-dom";
 
 import { db, type LocalOrder } from "@/db/schema";
 import { formatMoney, toMinor } from "@/features/pos/cart";
@@ -34,7 +35,7 @@ export function OrdersPage() {
 
       <table className="table">
         <thead>
-          <tr><th>Receipt</th><th>When</th><th>Customer</th><th>Items</th><th>Total</th><th>Paid</th><th></th></tr>
+          <tr><th>Receipt</th><th>When</th><th>Customer</th><th>Items</th><th>Total</th><th>Paid</th><th /><th /></tr>
         </thead>
         <tbody>
           {orders.map((o) => {
@@ -57,6 +58,9 @@ export function OrdersPage() {
                   {o._state === "clean" && <span className="pill pill-online">Synced</span>}
                   {o._state === "conflict" && <span className="pill pill-offline">Needs a decision</span>}
                   {o._state === "discarded" && <span className="pill pill-discarded">Discarded</span>}
+                </td>
+                <td className="row-actions">
+                  <Link to={`/receipt/${o.id}`}>Receipt</Link>
                 </td>
               </tr>
             );

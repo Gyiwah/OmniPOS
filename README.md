@@ -72,9 +72,12 @@ Seeded accounts (after `php artisan db:seed`) all use the password `password`:
 
 ## What is not done
 
-- The mobile app still talks to Supabase.
 - Production data has not been migrated. `omnipos-backend/MIGRATION.md` is the
   runbook; the importer is idempotent and meant to be rehearsed first.
-- Receipt printing on web, register-shift UI on web, returns on web.
+- ESC/POS receipt printing. The web till prints through the browser today.
+- Taking a payment against a customer's outstanding balance, from either client.
+- The mobile app has no conflict-resolution screen. Rejected operations are kept
+  and returned by `pendingConflicts()`, but nothing renders them; a manager
+  settles them from the web till instead.
 - A cold offline start of the web PWA has not been executed in a real browser —
   the precache is verified by test, the cache-serving step is not.

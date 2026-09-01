@@ -172,16 +172,60 @@ money path is exactly the divergence the architecture exists to avoid.
 
 ---
 
+## The drawer, returns, receipts and catalogue writes
+
+All four are local-first, for the same reason sales are. A shop with no
+connection still counts its float at eight in the morning, still takes goods back
+over the counter, and still hands the customer a receipt.
+
+**The drawer** (`/shift`) opens against a counted float, records cash in and out
+during the shift, and closes against a counted amount. The variance is recorded,
+never corrected: a till that quietly adjusts its own expected figure to match the
+count cannot detect either theft or error, which is the only reason to count.
+
+Only cash is counted. Card and transfer never reach the box, so including them
+would leave every honest drawer looking short by the day's card takings.
+
+The client and the server compute expected cash by different routes and must
+agree. The client counts sales and subtracts refunds; the server sums a payments
+ledger in which refunds are already negative rows, so it does **not** subtract
+them again. Subtracting twice on either side makes an honest till look short by
+exactly the day's refunds. Both sides are pinned by tests, and the agreement was
+checked against a live server: GHS 200 float, GHS 16 cash sale, GHS 8 cash
+refund, GHS 15 paid out — both arrived at GHS 193.00 independently.
+
+**A sale without an open drawer is warned about, not blocked.** Refusing to trade
+over a bookkeeping detail is worse than an unattributed sale: one is recoverable,
+a queue of turned-away customers is not.
+
+**Returns** (`/returns`) look the sale up by receipt number — locally first, then
+from the server, so a customer can be refunded at a till that did not serve them.
+Eligibility comes from the server whenever there is a connection, because this
+till only knows the refunds it processed itself and two terminals refunding the
+same items is how a shop pays out twice. Offline, the screen says plainly that
+its figures are local and the server may still reject.
+
+**Receipts** (`/receipt/:id`) render from the local order and print through the
+browser, so they work while the sale is still in the outbox. A sale that has not
+reached the server prints saying so — the cashier handing it over during an
+outage should be able to see that, and so should whoever reconciles it later.
+
+**Catalogue writes** are on Inventory and Customers. Products are admin/manager
+only, matching what the server's handler will accept. Stock is never sent as an
+attribute: a new product starts at zero and its opening count is a separate
+movement, because an absolute figure from a device that synced late would erase
+another till's sales.
+
+**Multi-store switching** appears in the header only for someone who belongs to
+more than one store.
+
 ## Not built yet
 
-- Register shift UI (open/close drawer, Z-report). The API supports it.
-- Returns and refunds.
-- Product and customer create/edit from the web. Read-only today; the API
-  supports writes.
-- Receipt printing. The plan calls for ESC/POS over a local connection rather
-  than via the server.
-- Multi-store switching in the UI. The session layer handles it; there is no
-  picker yet.
+- ESC/POS printing over a local connection. Receipts print through the browser
+  today, which works on whatever hardware the shop already has; the plan calls
+  for direct ESC/POS eventually.
+- Taking a payment against a customer's outstanding balance.
+- Editing categories.
 
 ## Verified end to end
 
@@ -326,4 +370,9 @@ survive reconnection with both servers stopped.
 ## Still unverified
 
 - The cold offline start above, in a real browser.
+- Click-through of the new screens by hand. Every path below was driven through
+  the application's own modules against a live server, and every screen was
+  confirmed to render, but the browser available here has a pointer-coordinate
+  mismatch that made clicking unreliable — so the handlers are proven, the mouse
+  is not.
 - Anything in the "Not built yet" list above.

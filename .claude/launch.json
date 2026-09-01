@@ -1,0 +1,28 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "omnipos-backend",
+      "runtimeExecutable": "C:\\xampp\\php\\php.exe",
+      "runtimeArgs": [
+        "C:\\GAF Tech\\OmniPOS\\omnipos-backend\\artisan",
+        "serve",
+        "--host=127.0.0.1",
+        "--port=8000"
+      ],
+      "port": 8000
+    },
+    {
+      "name": "omnipos-web",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": [
+        "C:\\GAF Tech\\OmniPOS\\omnipos-web\\node_modules\\vite\\bin\\vite.js",
+        "C:\\GAF Tech\\OmniPOS\\omnipos-web",
+        "--port",
+        "5173",
+        "--strictPort"
+      ],
+      "port": 5173
+    }
+  ]
+}

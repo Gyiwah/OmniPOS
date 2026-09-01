@@ -30,6 +30,20 @@ class StockMovementHandler implements EntityHandler
         ]);
     }
 
+    /**
+     * The types the stock_movements check constraint accepts.
+     *
+     * Duplicated from the migration on purpose. Letting an unknown type reach
+     * Postgres turns a client's typo into a check violation, which surfaces to
+     * the till as the generic "could not be applied" and retries for ever — the
+     * cashier is told nothing and the adjustment never lands. Named here, the
+     * same mistake comes back as a sentence saying which types exist.
+     */
+    private const TYPES = [
+        'STOCK_IN', 'STOCK_OUT', 'SALE', 'RETURN', 'ADJUSTMENT',
+        'DAMAGE', 'EXPIRED', 'AUDIT', 'TRANSFER_IN', 'TRANSFER_OUT',
+    ];
+
     public function upsert(string $storeId, string $recordId, array $payload, User $user, ?Device $device): UpsertOutcome
     {
         $productId = $payload['product_id'] ?? null;
@@ -50,10 +64,18 @@ class StockMovementHandler implements EntityHandler
             return UpsertOutcome::conflict('quantity must be non-zero.');
         }
 
+        $type = $payload['type'] ?? 'ADJUSTMENT';
+        if (! in_array($type, self::TYPES, true)) {
+            return UpsertOutcome::conflict(
+                sprintf('Unknown stock movement type [%s].', $type),
+                ['allowed' => self::TYPES],
+            );
+        }
+
         $movement = $this->inventory->recordMovement(
             movementId: $recordId,
             product: $product,
-            type: $payload['type'] ?? 'ADJUSTMENT',
+            type: $type,
             quantity: $quantity,
             reason: $payload['reason'] ?? 'Adjustment',
             user: $user,

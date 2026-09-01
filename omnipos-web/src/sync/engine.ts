@@ -153,50 +153,70 @@ async function pushOutbox(storeId: string): Promise<{ applied: number; conflicts
 
     const byId = new Map(response.results.map((r) => [r.operation_id, r]));
 
-    await db.transaction("rw", [db.outbox, db.orders, db.customers], async () => {
-      for (const op of batch) {
-        const result = byId.get(op.operation_id);
+    // db.products is here for reverseRejectedMovement: undoing an optimistic
+    // adjustment writes to it, and Dexie refuses a table the transaction did
+    // not declare.
+    await db.transaction(
+      "rw",
+      [db.outbox, db.orders, db.customers, db.shifts, db.returns, db.products],
+      async () => {
+        for (const op of batch) {
+          const result = byId.get(op.operation_id);
 
-        if (!result) {
-          await db.outbox.update(op.operation_id, {
-            attempts: op.attempts + 1,
-            last_error: "No result returned for this operation.",
-          });
-          continue;
-        }
-
-        // A duplicate is a success: the server already has this write, which is
-        // exactly what a retry after a dropped response looks like.
-        if (result.status === "applied" || result.status === "duplicate") {
-          await db.outbox.delete(op.operation_id);
-          await markClean(op);
-          applied += 1;
-          continue;
-        }
-
-        if (result.status === "conflict") {
-          // Kept, not discarded. A rejected sale needs a person to look at it.
-          await db.outbox.update(op.operation_id, {
-            status: "conflict",
-            last_error: result.reason ?? "Rejected by the server.",
-          });
-
-          // Flag the record too, so the Orders list cannot show a rejected sale
-          // as though it were on the books.
-          if (op.entity === "orders") {
-            await db.orders.update(op.record_id, { _state: "conflict" });
+          if (!result) {
+            await db.outbox.update(op.operation_id, {
+              attempts: op.attempts + 1,
+              last_error: "No result returned for this operation.",
+            });
+            continue;
           }
 
-          conflicted += 1;
-          continue;
-        }
+          // A duplicate is a success: the server already has this write, which is
+          // exactly what a retry after a dropped response looks like.
+          if (result.status === "applied" || result.status === "duplicate") {
+            await db.outbox.delete(op.operation_id);
+            await markClean(op);
+            applied += 1;
+            continue;
+          }
 
-        await db.outbox.update(op.operation_id, {
-          attempts: op.attempts + 1,
-          last_error: result.reason ?? "Failed.",
-        });
-      }
-    });
+          if (result.status === "conflict") {
+            // Kept, not discarded. A rejected sale needs a person to look at it.
+            await db.outbox.update(op.operation_id, {
+              status: "conflict",
+              last_error: result.reason ?? "Rejected by the server.",
+            });
+
+            // Flag the record too, so the Orders list cannot show a rejected sale
+            // as though it were on the books.
+            if (op.entity === "orders") {
+              await db.orders.update(op.record_id, { _state: "conflict" });
+            } else if (op.entity === "register_shifts") {
+              await db.shifts.update(op.record_id, { _state: "conflict" });
+            } else if (op.entity === "returns") {
+              // A refund the server refused is the one a cashier most needs to
+              // see: the money is already out of the drawer.
+              //
+              // The restock is deliberately NOT reversed. The goods are
+              // physically back on the shelf whatever the server decided, so
+              // taking them off the local figure would make the till disagree
+              // with the room it is standing in. A manager settles it.
+              await db.returns.update(op.record_id, { _state: "conflict" });
+            } else if (op.entity === "stock_movements") {
+              await reverseRejectedMovement(op);
+            }
+
+            conflicted += 1;
+            continue;
+          }
+
+          await db.outbox.update(op.operation_id, {
+            attempts: op.attempts + 1,
+            last_error: result.reason ?? "Failed.",
+          });
+        }
+      },
+    );
 
     if (batch.length < PUSH_BATCH) break;
   }
@@ -204,11 +224,41 @@ async function pushOutbox(storeId: string): Promise<{ applied: number; conflicts
   return { applied, conflicts: conflicted };
 }
 
+/**
+ * Undo the local effect of a stock movement the server refused.
+ *
+ * An adjustment is applied optimistically so the shelf figure updates as the
+ * manager types. If the server rejects it — an unknown movement type, a product
+ * deleted on another device — that adjustment happened nowhere, yet the local
+ * cache is still carrying it. Nothing else corrects it either: the changefeed
+ * publishes the movement, not the product, so the drift would sit there until
+ * the next full bootstrap.
+ *
+ * Reversing by the payload's own quantity rather than refetching keeps this
+ * exact even when several adjustments are queued against one product.
+ */
+async function reverseRejectedMovement(op: SyncOperation): Promise<void> {
+  const payload = op.payload as { product_id?: unknown; quantity?: unknown } | null;
+  const productId = payload?.product_id;
+  const quantity = Number(payload?.quantity ?? 0);
+
+  if (typeof productId !== "string" || !Number.isFinite(quantity) || quantity === 0) return;
+
+  const product = await db.products.get(productId);
+  if (!product) return;
+
+  await db.products.update(productId, { stock: product.stock - quantity });
+}
+
 async function markClean(op: SyncOperation): Promise<void> {
   if (op.entity === "orders") {
     await db.orders.update(op.record_id, { _state: "clean" });
   } else if (op.entity === "customers") {
     await db.customers.update(op.record_id, { _state: "clean" });
+  } else if (op.entity === "register_shifts") {
+    await db.shifts.update(op.record_id, { _state: "clean" });
+  } else if (op.entity === "returns") {
+    await db.returns.update(op.record_id, { _state: "clean" });
   }
 }
 
@@ -269,42 +319,52 @@ async function applyChanges(
   storeId: string,
   changes: Array<{ entity: string; action: string; record_id: string; payload: Record<string, unknown> }>,
 ): Promise<void> {
-  await db.transaction("rw", [db.products, db.categories, db.customers, db.orders, db.outbox], async () => {
-    for (const change of changes) {
-      if (change.action === "delete") {
-        await deleteLocal(change.entity, change.record_id);
-        continue;
-      }
-
-      const p = change.payload;
-
-      switch (change.entity) {
-        case "products":
-          await db.products.put(mapProduct(storeId, p));
-          break;
-        case "customers": {
-          // A local edit not yet pushed outranks the server's copy; overwriting
-          // it would throw away work the cashier has already done.
-          const existing = await db.customers.get(change.record_id);
-          if (existing?._state === "pending") break;
-          await db.customers.put(mapCustomer(storeId, p));
-          break;
+  await db.transaction(
+    "rw",
+    [db.products, db.categories, db.customers, db.orders, db.shifts, db.returns, db.outbox],
+    async () => {
+      for (const change of changes) {
+        if (change.action === "delete") {
+          await deleteLocal(change.entity, change.record_id);
+          continue;
         }
-        case "orders":
-          await adoptServerOrder(change.record_id, p);
-          break;
-        default:
-          // Entities the till does not keep locally (price history, movements)
-          // are ignored rather than treated as an error.
-          break;
-      }
 
-      // Whatever the entity, if the server has now applied this record then any
-      // conflict this till was still holding for it is settled. A manager may
-      // have booked it from another device.
-      await clearSettledConflict(change.record_id);
-    }
-  });
+        const p = change.payload;
+
+        switch (change.entity) {
+          case "products":
+            await db.products.put(mapProduct(storeId, p));
+            break;
+          case "customers": {
+            // A local edit not yet pushed outranks the server's copy; overwriting
+            // it would throw away work the cashier has already done.
+            const existing = await db.customers.get(change.record_id);
+            if (existing?._state === "pending") break;
+            await db.customers.put(mapCustomer(storeId, p));
+            break;
+          }
+          case "orders":
+            await adoptServerOrder(change.record_id, p);
+            break;
+          case "register_shifts":
+            await adoptServerShift(change.record_id, p);
+            break;
+          case "returns":
+            await adoptServerReturn(change.record_id);
+            break;
+          default:
+            // Entities the till does not keep locally (price history, movements)
+            // are ignored rather than treated as an error.
+            break;
+        }
+
+        // Whatever the entity, if the server has now applied this record then any
+        // conflict this till was still holding for it is settled. A manager may
+        // have booked it from another device.
+        await clearSettledConflict(change.record_id);
+      }
+    },
+  );
 }
 
 /**
@@ -331,6 +391,50 @@ async function adoptServerOrder(recordId: string, payload: Record<string, unknow
     amount_paid: payload.amount_paid !== undefined ? String(payload.amount_paid) : local.amount_paid,
     _state: "clean",
   });
+}
+
+/**
+ * Take the server's version of a drawer session.
+ *
+ * The figure that matters is expected_cash. The till computes its own so a
+ * cashier can close with no connection, but that number only knows this
+ * terminal's sales; the server recomputes it from the payments ledger, which
+ * includes anything that reached it by another route. When the server has
+ * spoken, its figure replaces the local one.
+ */
+async function adoptServerShift(recordId: string, payload: Record<string, unknown>): Promise<void> {
+  const local = await db.shifts.get(recordId);
+  if (!local) return;
+
+  // Still queued locally: the cashier may be mid-count, and the server has not
+  // seen this version yet.
+  if (local._state === "pending") return;
+
+  await db.shifts.update(recordId, {
+    status: payload.status === "closed" ? "closed" : "open",
+    closed_at: payload.closed_at ? String(payload.closed_at) : local.closed_at,
+    expected_cash: payload.expected_cash !== undefined && payload.expected_cash !== null
+      ? String(payload.expected_cash)
+      : local.expected_cash,
+    actual_cash: payload.actual_cash !== undefined && payload.actual_cash !== null
+      ? String(payload.actual_cash)
+      : local.actual_cash,
+    _state: "clean",
+  });
+}
+
+/**
+ * A refund the server has accepted.
+ *
+ * Only the state is taken. The lines and the amount were decided at the till
+ * where the goods were handed back, and the server does not alter them — so
+ * there is nothing to copy back, only the fact that it is now on the books.
+ */
+async function adoptServerReturn(recordId: string): Promise<void> {
+  const local = await db.returns.get(recordId);
+  if (!local || local._state === "pending") return;
+
+  await db.returns.update(recordId, { _state: "clean" });
 }
 
 /**

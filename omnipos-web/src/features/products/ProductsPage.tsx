@@ -4,13 +4,17 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db, type LocalProduct } from "@/db/schema";
 import { formatMoney, toMinor } from "@/features/pos/cart";
 import { useSession } from "@/state/session";
+import { useSync } from "@/state/sync";
+import { ProductForm } from "./ProductForm";
+import { StockAdjustForm } from "./StockAdjustForm";
 
 /**
  * Inventory list, served from the local catalogue so it works offline.
  *
- * Cost price is shown only to roles the API would disclose it to. The server is
- * the real gate — it omits the field entirely for a cashier — so this is
- * presentation consistency rather than a security boundary.
+ * Cost price is shown only to roles the API would disclose it to, and only
+ * those roles may edit the catalogue. The server is the real gate in both cases
+ * — it omits cost for a cashier and its product handler refuses their writes —
+ * so this is presentation consistency rather than a security boundary.
  */
 export function ProductsPage() {
   const storeId = useSession((s) => s.storeId);
@@ -20,6 +24,18 @@ export function ProductsPage() {
 
   const [query, setQuery] = useState("");
   const [lowOnly, setLowOnly] = useState(false);
+  const [editing, setEditing] = useState<LocalProduct | "new" | null>(null);
+  const [adjusting, setAdjusting] = useState<LocalProduct | null>(null);
+
+  // Only admins and managers may write products; the server's handler refuses
+  // a cashier outright, so offering them the button would only produce a
+  // conflict an hour later.
+  const canEdit = can(["admin", "manager"]);
+  const afterWrite = () => {
+    setEditing(null);
+    setAdjusting(null);
+    if (storeId) void useSync.getState().sync(storeId);
+  };
 
   const products = useLiveQuery(
     async () => {
@@ -49,6 +65,9 @@ export function ProductsPage() {
             <input type="checkbox" checked={lowOnly} onChange={(e) => setLowOnly(e.target.checked)} />
             Low stock only
           </label>
+          {canEdit && (
+            <button type="button" className="pay-button" onClick={() => setEditing("new")}>Add product</button>
+          )}
         </div>
       </header>
 
@@ -58,6 +77,7 @@ export function ProductsPage() {
             <th>Name</th><th>SKU</th><th>Price</th>
             {showCost && <th>Cost</th>}
             <th>Stock</th><th>Reorder at</th>
+            {canEdit && <th />}
           </tr>
         </thead>
         <tbody>
@@ -69,12 +89,37 @@ export function ProductsPage() {
               {showCost && <td>{p.cost_price ? formatMoney(toMinor(p.cost_price), currency) : "—"}</td>}
               <td className={p.stock < 0 ? "danger-text" : undefined}>{p.stock}</td>
               <td className="muted">{p.reorder_level}</td>
+              {canEdit && (
+                <td className="row-actions">
+                  <button type="button" className="link" onClick={() => setEditing(p)}>Edit</button>
+                  <button type="button" className="link" onClick={() => setAdjusting(p)}>Adjust stock</button>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
       </table>
 
       {products.length === 0 && <p className="muted">Nothing to show. Sync to download the catalogue.</p>}
+
+      {editing && storeId && (
+        <ProductForm
+          storeId={storeId}
+          currency={currency}
+          product={editing === "new" ? undefined : editing}
+          onClose={() => setEditing(null)}
+          onSaved={afterWrite}
+        />
+      )}
+
+      {adjusting && storeId && (
+        <StockAdjustForm
+          storeId={storeId}
+          product={adjusting}
+          onClose={() => setAdjusting(null)}
+          onSaved={afterWrite}
+        />
+      )}
     </div>
   );
 }
