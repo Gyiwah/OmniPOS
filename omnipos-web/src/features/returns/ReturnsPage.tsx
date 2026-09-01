@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { ArrowLeftRight } from "lucide-react";
 
 import { db, type LocalReturn } from "@/db/schema";
 import { formatMoney, toMinor } from "@/features/pos/cart";
@@ -118,7 +119,7 @@ export function ReturnsPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Returns</h1>
+        <h1><ArrowLeftRight size={20} aria-hidden="true" /> Returns</h1>
         {!shift && (
           <p className="muted">No drawer open — a cash refund will not be counted against a shift.</p>
         )}

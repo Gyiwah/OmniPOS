@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
+import { AlertTriangle, ClipboardList, Download, Package, Plus } from "lucide-react";
 
 import { db, type LocalBatch, type LocalProduct } from "@/db/schema";
 import { formatMoney, toMinor } from "@/features/pos/cart";
@@ -95,7 +96,7 @@ export function ProductsPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Inventory</h1>
+        <h1><Package size={20} aria-hidden="true" /> Inventory</h1>
         <div className="page-actions">
           <input
             value={query}
@@ -109,12 +110,19 @@ export function ProductsPage() {
             disabled={rows.length === 0}
             onClick={() => exportInventoryCsv(rows, storeName, currency)}
           >
+            <Download size={16} aria-hidden="true" />
             Export CSV
           </button>
           {canEdit && (
             <>
-              <Link to="/stock-take" className="secondary-button">Stock take</Link>
-              <button type="button" className="pay-button" onClick={() => setEditing("new")}>Add product</button>
+              <Link to="/stock-take" className="secondary-button">
+                <ClipboardList size={16} aria-hidden="true" />
+                Stock take
+              </Link>
+              <button type="button" className="pay-button" onClick={() => setEditing("new")}>
+                <Plus size={17} aria-hidden="true" />
+                Add product
+              </button>
             </>
           )}
         </div>
@@ -127,6 +135,8 @@ export function ProductsPage() {
       */}
       {(counts.expired > 0 || counts.expiring_soon > 0) && filter !== "expired" && filter !== "expiring_soon" && (
         <p className="notice notice-warn">
+          <AlertTriangle size={16} aria-hidden="true" />
+          <span>
           {counts.expired > 0 && `${counts.expired} ${counts.expired === 1 ? "product has" : "products have"} expired stock`}
           {counts.expired > 0 && counts.expiring_soon > 0 && " · "}
           {counts.expiring_soon > 0 && `${counts.expiring_soon} expiring within 30 days`}
@@ -138,6 +148,7 @@ export function ProductsPage() {
           >
             Show them
           </button>
+          </span>
         </p>
       )}
 

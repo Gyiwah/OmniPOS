@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { Banknote } from "lucide-react";
 
 import { db, type LocalShift } from "@/db/schema";
 import { formatMoney, toMinor } from "@/features/pos/cart";
@@ -59,7 +60,7 @@ export function ShiftPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Cash drawer</h1>
+        <h1><Banknote size={20} aria-hidden="true" /> Cash drawer</h1>
         <p className="muted">{shift ? "Open" : "No drawer open on this till"}</p>
       </header>
 

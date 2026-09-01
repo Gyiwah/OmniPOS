@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Link } from "react-router-dom";
+import { Receipt } from "lucide-react";
 
 import { db, type LocalOrder } from "@/db/schema";
 import { formatMoney, toMinor } from "@/features/pos/cart";
@@ -38,7 +39,7 @@ export function OrdersPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Orders</h1>
+        <h1><Receipt size={20} aria-hidden="true" /> Orders</h1>
         <p className="muted">Sales made on this till</p>
       </header>
 

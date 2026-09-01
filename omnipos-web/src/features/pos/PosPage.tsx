@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Link, useNavigate } from "react-router-dom";
+import { AlertTriangle, CreditCard, Search } from "lucide-react";
 
 import { db, type LocalCategory, type LocalProduct } from "@/db/schema";
 import { uuidv7 } from "@/core/uuidv7";
@@ -248,6 +249,7 @@ export function PosPage() {
     <div className="pos">
       <section className="pos-catalogue">
         <form onSubmit={onSearchSubmit} className="pos-search">
+          <Search size={18} aria-hidden="true" />
           <input
             ref={searchRef}
             autoFocus
@@ -312,8 +314,9 @@ export function PosPage() {
         */}
         {!shift && (
           <p className="warn">
-            No drawer open. Sales will not be counted in any cash reconciliation.{" "}
-            <Link to="/shift">Open one</Link>.
+            <AlertTriangle size={16} aria-hidden="true" />
+            <span>No drawer open. Sales will not be counted in any cash reconciliation.{" "}
+            <Link to="/shift">Open one</Link>.</span>
           </p>
         )}
 
@@ -370,8 +373,10 @@ export function PosPage() {
 
         {oversold.length > 0 && (
           <p className="warn" role="status">
+            <AlertTriangle size={16} aria-hidden="true" />
+            <span>
             Selling more than stock on hand: {oversold.map((l) => l.name).join(", ")}. The sale is allowed and will
-            be flagged for reconciliation.
+            be flagged for reconciliation.</span>
           </p>
         )}
 
@@ -425,7 +430,7 @@ export function PosPage() {
           disabled={lines.length === 0 || busy}
           onClick={() => setPaying(true)}
         >
-          {busy ? "Working…" : `Pay ${formatMoney(totals.total, currency)}`}
+          {busy ? "Working…" : <><CreditCard size={18} aria-hidden="true" />{`Pay ${formatMoney(totals.total, currency)}`}</>}
           <kbd>F2</kbd>
         </button>
       </section>

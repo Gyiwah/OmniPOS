@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { Plus, Users } from "lucide-react";
 
 import { db, type LocalCustomer } from "@/db/schema";
 import { formatMoney, toMinor } from "@/features/pos/cart";
@@ -37,7 +38,7 @@ export function CustomersPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Customers</h1>
+        <h1><Users size={20} aria-hidden="true" /> Customers</h1>
         <div className="page-actions">
           <input
             value={query}
@@ -50,7 +51,10 @@ export function CustomersPage() {
             Owing only
           </label>
           {/* Cashiers register customers at the counter, as the server allows. */}
-          <button type="button" className="pay-button" onClick={() => setEditing("new")}>Add customer</button>
+          <button type="button" className="pay-button" onClick={() => setEditing("new")}>
+            <Plus size={17} aria-hidden="true" />
+            Add customer
+          </button>
         </div>
       </header>
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
+import { Store } from "lucide-react";
 
 import { ApiError } from "@/api/client";
 import { bootstrapStore } from "@/sync/engine";
@@ -57,7 +58,7 @@ export function LoginPage() {
   return (
     <div className="login">
       <form className="login-card" onSubmit={onSubmit}>
-        <h1>OmniPOS</h1>
+        <h1><Store size={22} className="brand-mark" aria-hidden="true" /> OmniPOS</h1>
         <p className="muted">Sign in to your till</p>
 
         <label htmlFor="email">Email</label>

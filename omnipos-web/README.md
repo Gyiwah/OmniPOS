@@ -306,6 +306,29 @@ only ever shows what it costs now, so without this "it has always been twelve" i
 a claim nobody can check — and that is the claim made when a customer disputes a
 price.
 
+## Themes and icons
+
+Dark is the default and stays the default. That was a working decision before it
+was a stylistic one — a till often sits under harsh shop lighting where a white
+screen is a mirror — so light is offered rather than substituted, and "system"
+sits alongside both for a shop that dims its screens at dusk.
+
+An inline script in `index.html` sets the theme before the first paint. React
+rehydrating the stored choice happens after the browser has already painted, so
+without it a till in dark mode flashes white on every load, which on a screen
+behind a counter reads as a fault.
+
+Every colour pair was measured rather than eyeballed. The weakest in either
+theme is 5.02:1, against a WCAG AA requirement of 4.5:1 for body text.
+
+The receipt is deliberately exempt: it is white paper in both themes, because it
+is a thing that gets printed and a dark receipt empties a thermal roll in one
+go.
+
+Icons are `lucide-react`, tree-shaken and bundled. Nothing is fetched from a CDN
+— an icon font that fails to load offline would leave a till full of empty boxes,
+which is the one thing this client is built not to do.
+
 ## Not built yet
 
 - ESC/POS printing over a local connection. Receipts print through the browser
@@ -441,7 +464,8 @@ report that exact file. That is the realistic regression — a `globPatterns`
 change that quietly stops matching something, which every other test would still
 pass because everything works while the network is up.
 
-The built shell has no external runtime dependency (702 KB, all same-origin), so
+The built shell has no external runtime dependency (785 KB precached, 163 KB gzipped
+JS, all same-origin), so
 once cached it is genuinely self-sufficient.
 
 **A true cold offline start has NOT been executed.** Service worker registration

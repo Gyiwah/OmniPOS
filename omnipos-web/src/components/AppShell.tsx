@@ -1,23 +1,47 @@
 import { NavLink } from "react-router-dom";
+import {
+  AlertTriangle,
+  ArrowLeftRight,
+  BarChart3,
+  Banknote,
+  Cloud,
+  CloudOff,
+  LayoutDashboard,
+  LogOut,
+  Monitor,
+  Moon,
+  Package,
+  Receipt,
+  RefreshCw,
+  Settings,
+  ShieldCheck,
+  ShoppingCart,
+  Store,
+  Sun,
+  Users,
+} from "lucide-react";
 
 import { useSession } from "@/state/session";
 import { useSync } from "@/state/sync";
+import { nextThemeLabel, useTheme } from "@/state/theme";
 
 const NAV = [
-  { to: "/", label: "POS", end: true },
-  { to: "/dashboard", label: "Dashboard", roles: ["admin", "manager"] },
-  { to: "/reports", label: "Reports" },
-  { to: "/orders", label: "Orders" },
-  { to: "/returns", label: "Returns" },
-  { to: "/shift", label: "Drawer" },
-  { to: "/products", label: "Inventory" },
-  { to: "/customers", label: "Customers" },
-  { to: "/settings", label: "Settings", roles: ["admin", "manager"] },
-  { to: "/sync", label: "Sync" },
+  { to: "/", label: "Till", icon: ShoppingCart, end: true },
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "manager"] },
+  { to: "/reports", label: "Reports", icon: BarChart3 },
+  { to: "/orders", label: "Orders", icon: Receipt },
+  { to: "/returns", label: "Returns", icon: ArrowLeftRight },
+  { to: "/shift", label: "Drawer", icon: Banknote },
+  { to: "/products", label: "Inventory", icon: Package },
+  { to: "/customers", label: "Customers", icon: Users },
+  { to: "/settings", label: "Settings", icon: Settings, roles: ["admin", "manager"] },
+  { to: "/sync", label: "Sync", icon: RefreshCw },
   // Only a platform administrator. `can` grants super_admin everything, so the
   // role is named explicitly rather than relying on that.
-  { to: "/platform", label: "Platform", superAdminOnly: true },
+  { to: "/platform", label: "Platform", icon: ShieldCheck, superAdminOnly: true },
 ];
+
+const THEME_ICON = { light: Sun, dark: Moon, system: Monitor };
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const user = useSession((s) => s.user);
@@ -33,10 +57,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pending = useSync((s) => s.pending);
   const conflicts = useSync((s) => s.conflicts);
 
+  const themeChoice = useTheme((s) => s.choice);
+  const cycleTheme = useTheme((s) => s.cycle);
+  const ThemeIcon = THEME_ICON[themeChoice];
+
   return (
     <div className="shell">
       <header className="shell-header">
         <div className="brand">
+          <Store size={20} className="brand-mark" aria-hidden="true" />
           <strong>OmniPOS</strong>
           {/*
             One store is the normal case and a dropdown for a single option is
@@ -58,7 +87,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               ))}
             </select>
           ) : (
-            store && <span className="muted"> · {store.name}</span>
+            store && <span className="muted">{store.name}</span>
           )}
         </div>
 
@@ -66,12 +95,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {NAV.filter((item) => {
             if ("superAdminOnly" in item) return user?.is_super_admin === true;
             return !item.roles || can(item.roles);
-          }).map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => (isActive ? "active" : "")}>
-              {item.label}
-              {item.to === "/sync" && conflicts.length > 0 && <span className="badge badge-error">{conflicts.length}</span>}
-            </NavLink>
-          ))}
+          }).map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) => (isActive ? "active" : "")}
+              >
+                <Icon size={17} aria-hidden="true" />
+                <span className="nav-label">{item.label}</span>
+                {item.to === "/sync" && conflicts.length > 0 && (
+                  <span className="badge badge-error">{conflicts.length}</span>
+                )}
+              </NavLink>
+            );
+          })}
         </nav>
 
         <div className="shell-status">
@@ -80,16 +120,41 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             a sale has reached the server, and the honest answer is often "not
             yet" — hiding that is how tills get trusted less, not more.
           */}
-          <span className={online ? "pill pill-online" : "pill pill-offline"}>
-            {online ? "Online" : "Offline"}
-          </span>
-          {pending > 0 && (
-            <span className="pill pill-pending" title="Sales waiting to reach the server">
-              {pending} queued
+          <div className="status-row">
+            <span className={online ? "pill pill-online" : "pill pill-offline"}>
+              {online ? <Cloud size={13} aria-hidden="true" /> : <CloudOff size={13} aria-hidden="true" />}
+              {online ? "Online" : "Offline"}
             </span>
-          )}
-          <span className="muted">{user?.name}{role && ` · ${role}`}</span>
-          <button type="button" className="link" onClick={() => void logout()}>Sign out</button>
+            {pending > 0 && (
+              <span className="pill pill-pending" title="Sales waiting to reach the server">
+                <AlertTriangle size={13} aria-hidden="true" />
+                {pending} queued
+              </span>
+            )}
+          </div>
+
+          <div className="status-row">
+            <span className="muted who">
+              {user?.name}
+              {role && ` · ${role}`}
+            </span>
+          </div>
+
+          <div className="status-row">
+            <button
+              type="button"
+              className="icon-button"
+              onClick={cycleTheme}
+              title={nextThemeLabel(themeChoice)}
+              aria-label={nextThemeLabel(themeChoice)}
+            >
+              <ThemeIcon size={16} aria-hidden="true" />
+            </button>
+            <button type="button" className="icon-button" onClick={() => void logout()}>
+              <LogOut size={16} aria-hidden="true" />
+              Sign out
+            </button>
+          </div>
         </div>
       </header>
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Settings } from "lucide-react";
 
 import { api, ApiError } from "@/api/client";
 import { useSession } from "@/state/session";
@@ -58,7 +59,7 @@ export function SettingsPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Settings</h1>
+        <h1><Settings size={20} aria-hidden="true" /> Settings</h1>
         <p className="muted">{data.name}</p>
       </header>
 

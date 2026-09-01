@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { BarChart3 } from "lucide-react";
 
 import { api, ApiError } from "@/api/client";
 import { formatMoney, toMinor } from "@/features/pos/cart";
@@ -44,7 +45,7 @@ export function ReportsPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Reports</h1>
+        <h1><BarChart3 size={20} aria-hidden="true" /> Reports</h1>
         <div className="page-actions">
           {RANGES.map((r) => (
             <button

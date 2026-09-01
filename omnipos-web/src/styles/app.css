@@ -1,217 +1,579 @@
 /*
- * Deliberately dark and high-contrast: a till often sits under harsh shop
- * lighting, and the cashier is reading it at a glance while a queue waits.
- * Type is large for the same reason.
+ * OmniPOS.
+ *
+ * Dark is the default, and that is a working decision rather than a stylistic
+ * one: a till often sits under harsh shop lighting where a white screen is a
+ * mirror. Light is offered because the other half of the estate is a bright
+ * office or a tablet by a window.
+ *
+ * Type stays large in both. The cashier is reading this at a glance with a queue
+ * waiting, and every size here is chosen to survive that rather than to look
+ * dense in a screenshot.
  */
+
+/* ---------------------------------------------------------------- tokens */
+
 :root {
-  --bg: #0f172a;
-  --panel: #1e293b;
-  --panel-2: #273449;
-  --line: #334155;
-  --text: #e2e8f0;
-  --muted: #94a3b8;
-  --accent: #38bdf8;
-  --ok: #22c55e;
-  --warn: #f59e0b;
-  --danger: #ef4444;
+  /*
+   * Light theme.
+   *
+   * Defined on bare :root so it is the fallback everywhere, including inside a
+   * print stylesheet or a context that never sees the theme attribute.
+   */
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --panel: #ffffff;
+  --panel-2: #f1f5f9;
+  --raised: #ffffff;
+  --line: #dbe3ec;
+  --line-strong: #c3cedd;
+  --text: #0f172a;
+  --text-strong: #020617;
+  --muted: #5a6b82;
+
+  --accent: #0369a1;
+  --accent-hover: #075985;
+  --accent-ink: #ffffff;
+  --accent-soft: #e0f2fe;
+
+  --ok: #15803d;
+  --ok-soft: #dcfce7;
+  --warn: #b45309;
+  --warn-soft: #fef3c7;
+  --danger: #b91c1c;
+  --danger-soft: #fee2e2;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 18px 48px rgba(15, 23, 42, 0.18);
+
   --radius: 10px;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --radius-sm: 7px;
+  --radius-lg: 14px;
+
+  --space: 1rem;
+  --nav-width: 13.5rem;
+
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  color-scheme: light;
+}
+
+/*
+ * Dark, in two places on purpose.
+ *
+ * The media query serves the default "system" setting, which stamps no
+ * attribute at all; the attribute rule serves an explicit choice. Guarding the
+ * media query against data-theme="light" is what lets someone on a dark OS
+ * choose light and actually get it.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1220;
+    --surface: #131c2e;
+    --panel: #131c2e;
+    --panel-2: #1c2739;
+    --raised: #1c2739;
+    --line: #2a374d;
+    --line-strong: #3a4a63;
+    --text: #e6edf7;
+    --text-strong: #ffffff;
+    --muted: #94a6bf;
+
+    --accent: #38bdf8;
+    --accent-hover: #7dd3fc;
+    --accent-ink: #052437;
+    --accent-soft: rgba(56, 189, 248, 0.14);
+
+    --ok: #4ade80;
+    --ok-soft: rgba(74, 222, 128, 0.14);
+    --warn: #fbbf24;
+    --warn-soft: rgba(251, 191, 36, 0.14);
+    --danger: #f87171;
+    --danger-soft: rgba(248, 113, 113, 0.14);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
+
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0b1220;
+  --surface: #131c2e;
+  --panel: #131c2e;
+  --panel-2: #1c2739;
+  --raised: #1c2739;
+  --line: #2a374d;
+  --line-strong: #3a4a63;
+  --text: #e6edf7;
+  --text-strong: #ffffff;
+  --muted: #94a6bf;
+
+  --accent: #38bdf8;
+  --accent-hover: #7dd3fc;
+  --accent-ink: #052437;
+  --accent-soft: rgba(56, 189, 248, 0.14);
+
+  --ok: #4ade80;
+  --ok-soft: rgba(74, 222, 128, 0.14);
+  --warn: #fbbf24;
+  --warn-soft: rgba(251, 191, 36, 0.14);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.14);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
+
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
+
+html { background: var(--bg); }
 
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
   font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
+
+h1, h2, h3 { color: var(--text-strong); letter-spacing: -0.01em; }
+h1 { font-size: 1.4rem; margin: 0; }
+h2 { font-size: 1.08rem; margin: 0; }
+h3 { font-size: 0.95rem; margin: 0; }
+
+/* Money and quantities line up column-wise wherever they appear. */
+td, .kpi-value, .cart-totals dd, .conflict-amount, .receipt { font-variant-numeric: tabular-nums; }
 
 button { font: inherit; cursor: pointer; }
-input, select { font: inherit; }
 
-input, select {
-  background: var(--panel-2);
-  border: 1px solid var(--line);
+input, select, textarea {
+  font: inherit;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
   color: var(--text);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   padding: 0.55rem 0.7rem;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
-input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible {
+input::placeholder { color: var(--muted); opacity: 0.85; }
+input:hover:not(:disabled), select:hover:not(:disabled) { border-color: var(--accent); }
+input:disabled, select:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* One focus treatment for everything, and never `outline: none`: a till is
+   operated from the keyboard whenever the queue is long. */
+:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .muted { color: var(--muted); }
-.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9em; }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.88em; }
 .danger-text { color: var(--danger); }
-.boot { padding: 3rem; text-align: center; color: var(--muted); }
+.boot { padding: 4rem; text-align: center; color: var(--muted); }
 
 /* ---------------------------------------------------------------- shell */
 
-.shell { min-height: 100vh; display: flex; flex-direction: column; }
+/*
+ * A sidebar on anything desk-sized, a scrolling bar on a tablet.
+ *
+ * Ten destinations wrapped to three rows in a top bar and pushed the till below
+ * the fold. Down the side they are one glance and one press, and the main area
+ * keeps a stable height for the POS grid.
+ */
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: var(--nav-width) minmax(0, 1fr);
+  grid-template-rows: 100vh;
+}
 
 .shell-header {
-  display: flex; align-items: center; gap: 1.5rem;
-  padding: 0.6rem 1rem;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-  flex-wrap: wrap;
+  grid-row: 1;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  padding: 1rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow-y: auto;
 }
-.brand { font-size: 1.05rem; }
-.shell-nav { display: flex; gap: 0.25rem; flex: 1; flex-wrap: wrap; }
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.35rem;
+  font-size: 1.05rem;
+  color: var(--text-strong);
+  min-width: 0;
+}
+.brand strong { letter-spacing: -0.02em; }
+.brand .muted { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-mark { color: var(--accent); flex: none; }
+
+.shell-nav { display: flex; flex-direction: column; gap: 0.15rem; flex: 1; min-height: 0; }
 .shell-nav a {
-  color: var(--muted); text-decoration: none;
-  padding: 0.45rem 0.75rem; border-radius: var(--radius);
-  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  transition: background 120ms ease, color 120ms ease;
 }
 .shell-nav a:hover { background: var(--panel-2); color: var(--text); }
-.shell-nav a.active { background: var(--panel-2); color: var(--text); }
-.shell-status { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
-.shell-main { flex: 1; min-height: 0; }
+.shell-nav a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.shell-nav svg { flex: none; }
+.nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.shell-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.85rem;
+}
+.status-row { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.shell-main { grid-row: 1; min-width: 0; overflow-y: auto; }
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.5rem;
+  white-space: nowrap;
+}
+.icon-button:hover { background: var(--panel-2); color: var(--text); }
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); min-height: 100dvh; }
+  /*
+   * Both children are pinned to row 1 in the sidebar layout. Left pinned here
+   * they land in the same row of a single-column grid, and auto-placement
+   * invents a second implicit column to hold them — which silently rebuilt the
+   * sidebar as a 24px sliver instead of stacking.
+   */
+  .shell-header, .shell-main { grid-row: auto; }
+  .shell-header {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    padding: 0.6rem 0.75rem;
+    gap: 0.6rem;
+  }
+  /* Horizontal and scrollable rather than wrapped: three rows of chrome on a
+     tablet is three rows the till has lost. */
+  .shell-nav { flex-direction: row; overflow-x: auto; gap: 0.25rem; padding-bottom: 0.15rem; }
+  .shell-nav a { flex: none; }
+  .shell-status {
+    flex-direction: row;
+    align-items: center;
+    border-top: none;
+    padding-top: 0;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.75rem;
+  }
+  .shell-status .status-row:last-child { margin-left: auto; }
+}
+
+/* ---------------------------------------------------------------- pills */
 
 .pill {
-  padding: 0.2rem 0.6rem; border-radius: 999px;
-  font-size: 0.78rem; font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
-.pill-online { background: rgba(34, 197, 94, 0.15); color: var(--ok); }
-.pill-offline { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
-.pill-pending { background: rgba(245, 158, 11, 0.15); color: var(--warn); }
+.pill-online { background: var(--ok-soft); color: var(--ok); }
+.pill-offline { background: var(--danger-soft); color: var(--danger); }
+.pill-pending { background: var(--warn-soft); color: var(--warn); }
+.pill-discarded { background: var(--panel-2); color: var(--muted); }
 
 .badge {
-  margin-left: 0.35rem; padding: 0.05rem 0.4rem;
-  border-radius: 999px; font-size: 0.7rem;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
 }
 .badge-error { background: var(--danger); color: #fff; }
 
-.link {
-  background: none; border: none; color: var(--accent);
-  padding: 0; text-decoration: underline;
+/* ---------------------------------------------------------------- buttons */
+
+.pay-button {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.7rem 1rem;
+  font-size: 1rem;
+  font-weight: 650;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  box-shadow: var(--shadow-sm);
+  transition: background 120ms ease, transform 80ms ease;
 }
+.pay-button:hover:not(:disabled) { background: var(--accent-hover); }
+.pay-button:active:not(:disabled) { transform: translateY(1px); }
+.pay-button:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+.pay-button kbd {
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.75rem;
+  font-family: inherit;
+}
+
+.secondary-button {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 0.55rem 0.85rem;
+  font-size: 0.92rem;
+  font-weight: 550;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.secondary-button:hover:not(:disabled) { border-color: var(--accent); background: var(--panel-2); }
+.secondary-button:disabled { opacity: 0.45; cursor: not-allowed; }
+a.secondary-button { text-decoration: none; }
+
+.link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0;
+  font-weight: 550;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.link:hover { color: var(--accent-hover); }
 .link.danger { color: var(--danger); }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  font-weight: 550;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.chip:hover { border-color: var(--accent); color: var(--text); }
+.chip-active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  font-weight: 650;
+}
+.chip-count {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  background: var(--panel-2);
+  color: var(--muted);
+}
+.chip-active .chip-count { background: rgba(0, 0, 0, 0.2); color: inherit; }
 
 /* ---------------------------------------------------------------- POS */
 
-.pos {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 26rem;
-  height: calc(100vh - 3.2rem);
-}
+.pos { display: grid; grid-template-columns: minmax(0, 1fr) 26rem; height: 100%; }
 .pos-empty { padding: 3rem; color: var(--muted); }
 
-.pos-catalogue { padding: 1rem; overflow-y: auto; min-width: 0; }
-.pos-search { margin-bottom: 0.75rem; }
-.pos-search-input { width: 100%; font-size: 1.05rem; padding: 0.75rem; }
-
-.pos-categories { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
-.chip {
-  background: var(--panel); color: var(--muted);
-  border: 1px solid var(--line); border-radius: 999px;
-  padding: 0.35rem 0.85rem;
+.pos-catalogue { padding: 1.1rem; overflow-y: auto; min-width: 0; }
+.pos-search { margin-bottom: 0.8rem; position: relative; }
+.pos-search-input { width: 100%; font-size: 1.05rem; padding: 0.8rem 0.8rem 0.8rem 2.5rem; }
+.pos-search svg {
+  position: absolute;
+  left: 0.8rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
 }
-.chip-active { background: var(--accent); color: #06263a; border-color: var(--accent); font-weight: 600; }
 
-.pos-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
-  gap: 0.6rem;
-}
+.pos-categories { display: flex; gap: 0.45rem; flex-wrap: wrap; margin-bottom: 1rem; }
+
+.pos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.7rem; }
 .product-tile {
-  display: flex; flex-direction: column; gap: 0.25rem; text-align: left;
-  background: var(--panel); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 0.75rem; color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.8rem;
+  color: var(--text);
   min-height: 5.5rem;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 120ms ease, transform 80ms ease, box-shadow 120ms ease;
 }
-.product-tile:hover { border-color: var(--accent); }
-.product-name { font-weight: 600; line-height: 1.25; }
-.product-price { color: var(--accent); font-variant-numeric: tabular-nums; }
+.product-tile:hover { border-color: var(--accent); box-shadow: var(--shadow-md); }
+.product-tile:active { transform: translateY(1px); }
+.product-name { font-weight: 600; line-height: 1.25; color: var(--text-strong); }
+.product-price { color: var(--accent); font-weight: 650; font-variant-numeric: tabular-nums; }
 .product-stock { font-size: 0.78rem; color: var(--muted); }
-.product-stock-out { color: var(--danger); }
+.product-stock-out { color: var(--danger); font-weight: 600; }
 .pos-grid-empty { grid-column: 1 / -1; color: var(--muted); }
 
 .pos-cart {
-  background: var(--panel);
+  background: var(--surface);
   border-left: 1px solid var(--line);
-  padding: 1rem;
-  display: flex; flex-direction: column; gap: 0.75rem;
+  padding: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
   overflow-y: auto;
 }
-.cart-header { display: flex; justify-content: space-between; align-items: center; }
-.cart-header h2 { margin: 0; font-size: 1.05rem; }
+.cart-header { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 
 .cart-lines { list-style: none; margin: 0; padding: 0; flex: 1; overflow-y: auto; overflow-x: hidden; }
-.cart-line { padding: 0.55rem 0; border-bottom: 1px solid var(--line); }
+.cart-line { padding: 0.6rem 0; border-bottom: 1px solid var(--line); }
 .cart-line-main { display: flex; justify-content: space-between; gap: 0.5rem; font-weight: 600; }
+.cart-line-name { color: var(--text-strong); }
 .cart-line-total { font-variant-numeric: tabular-nums; }
 /* Wraps rather than overflowing: at the cart's width the unit price and the
    Remove control do not fit on one line, and clipping "Remove" leaves a cashier
    unable to correct a mis-scan. */
 .cart-line-controls {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 0.4rem 0.6rem; margin-top: 0.35rem; font-size: 0.85rem; flex-wrap: wrap;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 0.6rem;
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+  flex-wrap: wrap;
 }
 .cart-line-right { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
 /* Only the quantity steppers are square icon buttons. Without :not(.link) this
-   also sized the "Remove" text button to 1.8rem, clipping it to "Rem" and
+   also sized the "Remove" text button to 1.9rem, clipping it to "Rem" and
    leaving a cashier no way to take a mis-scanned item off the sale. */
 .cart-line-controls button:not(.link) {
-  background: var(--panel-2); border: 1px solid var(--line);
-  color: var(--text); border-radius: 6px; width: 1.8rem; height: 1.8rem;
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  width: 1.9rem;
+  height: 1.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: none;
 }
+.cart-line-controls button:not(.link):hover { border-color: var(--accent); color: var(--accent); }
 .cart-line-controls input { width: 3.5rem; padding: 0.25rem; text-align: center; }
 .cart-line-unit { color: var(--muted); white-space: nowrap; }
-.cart-empty { color: var(--muted); padding: 1rem 0; }
+.cart-empty { color: var(--muted); padding: 1.5rem 0; text-align: center; }
 
 .cart-discount { display: flex; align-items: center; gap: 0.5rem; }
 .cart-discount input { width: 6rem; }
 
-.cart-totals { margin: 0; display: grid; gap: 0.3rem; }
-.cart-totals > div { display: flex; justify-content: space-between; }
+.cart-totals { margin: 0; display: grid; gap: 0.35rem; }
+.cart-totals > div { display: flex; justify-content: space-between; gap: 1rem; }
 .cart-totals dt, .cart-totals dd { margin: 0; }
-.cart-totals dd { font-variant-numeric: tabular-nums; }
-.cart-total { font-size: 1.25rem; font-weight: 700; padding-top: 0.4rem; border-top: 1px solid var(--line); }
-
-.pay-button {
-  background: var(--accent); color: #06263a; border: none;
-  border-radius: var(--radius); padding: 0.85rem 1rem;
-  font-size: 1.05rem; font-weight: 700;
-  display: flex; align-items: center; justify-content: center; gap: 0.6rem;
+.cart-totals dt { color: var(--muted); }
+.cart-total {
+  font-size: 1.3rem;
+  font-weight: 700;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+  color: var(--text-strong);
 }
-.pay-button:disabled { opacity: 0.45; cursor: not-allowed; }
-.pay-button kbd {
-  background: rgba(0, 0, 0, 0.2); border-radius: 4px;
-  padding: 0.1rem 0.35rem; font-size: 0.75rem;
+.cart-total dt { color: var(--text-strong) !important; }
+
+@media (max-width: 900px) {
+  .pos { grid-template-columns: 1fr; height: auto; }
+  .pos-cart { border-left: none; border-top: 1px solid var(--line); }
 }
 
 /* ---------------------------------------------------------------- modal */
 
 .modal-backdrop {
-  position: fixed; inset: 0; background: rgba(2, 6, 23, 0.75);
-  display: grid; place-items: center; padding: 1rem; z-index: 40;
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.6);
+  backdrop-filter: blur(2px);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 40;
 }
 .modal {
-  background: var(--panel); border: 1px solid var(--line);
-  border-radius: 14px; padding: 1.25rem;
-  width: min(30rem, 100%); max-height: 90vh; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 1.35rem;
+  width: min(30rem, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  box-shadow: var(--shadow-lg);
 }
-.modal h2 { margin: 0 0 0.25rem; }
+/* A history or a statement is a table, and 30rem of modal turns every row into
+   three. These get the width the content actually needs. */
+.modal-wide { width: min(52rem, 100%); }
+.modal h2 { margin: 0; }
+.modal label { font-size: 0.85rem; color: var(--muted); font-weight: 550; }
+.modal > input, .modal > select { width: 100%; }
+
 .payment-due { margin: 0; color: var(--muted); }
-.payment-due strong { color: var(--text); font-size: 1.15rem; }
+.payment-due strong { color: var(--text-strong); font-size: 1.2rem; }
 
 .tender-methods { display: flex; gap: 0.4rem; flex-wrap: wrap; }
-.tender-entry { display: flex; gap: 0.5rem; align-items: center; }
-.tender-entry input { flex: 1; font-size: 1.1rem; }
+.tender-entry { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.tender-entry input { flex: 1 1 8rem; font-size: 1.1rem; min-width: 0; }
 .tender-entry button[type="submit"] {
-  background: var(--panel-2); color: var(--text);
-  border: 1px solid var(--line); border-radius: var(--radius); padding: 0.55rem 0.9rem;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 0.55rem 0.9rem;
 }
 
 .tender-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; }
 .tender-list li {
-  display: grid; grid-template-columns: 1fr auto auto; gap: 0.75rem;
-  padding: 0.4rem 0.6rem; background: var(--panel-2); border-radius: 8px;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.45rem 0.65rem;
+  background: var(--panel-2);
+  border-radius: var(--radius-sm);
   font-variant-numeric: tabular-nums;
 }
 .change-due { margin: 0; font-size: 1.05rem; }
@@ -221,133 +583,205 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
 .customer-attach label { font-size: 0.85rem; color: var(--muted); }
 .customer-attach em { color: var(--warn); font-style: normal; }
 .customer-selected { display: flex; justify-content: space-between; margin: 0; }
-.customer-matches { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.2rem; }
+.customer-matches { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; }
 .customer-matches button {
-  width: 100%; text-align: left; background: var(--panel-2);
-  border: 1px solid var(--line); color: var(--text);
-  border-radius: 8px; padding: 0.45rem 0.6rem;
+  width: 100%;
+  text-align: left;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.65rem;
 }
+.customer-matches button:hover { border-color: var(--accent); }
 .debt { color: var(--warn); }
 
-.modal-actions { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.modal-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.25rem;
+}
 .modal-actions .pay-button { flex: 1; }
 
 /* ---------------------------------------------------------------- pages */
 
-.page { padding: 1.25rem; max-width: 78rem; }
-.page-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
-.page-header h1 { margin: 0 0 0.5rem; font-size: 1.35rem; }
-.page-actions { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
-.checkbox { display: flex; align-items: center; gap: 0.35rem; color: var(--muted); }
+.page { padding: 1.4rem; max-width: 78rem; overflow-x: auto; }
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.page-header h1 { display: flex; align-items: center; gap: 0.5rem; }
+.page-actions { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+.checkbox { display: flex; align-items: center; gap: 0.4rem; color: var(--muted); white-space: nowrap; }
 
-.table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; }
-.table th, .table td { text-align: left; padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--line); }
-.table th { color: var(--muted); font-weight: 600; font-size: 0.85rem; }
-.table td { font-variant-numeric: tabular-nums; }
-.row-warn td { background: rgba(245, 158, 11, 0.07); }
+.table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
+.table th, .table td { text-align: left; padding: 0.6rem 0.65rem; border-bottom: 1px solid var(--line); }
+.table th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.table tbody tr { transition: background 100ms ease; }
+.table tbody tr:hover { background: var(--panel-2); }
+.row-warn td { background: var(--warn-soft); }
+/* Expired stock is a stronger signal than low stock: one is a shelf someone has
+   to clear today, the other is an order to place this week. */
+.row-danger td { background: var(--danger-soft); }
+.row-muted td { opacity: 0.55; }
+.row-actions { white-space: nowrap; display: flex; gap: 0.7rem; align-items: center; }
+.row-actions a { color: var(--accent); }
+.table td .pill { margin-left: 0.4rem; }
+
+/* Wide content scrolls inside its own box rather than pushing the page. A till
+   is often a tablet, and a page that scrolls sideways takes the header and the
+   filters off screen with it. Scrolling rather than hiding: `overflow: hidden`
+   would stop the document widening but leave the far columns unreachable. */
+.table-scroll { overflow-x: auto; max-width: 100%; }
+.table-scroll .table { min-width: 44rem; }
 
 .stat-row { display: flex; gap: 2rem; flex-wrap: wrap; margin: 1rem 0; }
 .stat-row dt { color: var(--muted); font-size: 0.85rem; }
 .stat-row dd { margin: 0.2rem 0 0; font-size: 1.15rem; font-weight: 600; }
 
-.kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 0.75rem; margin: 1rem 0 2rem; }
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0.8rem;
+  margin: 1rem 0 1.75rem;
+}
 .kpi {
-  background: var(--panel); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 0.9rem;
-  display: flex; flex-direction: column; gap: 0.3rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  box-shadow: var(--shadow-sm);
 }
 .kpi-warn { border-color: var(--warn); }
-.kpi-label { color: var(--muted); font-size: 0.82rem; }
-.kpi-value { font-size: 1.45rem; font-variant-numeric: tabular-nums; }
-.kpi-hint { color: var(--muted); font-size: 0.75rem; }
+.kpi-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.kpi-value { font-size: 1.5rem; font-weight: 650; color: var(--text-strong); }
+.kpi-hint { color: var(--muted); font-size: 0.76rem; }
+/* A KPI that links somewhere still has to read as a tile, not as body text with
+   an underline through it. */
+.kpi-link { text-decoration: none; color: inherit; }
+.kpi-link:hover { border-color: var(--accent); box-shadow: var(--shadow-md); }
 
-.notice { padding: 0.6rem 0.75rem; border-radius: var(--radius); margin: 0; }
-.notice-ok { background: rgba(34, 197, 94, 0.12); color: var(--ok); }
-.notice-warn, .warn { background: rgba(245, 158, 11, 0.12); color: var(--warn); padding: 0.6rem 0.75rem; border-radius: var(--radius); margin: 0; }
-.notice-error { background: rgba(239, 68, 68, 0.12); color: var(--danger); }
+.notice, .warn {
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--radius);
+  margin: 0 0 1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  border: 1px solid transparent;
+}
+.notice svg, .warn svg { flex: none; margin-top: 0.15rem; }
+.notice-ok { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
+.notice-warn, .warn { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); }
+.notice-error { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
+.notice .link, .warn .link { color: inherit; }
 
 /* ---------------------------------------------------------------- login */
 
-.login { min-height: 100vh; display: grid; place-items: center; padding: 1rem; }
+.login { min-height: 100vh; display: grid; place-items: center; padding: 1rem; background: var(--bg); }
 .login-card {
-  background: var(--panel); border: 1px solid var(--line);
-  border-radius: 14px; padding: 1.75rem;
-  width: min(22rem, 100%); display: grid; gap: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  width: min(23rem, 100%);
+  display: grid;
+  gap: 0.4rem;
+  box-shadow: var(--shadow-lg);
 }
-.login-card h1 { margin: 0; }
-.login-card label { font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; }
-.login-card .pay-button { margin-top: 1rem; }
-
-/* A narrow screen means a tablet till: the cart moves below the catalogue. */
-@media (max-width: 900px) {
-  .pos { grid-template-columns: 1fr; height: auto; }
-  .pos-cart { border-left: none; border-top: 1px solid var(--line); }
-}
+.login-card h1 { display: flex; align-items: center; gap: 0.5rem; justify-content: center; }
+.login-card label { font-size: 0.85rem; color: var(--muted); margin-top: 0.6rem; font-weight: 550; }
+.login-card .pay-button { margin-top: 1.2rem; }
 
 /* ---------------------------------------------------------------- conflicts */
 
 .conflict-list { display: grid; gap: 0.9rem; margin-top: 0.9rem; }
-
 .conflict-card {
-  background: var(--panel); border: 1px solid var(--danger);
-  border-radius: var(--radius); padding: 1rem;
-  display: grid; gap: 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  padding: 1.1rem;
+  display: grid;
+  gap: 0.8rem;
+  box-shadow: var(--shadow-sm);
 }
 .conflict-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
-.conflict-head h3 {
-  margin: 0 0 0.25rem; font-size: 1.05rem;
-  display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap;
+.conflict-head h3, .conflict-head h2 {
+  margin: 0 0 0.25rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
-.conflict-amount { font-variant-numeric: tabular-nums; color: var(--accent); }
+.conflict-amount { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 650; }
 .conflict-reason { margin: 0; color: var(--danger); font-size: 0.9rem; }
 
-.conflict-detail {
-  display: grid; gap: 0.6rem;
-  background: var(--panel-2); border-radius: 8px; padding: 0.7rem;
-}
+.conflict-detail { display: grid; gap: 0.6rem; background: var(--panel-2); border-radius: var(--radius-sm); padding: 0.75rem; }
 .conflict-detail dl { margin: 0; display: flex; gap: 1.5rem; flex-wrap: wrap; }
 .conflict-detail dt { color: var(--muted); font-size: 0.75rem; }
 .conflict-detail dd { margin: 0.1rem 0 0; font-variant-numeric: tabular-nums; }
 
 .conflict-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.2rem; }
 .conflict-lines li {
-  display: flex; justify-content: space-between; gap: 1rem;
-  font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .conflict-actions { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; }
 .conflict-actions .pay-button { padding: 0.6rem 0.9rem; font-size: 0.92rem; }
-
-.secondary-button {
-  background: var(--panel-2); color: var(--text);
-  border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 0.6rem 0.9rem; font-size: 0.92rem;
-}
-.secondary-button:disabled { opacity: 0.45; cursor: not-allowed; }
-
 .confirm-inline { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; font-size: 0.85rem; }
-
 .conflict-hint {
-  margin: 0; font-size: 0.82rem; color: var(--muted);
-  border-left: 2px solid var(--line); padding-left: 0.7rem;
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  border-left: 2px solid var(--line-strong);
+  padding-left: 0.7rem;
 }
-
-.pill-discarded { background: rgba(148, 163, 184, 0.15); color: var(--muted); }
 
 /* ---------------------------------------------------------------- drawer */
 
-.drawer-grid {
-  display: grid; gap: 0.9rem; margin: 1rem 0;
-  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
-}
+.drawer-grid { display: grid; gap: 0.9rem; margin: 1rem 0; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); }
 .drawer-card {
-  background: var(--panel); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 1rem;
-  display: grid; gap: 0.6rem; align-content: start;
-  margin-bottom: 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.1rem;
+  display: grid;
+  gap: 0.65rem;
+  align-content: start;
+  margin-bottom: 1rem;
+  box-shadow: var(--shadow-sm);
 }
-.drawer-card h2 { margin: 0; font-size: 1.05rem; }
-.drawer-card label { font-size: 0.85rem; color: var(--muted); }
+.drawer-card h2 { display: flex; align-items: center; gap: 0.5rem; }
+.drawer-card label { font-size: 0.85rem; color: var(--muted); font-weight: 550; }
 
 /* Wraps rather than squeezing: the reason field needs room to be a sentence,
    and an unexplained cash movement is the one thing this form exists to stop. */
@@ -355,31 +789,81 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
 .drawer-movement input:nth-of-type(2) { flex: 1 1 14rem; min-width: 0; }
 
 .drawer-history { margin-top: 2rem; }
-.drawer-history h2 { font-size: 1.1rem; }
 
 /* ---------------------------------------------------------------- returns */
 
 .return-panel {
-  background: var(--panel); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 1rem;
-  display: grid; gap: 0.9rem; margin: 1rem 0 2rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.1rem;
+  display: grid;
+  gap: 0.9rem;
+  margin: 1rem 0 2rem;
+  box-shadow: var(--shadow-sm);
 }
 .return-actions { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
 .return-actions input { flex: 1 1 16rem; min-width: 0; }
 .qty-input { width: 4.5rem; text-align: center; }
-.row-muted td { opacity: 0.5; }
-.row-actions { white-space: nowrap; display: flex; gap: 0.75rem; }
-.row-actions a { color: var(--accent); }
 
 /* ---------------------------------------------------------------- forms */
 
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.form-row.three { grid-template-columns: repeat(3, 1fr); }
 .form-row label { display: block; }
-.form-row input { width: 100%; }
-.modal label { font-size: 0.85rem; color: var(--muted); }
-.modal > input, .modal > select { width: 100%; }
+.form-row input, .form-row select { width: 100%; }
 
-.store-picker { padding: 0.3rem 0.5rem; margin-left: 0.5rem; }
+.settings-subhead { margin: 0.8rem 0 0; font-size: 0.9rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.store-picker { padding: 0.3rem 0.5rem; margin-left: 0.4rem; max-width: 9rem; }
+
+/* At a tablet width three rate boxes side by side are unreadable; one column is
+   slower to scan but nobody mistypes a VAT rate. */
+@media (max-width: 640px) {
+  .form-row, .form-row.three { grid-template-columns: 1fr; }
+}
+
+/* ---------------------------------------------------------------- inventory */
+
+/* A thumbnail small enough that a hundred rows still scan as a list, big enough
+   to tell two similar packets apart. */
+.product-thumb {
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  display: block;
+  background: var(--panel-2);
+}
+.product-thumb-empty {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 0.95rem;
+  border: 1px solid var(--line);
+}
+
+.tag-row { display: inline-flex; gap: 0.3rem; margin-left: 0.5rem; flex-wrap: wrap; }
+.tag {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.batch-form {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  background: var(--panel-2);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem;
+}
+.batch-form > input:first-child { flex: 1 1 10rem; min-width: 0; }
+.batch-form .notice { flex-basis: 100%; margin: 0; }
 
 /* ---------------------------------------------------------------- receipt */
 
@@ -388,16 +872,24 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
 /*
  * Sized to 72mm — the printable width of an 80mm thermal roll. On A4 it simply
  * prints as a narrow slip, which is what a receipt should look like on either.
+ *
+ * Always light, in both themes and on purpose: this is paper. A dark receipt
+ * would print as a black rectangle and empty the roll's ink in one go.
  */
 .receipt {
-  width: 72mm; max-width: 100%;
-  background: #fff; color: #000;
-  padding: 6mm 4mm; border-radius: 4px;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 12px; line-height: 1.45;
+  width: 72mm;
+  max-width: 100%;
+  background: #fff;
+  color: #000;
+  padding: 6mm 4mm;
+  border-radius: 4px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  box-shadow: var(--shadow-md);
 }
 .receipt-head { text-align: center; margin-bottom: 0.8rem; }
-.receipt-head h1 { font-size: 15px; margin: 0 0 0.2rem; }
+.receipt-head h1 { font-size: 15px; margin: 0 0 0.2rem; color: #000; }
 .receipt-head p { margin: 0.1rem 0; }
 .receipt-head .muted { color: #555; }
 
@@ -412,10 +904,7 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
 .receipt-grand { font-weight: 700; border-top: 1px solid #000; padding-top: 0.2rem; margin-top: 0.2rem; }
 
 .receipt-customer { margin: 0.4rem 0 0; }
-.receipt-flag {
-  margin: 0.6rem 0 0; padding: 0.3rem;
-  border: 1px dashed #000; text-align: center; font-weight: 700;
-}
+.receipt-flag { margin: 0.6rem 0 0; padding: 0.3rem; border: 1px dashed #000; text-align: center; font-weight: 700; }
 .receipt-foot { text-align: center; margin-top: 0.9rem; }
 
 /*
@@ -424,87 +913,14 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
  * wasted paper.
  */
 @media print {
-  body { background: #fff; }
+  html, body { background: #fff; }
   .shell-header, .no-print, .receipt-toolbar { display: none !important; }
-  .page, .shell-main, .receipt-page { padding: 0; margin: 0; max-width: none; }
-  .receipt { width: auto; border-radius: 0; padding: 0; }
+  .shell { display: block; }
+  .page, .shell-main, .receipt-page { padding: 0; margin: 0; max-width: none; overflow: visible; }
+  .receipt { width: auto; border-radius: 0; padding: 0; box-shadow: none; }
 }
 
-/* ---------------------------------------------------------------- settings */
-
-.settings-subhead { margin: 0.6rem 0 0; font-size: 0.95rem; color: var(--muted); }
-.form-row.three { grid-template-columns: repeat(3, 1fr); }
-.drawer-card h3 { margin: 0; }
-
-/* At a tablet width three rate boxes side by side are unreadable; one column
-   is slower to scan but nobody mistypes a VAT rate. */
-@media (max-width: 640px) {
-  .form-row, .form-row.three { grid-template-columns: 1fr; }
+/* Someone who has asked their system to stop moving things means it. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
-
-/* A history or statement is a table, and 30rem of modal turns every row into
-   three. These get the width the content actually needs. */
-.modal-wide { width: min(52rem, 100%); }
-
-/* Anchor-as-button, so a link can sit next to real buttons without looking
-   like stray text among them. */
-a.secondary-button { text-decoration: none; display: inline-block; }
-
-/* A KPI that links somewhere still has to read as a tile, not as body text
-   with an underline through it. */
-.kpi-link { text-decoration: none; color: inherit; }
-.kpi-link:hover { border-color: var(--accent); }
-
-/* ---------------------------------------------------------------- inventory */
-
-/* A thumbnail small enough that a hundred rows still scan as a list, big enough
-   to tell two similar packets apart. */
-.product-thumb {
-  width: 2.2rem; height: 2.2rem; border-radius: 6px;
-  object-fit: cover; display: block; background: var(--panel-2);
-}
-.product-thumb-empty {
-  display: grid; place-items: center;
-  color: var(--muted); font-weight: 700; font-size: 0.95rem;
-}
-
-.chip-count {
-  margin-left: 0.4rem; padding: 0.05rem 0.35rem;
-  border-radius: 999px; font-size: 0.72rem;
-  background: rgba(148, 163, 184, 0.2);
-}
-.chip-active .chip-count { background: rgba(0, 0, 0, 0.18); }
-
-.tag-row { display: inline-flex; gap: 0.3rem; margin-left: 0.5rem; flex-wrap: wrap; }
-.tag {
-  background: var(--panel-2); border: 1px solid var(--line);
-  border-radius: 999px; padding: 0.05rem 0.45rem;
-  font-size: 0.72rem; color: var(--muted);
-}
-
-/* Expired stock is a stronger signal than low stock: one is a shelf someone has
-   to clear today, the other is an order to place this week. */
-.row-danger td { background: rgba(239, 68, 68, 0.09); }
-
-.batch-form {
-  display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;
-  background: var(--panel-2); border-radius: 8px; padding: 0.6rem;
-}
-.batch-form > input:first-child { flex: 1 1 10rem; min-width: 0; }
-.batch-form .notice { flex-basis: 100%; }
-
-.table td .pill { margin-left: 0.4rem; }
-
-/* Wide content scrolls inside its own box rather than pushing the page. A till
-   is often a tablet, and a page that scrolls sideways takes the header and the
-   filters off screen with it. */
-.table-scroll { overflow-x: auto; max-width: 100%; }
-.table-scroll .table { min-width: 44rem; }
-
-/*
- * The same guarantee for every other page, without having to wrap each table.
- * Scrolling rather than hiding on purpose: `overflow-x: hidden` would stop the
- * document widening but make the far columns unreachable, which is a worse
- * failure than a scrollbar — a manager would simply never see the last column.
- */
-.page { overflow-x: auto; }

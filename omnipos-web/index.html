@@ -7,8 +7,33 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0f172a" />
+    <meta name="theme-color" content="#0b1220" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f1f5f9" media="(prefers-color-scheme: light)" />
     <title>OmniPOS</title>
+    <script>
+      /*
+       * Set the theme before the first paint.
+       *
+       * This runs ahead of the bundle on purpose. React rehydrating the stored
+       * choice happens after the browser has already painted, so without it a
+       * till in dark mode flashes white on every load — which on a screen behind
+       * a counter reads as a fault.
+       *
+       * Deliberately tiny and dependency-free: everything it touches has to
+       * exist before any module has loaded.
+       */
+      try {
+        var stored = localStorage.getItem("omnipos.theme");
+        var choice = stored ? JSON.parse(stored).state.choice : "dark";
+        if (choice === "light" || choice === "dark") {
+          document.documentElement.setAttribute("data-theme", choice);
+        }
+      } catch (e) {
+        /* Private mode, cleared storage, an older shape — fall through to the
+           stylesheet's own default rather than failing to boot. */
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

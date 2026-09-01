@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ShieldCheck } from "lucide-react";
 
 import { api } from "@/api/client";
 import { useSession } from "@/state/session";
@@ -77,7 +78,7 @@ export function SuperAdminPage() {
   if (!isSuperAdmin) {
     return (
       <div className="page">
-        <h1>Platform</h1>
+        <h1><ShieldCheck size={20} aria-hidden="true" /> Platform</h1>
         <p className="notice notice-warn">This area is limited to platform administrators.</p>
       </div>
     );
@@ -91,7 +92,7 @@ export function SuperAdminPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>Platform</h1>
+        <h1><ShieldCheck size={20} aria-hidden="true" /> Platform</h1>
         <p className="muted">{stores.data?.length ?? 0} stores</p>
       </header>
 
