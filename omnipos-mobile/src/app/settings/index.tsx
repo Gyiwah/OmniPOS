@@ -20,12 +20,21 @@ import { useSettingsStore } from "@/src/store/settingsStore";
 import { useAuthStore } from "@/src/store/authStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
 import { toErrorMessage } from "@/src/utils/errors";
+import { usingLaravel } from "@/src/core/api/config";
 
 const MENU = [
   { label: "Switch & Manage Stores", subtitle: "Manage multi-store locations", route: "/settings/stores", icon: "business-outline" as const },
   { label: "Team & Staff Access", subtitle: "Invite cashiers and store admins", route: "/settings/users", icon: "people-outline" as const },
   { label: "Thermal Receipt Printer", subtitle: "Configure ESC/POS & Bluetooth", route: "/settings/printer", icon: "print-outline" as const },
   { label: "Backup & CSV Export", subtitle: "Export sales and product reports", route: "/settings/backup", icon: "cloud-upload-outline" as const },
+];
+
+/*
+ * Only reachable on a Laravel build: Supabase never reported conflicts, so the
+ * screen would always be empty there and the entry would be a dead end.
+ */
+const LARAVEL_ONLY_MENU = [
+  { label: "Rejected Sales", subtitle: "Settle sales the server refused", route: "/sync/conflicts", icon: "alert-circle-outline" as const },
 ];
 
 const LANGUAGES = ["English", "French", "Spanish"] as const;
@@ -247,7 +256,7 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.menuList}>
-          {MENU.map((item) => (
+          {[...MENU, ...(usingLaravel ? LARAVEL_ONLY_MENU : [])].map((item) => (
             <Pressable
               key={item.label}
               onPress={() => router.push(item.route as never)}

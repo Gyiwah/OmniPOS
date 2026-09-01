@@ -429,3 +429,15 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
   .page, .shell-main, .receipt-page { padding: 0; margin: 0; max-width: none; }
   .receipt { width: auto; border-radius: 0; padding: 0; }
 }
+
+/* ---------------------------------------------------------------- settings */
+
+.settings-subhead { margin: 0.6rem 0 0; font-size: 0.95rem; color: var(--muted); }
+.form-row.three { grid-template-columns: repeat(3, 1fr); }
+.drawer-card h3 { margin: 0; }
+
+/* At a tablet width three rate boxes side by side are unreadable; one column
+   is slower to scan but nobody mistypes a VAT rate. */
+@media (max-width: 640px) {
+  .form-row, .form-row.three { grid-template-columns: 1fr; }
+}

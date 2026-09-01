@@ -11,6 +11,7 @@ const NAV = [
   { to: "/shift", label: "Drawer" },
   { to: "/products", label: "Inventory" },
   { to: "/customers", label: "Customers" },
+  { to: "/settings", label: "Settings", roles: ["admin", "manager"] },
   { to: "/sync", label: "Sync" },
 ];
 
