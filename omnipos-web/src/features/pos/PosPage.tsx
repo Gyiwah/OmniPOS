@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Link, useNavigate } from "react-router-dom";
-import { AlertTriangle, CreditCard, Search } from "lucide-react";
+import { AlertTriangle, Camera, CreditCard, Search } from "lucide-react";
 
 import { db, type LocalCategory, type LocalProduct } from "@/db/schema";
 import { uuidv7 } from "@/core/uuidv7";
@@ -25,6 +25,7 @@ import {
   type TenderLine,
 } from "./cart";
 import { useCurrentShift } from "@/features/shifts/useCurrentShift";
+import { BarcodeScanner, barcodeScanningSupported } from "./BarcodeScanner";
 import { completeSale, nextOrderNumber } from "./checkout";
 import { PaymentPanel } from "./PaymentPanel";
 
@@ -58,6 +59,7 @@ export function PosPage() {
   const [busy, setBusy] = useState(false);
   /** Kept so the cashier can print the receipt for the sale they just rang up. */
   const [lastOrderId, setLastOrderId] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
 
   const shift = useCurrentShift();
   const navigate = useNavigate();
@@ -259,6 +261,22 @@ export function PosPage() {
             aria-label="Scan barcode or search products"
             className="pos-search-input"
           />
+          {/*
+            Only offered where the browser can actually decode. A handheld
+            reader needs none of this — it types the digits into this same box —
+            so the camera is for a tablet with nothing attached to it.
+          */}
+          {barcodeScanningSupported() && (
+            <button
+              type="button"
+              className="icon-button pos-scan"
+              onClick={() => setScanning(true)}
+              aria-label="Scan with the camera"
+              title="Scan with the camera"
+            >
+              <Camera size={18} aria-hidden="true" />
+            </button>
+          )}
         </form>
 
         <div className="pos-categories">
@@ -434,6 +452,19 @@ export function PosPage() {
           <kbd>F2</kbd>
         </button>
       </section>
+
+      {scanning && (
+        <BarcodeScanner
+          onClose={() => { setScanning(false); focusSearch(); }}
+          onScan={(value) => {
+            setScanning(false);
+            // Straight into the same field a handheld reader types into, so
+            // there is one path from a code to a line on the sale.
+            setQuery(value);
+            focusSearch();
+          }}
+        />
+      )}
 
       {paying && (
         <PaymentPanel

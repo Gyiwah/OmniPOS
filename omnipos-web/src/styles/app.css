@@ -924,3 +924,37 @@ a.secondary-button { text-decoration: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
+
+/* ---------------------------------------------------------------- import & scan */
+
+/* A file input styled as a button, with the real control still focusable and
+   still announced — `display: none` would take it out of the tab order. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.import-drop { justify-content: center; cursor: pointer; }
+.visually-hidden:focus-visible + .import-drop,
+label.import-drop:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.pos-scan { position: absolute; right: 0.45rem; top: 50%; transform: translateY(-50%); }
+
+.scanner { width: min(30rem, 100%); }
+.scanner-frame { position: relative; border-radius: var(--radius); overflow: hidden; background: #000; }
+.scanner-video { width: 100%; display: block; max-height: 60vh; object-fit: cover; }
+/* A frame to aim with. Pure decoration, so it never intercepts a tap. */
+.scanner-reticle {
+  position: absolute;
+  inset: 18% 12%;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}

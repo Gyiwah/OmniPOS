@@ -2,6 +2,7 @@ import { uuidv7 } from "@/core/uuidv7";
 import { db, type LocalBatch, type LocalProduct } from "@/db/schema";
 import { toDecimal } from "@/features/pos/cart";
 import { enqueue } from "@/sync/engine";
+import type { ImportRow } from "./csvImport";
 
 /**
  * Creating and editing products from the till.
@@ -289,4 +290,77 @@ export async function recordPriceChange(input: {
       client_created_at: new Date().toISOString(),
     },
   });
+}
+
+/**
+ * Apply a reviewed import.
+ *
+ * Stock is the subtle part. A CSV's stock column becomes an opening movement
+ * for a NEW product only. For one that already exists the number is ambiguous —
+ * it could be a fresh count or a delivery, and the file cannot say which — so it
+ * is left alone rather than guessed at. A spreadsheet silently overwriting stock
+ * would erase every sale made since it was exported, which is the worst thing an
+ * import can do and the hardest to notice.
+ *
+ * Each row is its own operation. A file that fails half way leaves the products
+ * it did import genuinely imported, rather than rolling back work a shop watched
+ * succeed.
+ */
+export async function importProducts(
+  storeId: string,
+  rows: ImportRow[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<{ created: number; updated: number; failed: Array<{ line: number; reason: string }> }> {
+  const applicable = rows.filter((r) => r.action !== "skip");
+
+  let created = 0;
+  let updated = 0;
+  const failed: Array<{ line: number; reason: string }> = [];
+
+  for (const [index, row] of applicable.entries()) {
+    try {
+      const existing = await db.products
+        .where("store_id")
+        .equals(storeId)
+        .filter((p) => p.sku.toLowerCase() === row.sku.toLowerCase())
+        .first();
+
+      const saved = await saveProduct(
+        storeId,
+        {
+          name: row.name,
+          sku: row.sku,
+          barcode: row.barcode,
+          price: row.price,
+          costPrice: row.cost,
+          reorderLevel: row.reorderLevel,
+          categoryId: existing?.category_id ?? null,
+          isActive: true,
+          tags: row.tags.length > 0 ? row.tags : existing?.tags,
+        },
+        existing,
+      );
+
+      if (existing) {
+        updated += 1;
+      } else {
+        created += 1;
+        if (row.stock > 0) {
+          await adjustStock({
+            storeId,
+            productId: saved.id,
+            delta: row.stock,
+            type: "STOCK_IN",
+            reason: "Opening count from import",
+          });
+        }
+      }
+    } catch (error) {
+      failed.push({ line: row.line, reason: error instanceof Error ? error.message : "Could not import" });
+    }
+
+    onProgress?.(index + 1, applicable.length);
+  }
+
+  return { created, updated, failed };
 }

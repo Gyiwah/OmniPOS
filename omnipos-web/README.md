@@ -329,6 +329,43 @@ Icons are `lucide-react`, tree-shaken and bundled. Nothing is fetched from a CDN
 — an icon font that fails to load offline would leave a till full of empty boxes,
 which is the one thing this client is built not to do.
 
+## Importing a spreadsheet
+
+Usually a shop's first act on the system, with a file from whatever they used
+before — so the parser is RFC 4180 rather than a split on commas. Quoted fields,
+doubled quotes and newlines inside a cell all survive, because the alternative
+shifts every column after the first product called "Rice, 5kg" and a shifted
+column puts a price into a stock field with nothing looking wrong.
+
+Columns are claimed in a deliberate order, not by an object's key order. Three
+pairs steal from each other otherwise and all three appear in real files:
+"Barcode" contains "code" and would be read as the SKU; "Cost price" contains
+"price" and would be read as the sell price; "Low stock" contains "stock" and
+would be read as the quantity. The middle one imports a whole catalogue at its
+wholesale price, which a shop discovers one sale at a time.
+
+**An existing product keeps the stock it already has.** A file cannot say whether
+its stock column is a fresh count or a delivery, and taking it as a total would
+erase every sale made since the file was exported — the worst thing an import can
+do and the hardest to notice. Only new products get an opening count, recorded as
+a movement like any other.
+
+Nothing is written until the whole file has been reviewed, and rows that cannot
+be imported are shown with the reason rather than dropped. An importer that
+quietly discards what it did not like leaves a shop believing it has a full
+catalogue.
+
+## Scanning with a camera
+
+An enhancement, not the main path. A handheld reader types the digits straight
+into the search box like a keyboard, and that already works everywhere — so the
+camera is for a tablet with nothing attached to it.
+
+Built on the browser's own `BarcodeDetector`. A bundled decoder is a few hundred
+kilobytes of WebAssembly that every till would download and precache, including
+the great majority that never use it. Where the API is missing the control is
+simply not offered, rather than appearing and failing.
+
 ## Not built yet
 
 - ESC/POS printing over a local connection. Receipts print through the browser
@@ -464,7 +501,7 @@ report that exact file. That is the realistic regression — a `globPatterns`
 change that quietly stops matching something, which every other test would still
 pass because everything works while the network is up.
 
-The built shell has no external runtime dependency (785 KB precached, 163 KB gzipped
+The built shell has no external runtime dependency (797 KB precached, 167 KB gzipped
 JS, all same-origin), so
 once cached it is genuinely self-sufficient.
 

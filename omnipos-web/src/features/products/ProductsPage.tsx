@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { AlertTriangle, ClipboardList, Download, Package, Plus } from "lucide-react";
+import { AlertTriangle, ClipboardList, Download, Package, Plus, Upload } from "lucide-react";
 
 import { db, type LocalBatch, type LocalProduct } from "@/db/schema";
 import { formatMoney, toMinor } from "@/features/pos/cart";
@@ -16,6 +16,7 @@ import {
   type StockFilter,
 } from "./expiry";
 import { exportInventoryCsv } from "./exportCsv";
+import { ImportModal } from "./ImportModal";
 import { ProductDetail } from "./ProductDetail";
 import { ProductForm } from "./ProductForm";
 import { StockAdjustForm } from "./StockAdjustForm";
@@ -54,6 +55,7 @@ export function ProductsPage() {
   const [editing, setEditing] = useState<LocalProduct | "new" | null>(null);
   const [adjusting, setAdjusting] = useState<LocalProduct | null>(null);
   const [inspecting, setInspecting] = useState<LocalProduct | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const afterWrite = () => {
     setEditing(null);
@@ -115,6 +117,10 @@ export function ProductsPage() {
           </button>
           {canEdit && (
             <>
+              <button type="button" className="secondary-button" onClick={() => setImporting(true)}>
+                <Upload size={16} aria-hidden="true" />
+                Import
+              </button>
               <Link to="/stock-take" className="secondary-button">
                 <ClipboardList size={16} aria-hidden="true" />
                 Stock take
@@ -245,6 +251,17 @@ export function ProductsPage() {
               ? `Nothing matches "${query.trim()}".`
               : "Nothing in this filter."}
         </p>
+      )}
+
+      {importing && storeId && (
+        <ImportModal
+          storeId={storeId}
+          currency={currency}
+          onClose={() => setImporting(false)}
+          onImported={() => {
+            if (storeId) void useSync.getState().sync(storeId);
+          }}
+        />
       )}
 
       {inspecting && storeId && (
