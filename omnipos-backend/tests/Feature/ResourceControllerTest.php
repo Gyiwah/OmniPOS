@@ -400,6 +400,39 @@ class ResourceControllerTest extends TestCase
         $this->assertSame('7.00', (string) $rows->first()['quantity_after']);
     }
 
+    /**
+     * Price history could be written since the feature landed but never read
+     * back, so the mobile app showed only the changes that one device had made —
+     * exactly the wrong view when the question is "who put the price up".
+     */
+    public function test_price_history_is_readable_and_attributed(): void
+    {
+        $product = $this->makeProduct();
+
+        \App\Models\PriceHistory::create([
+            'store_id' => $this->store->id, 'product_id' => $product->id,
+            'user_id' => $this->manager->id,
+            'old_sell_price' => 10, 'new_sell_price' => 12,
+            'old_cost_price' => 6, 'new_cost_price' => 7,
+            'reason' => 'Supplier increase', 'client_created_at' => now(),
+        ]);
+
+        $response = $this->as($this->manager)->getJson("/api/products/{$product->id}/price-history")->assertOk();
+
+        $this->assertCount(1, $response->json('data'));
+        $this->assertSame('12.00', $response->json('data.0.new_sell_price'));
+        $this->assertSame('Supplier increase', $response->json('data.0.reason'));
+        $this->assertSame($this->manager->name, $response->json('data.0.changed_by'));
+    }
+
+    /** The rows carry cost prices, so they follow the same boundary as cost itself. */
+    public function test_a_cashier_cannot_see_price_history(): void
+    {
+        $product = $this->makeProduct();
+
+        $this->as($this->cashier)->getJson("/api/products/{$product->id}/price-history")->assertForbidden();
+    }
+
     public function test_batches_can_be_filtered_to_one_product(): void
     {
         $product = $this->makeProduct();

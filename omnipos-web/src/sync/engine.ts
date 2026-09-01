@@ -158,7 +158,7 @@ async function pushOutbox(storeId: string): Promise<{ applied: number; conflicts
     // not declare.
     await db.transaction(
       "rw",
-      [db.outbox, db.orders, db.customers, db.shifts, db.returns, db.payments, db.products],
+      [db.outbox, db.orders, db.customers, db.shifts, db.returns, db.payments, db.batches, db.products],
       async () => {
         for (const op of batch) {
           const result = byId.get(op.operation_id);
@@ -261,6 +261,8 @@ async function markClean(op: SyncOperation): Promise<void> {
     await db.returns.update(op.record_id, { _state: "clean" });
   } else if (op.entity === "payments") {
     await db.payments.update(op.record_id, { _state: "clean" });
+  } else if (op.entity === "product_batches") {
+    await db.batches.update(op.record_id, { _state: "clean" });
   }
 }
 
@@ -323,7 +325,7 @@ async function applyChanges(
 ): Promise<void> {
   await db.transaction(
     "rw",
-    [db.products, db.categories, db.customers, db.orders, db.shifts, db.returns, db.payments, db.outbox],
+    [db.products, db.categories, db.customers, db.orders, db.shifts, db.returns, db.payments, db.batches, db.outbox],
     async () => {
       for (const change of changes) {
         if (change.action === "delete") {
@@ -475,6 +477,7 @@ async function clearSettledConflict(recordId: string): Promise<void> {
 async function deleteLocal(entity: string, id: string): Promise<void> {
   if (entity === "products") await db.products.delete(id);
   if (entity === "customers") await db.customers.delete(id);
+  if (entity === "product_batches") await db.batches.delete(id);
 }
 
 function str(value: unknown, fallback = ""): string {
@@ -500,6 +503,21 @@ export function mapProduct(storeId: string, p: Record<string, unknown>) {
     is_active: p.is_active !== false,
     updated_at: str(p.updated_at, new Date().toISOString()),
     search_key: `${name} ${sku}`.toLowerCase(),
+  };
+}
+
+export function mapBatch(storeId: string, b: Record<string, unknown>) {
+  return {
+    id: str(b.id),
+    store_id: str(b.store_id, storeId),
+    product_id: str(b.product_id),
+    batch_number: b.batch_number ? str(b.batch_number) : null,
+    quantity: str(b.quantity, "0"),
+    cost_price: b.cost_price === null || b.cost_price === undefined ? null : str(b.cost_price),
+    // Date only. A batch expires on a day, not at an instant, and carrying a
+    // time would make "expires today" depend on the hour it was entered.
+    expiry_date: b.expiry_date ? str(b.expiry_date).slice(0, 10) : null,
+    _state: "clean" as const,
   };
 }
 
@@ -549,6 +567,19 @@ export async function bootstrapStore(storeId: string): Promise<{ products: numbe
     if (!res.data?.length) break;
     await db.customers.bulkPut(res.data.map((c) => mapCustomer(storeId, c)));
     customers += res.data.length;
+    if (!res.meta?.last_page || page >= res.meta.last_page) break;
+  }
+
+  // Batches drive the expiry warnings on the inventory screen, so they come
+  // down with the catalogue rather than being fetched when that screen opens —
+  // which would put them behind a connection at the worst moment.
+  for (let page = 1; ; page += 1) {
+    const res = await api.get<{ data: Record<string, unknown>[]; meta?: { last_page?: number } }>(
+      "/api/inventory/batches",
+      { per_page: 200, page },
+    );
+    if (!res.data?.length) break;
+    await db.batches.bulkPut(res.data.map((b) => mapBatch(storeId, b)));
     if (!res.meta?.last_page || page >= res.meta.last_page) break;
   }
 

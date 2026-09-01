@@ -277,6 +277,35 @@ running balance. Server-side, because a customer buys at one counter and settles
 at another — a statement built from one device would show charges without their
 payments, and someone would ask for money already handed over.
 
+## Inventory
+
+Brought up to the mobile app's level, and deliberately using the same rules: the
+same thirty-day expiry threshold, the same filter buckets, the same labels. A
+manager who checks stock on a phone and then on a browser must not be told two
+different things about the same shelf.
+
+Batches are pulled with the catalogue and held locally, so expired and expiring
+stock is flagged with no connection — which is exactly when a shop is walking
+its shelves. Expiry is computed from the *worst* batch a product has, skipping
+empty ones: a lot that expired last month with nothing left in it is not a
+problem on the shelf, and flagging it trains people to ignore the flag.
+
+Filter chips carry counts, because "Low 4" is actionable and "Low" is a question
+you have to click to answer. Out-of-stock is excluded from Low — a product with
+none left is a different problem, and counting it under both makes the buckets
+overlap.
+
+The server requires a batch number and enforces one per product, but plenty of
+shops track expiry without ever seeing a lot number on the box. The default is
+derived from the expiry date (`EXP-20270320`), shown in the field's placeholder
+so it is visible rather than silently supplied — and it makes the uniqueness rule
+useful, since two deliveries expiring the same day are one batch in practice.
+
+Price changes are recorded when a price actually moves, with a reason. A product
+only ever shows what it costs now, so without this "it has always been twelve" is
+a claim nobody can check — and that is the claim made when a customer disputes a
+price.
+
 ## Not built yet
 
 - ESC/POS printing over a local connection. Receipts print through the browser

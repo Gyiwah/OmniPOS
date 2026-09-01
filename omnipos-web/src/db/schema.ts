@@ -166,6 +166,25 @@ export interface LocalReturn {
 }
 
 /**
+ * A delivery of one product, with its own expiry date.
+ *
+ * Held locally so the inventory screen can flag expired and expiring stock with
+ * no connection — which is when a shop is most likely to be doing a physical
+ * check of its shelves. The quantities here are informational; what a product
+ * has on hand still comes from the ledger.
+ */
+export interface LocalBatch {
+  id: string;
+  store_id: string;
+  product_id: string;
+  batch_number: string | null;
+  quantity: string;
+  cost_price: string | null;
+  expiry_date: string | null;
+  _state: SyncState;
+}
+
+/**
  * Money taken against a customer's account, outside a sale.
  *
  * Held locally for two reasons. A shop that lets customers buy on credit will
@@ -227,6 +246,7 @@ export class OmniposDatabase extends Dexie {
   shifts!: Table<LocalShift, string>;
   returns!: Table<LocalReturn, string>;
   payments!: Table<LocalPayment, string>;
+  batches!: Table<LocalBatch, string>;
   outbox!: Table<SyncOperation, string>;
   meta!: Table<MetaRow, string>;
 
@@ -276,6 +296,18 @@ export class OmniposDatabase extends Dexie {
     this.version(4).stores({
       payments: "id, store_id, customer_id, register_shift_id, client_created_at, _state",
     });
+
+    /*
+     * v5 adds batches.
+     *
+     * Local because expiry is a shelf question, and a shop walking its shelves
+     * with a tablet is exactly the case where the connection is worst. Indexed
+     * by product so the inventory list can resolve every product's worst batch
+     * without scanning the table once per row.
+     */
+    this.version(5).stores({
+      batches: "id, store_id, product_id, expiry_date, _state",
+    });
   }
 }
 
@@ -302,7 +334,7 @@ export async function setMeta(key: string, value: unknown): Promise<void> {
 export async function clearLocalData(): Promise<void> {
   await db.transaction(
     "rw",
-    [db.products, db.categories, db.customers, db.orders, db.shifts, db.returns, db.payments, db.outbox, db.meta],
+    [db.products, db.categories, db.customers, db.orders, db.shifts, db.returns, db.payments, db.batches, db.outbox, db.meta],
     async () => {
       await db.products.clear();
       await db.categories.clear();
@@ -311,6 +343,7 @@ export async function clearLocalData(): Promise<void> {
       await db.shifts.clear();
       await db.returns.clear();
       await db.payments.clear();
+      await db.batches.clear();
       await db.outbox.clear();
       await db.meta.clear();
     },

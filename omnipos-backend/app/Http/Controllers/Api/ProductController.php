@@ -9,6 +9,7 @@ use App\Http\Requests\UpdateProductRequest;
 use App\Http\Resources\ProductResource;
 use App\Models\PriceHistory;
 use App\Models\Product;
+use App\Models\StoreMember;
 use App\Services\InventoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -183,6 +184,55 @@ class ProductController extends Controller
             // balances that appear to contradict each other.
             $model->movements()->with('product')->latest('created_at')->latest('id')->paginate($this->perPage($request))
         );
+    }
+
+    /**
+     * GET /api/products/{product}/price-history
+     *
+     * What this has been sold and bought for over time.
+     *
+     * Written through the sync queue since the price feature landed, but until
+     * now there was no way to read it back — the mobile app showed only the
+     * changes that device had made itself, which is exactly the wrong view when
+     * the question is "who put the price up".
+     *
+     * Restricted to roles that may see cost, because the rows carry old and new
+     * cost prices; that is the same boundary that hides cost_price on a product.
+     */
+    public function priceHistory(Request $request, string $product): JsonResponse
+    {
+        $storeId = $this->storeId($request);
+
+        abort_unless(
+            $request->user()->hasStoreRole($storeId, [StoreMember::ROLE_ADMIN, StoreMember::ROLE_MANAGER]),
+            403,
+            'Only an admin or manager can see price history.',
+        );
+
+        $model = $this->find($request, $product);
+
+        $rows = PriceHistory::where('store_id', $storeId)
+            ->where('product_id', $model->id)
+            ->with('user:id,name')
+            // Newest first, tie-broken on the id so two changes in the same
+            // second still read in the order they happened.
+            ->latest('client_created_at')
+            ->latest('id')
+            ->limit(100)
+            ->get();
+
+        return response()->json([
+            'data' => $rows->map(fn (PriceHistory $r) => [
+                'id' => $r->id,
+                'old_sell_price' => $r->old_sell_price,
+                'new_sell_price' => $r->new_sell_price,
+                'old_cost_price' => $r->old_cost_price,
+                'new_cost_price' => $r->new_cost_price,
+                'reason' => $r->reason,
+                'changed_by' => $r->user?->name,
+                'at' => ($r->client_created_at ?? $r->created_at)?->toIso8601String(),
+            ]),
+        ]);
     }
 
     private function find(Request $request, string $id): Product

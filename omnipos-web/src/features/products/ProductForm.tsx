@@ -4,7 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db, type LocalCategory, type LocalProduct } from "@/db/schema";
 import { toMinor } from "@/features/pos/cart";
 import { uploadProductImage } from "./imageUpload";
-import { saveProduct, suggestSku } from "./service";
+import { recordPriceChange, saveProduct, suggestSku } from "./service";
 
 type Props = {
   storeId: string;
@@ -35,6 +35,8 @@ export function ProductForm({ storeId, currency, product, onClose, onSaved }: Pr
   const [busy, setBusy] = useState(false);
   const [image, setImage] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState(product?.image_url ?? null);
+  const [tags, setTags] = useState((product?.tags ?? []).join(", "));
+  const [priceReason, setPriceReason] = useState("");
 
   const categories = useLiveQuery(
     () => db.categories.where("store_id").equals(storeId).sortBy("position"),
@@ -59,9 +61,29 @@ export function ProductForm({ storeId, currency, product, onClose, onSaved }: Pr
           reorderLevel: Number(reorder) || 0,
           categoryId: categoryId || null,
           isActive: active,
+          tags: tags
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean),
         },
         product,
       );
+
+      // Recorded after the save and only when something actually moved. A
+      // product only ever shows what it costs now, so without this "it has
+      // always been twelve" is a claim nobody can check — and that is exactly
+      // the claim made when a customer disputes a price.
+      if (product) {
+        await recordPriceChange({
+          storeId,
+          productId: saved.id,
+          oldPrice: toMinor(product.price),
+          newPrice: toMinor(price),
+          oldCost: product.cost_price === null ? null : toMinor(product.cost_price),
+          newCost: cost.trim() === "" ? null : toMinor(cost),
+          reason: priceReason,
+        });
+      }
       // Uploaded after the save, because the server files it under the
       // product's id and a new product does not have one until it exists. A
       // failure here is reported but does not undo the save — the product is
@@ -129,6 +151,28 @@ export function ProductForm({ storeId, currency, product, onClose, onSaved }: Pr
             </select>
           </div>
         </div>
+
+        <label htmlFor="p-tags">Tags</label>
+        <input
+          id="p-tags"
+          value={tags}
+          onChange={(e) => setTags(e.target.value)}
+          placeholder="Comma separated, e.g. chilled, promo"
+        />
+
+        {/* Only offered on an edit whose price actually moved: asking why a
+            brand-new product costs what it costs is noise. */}
+        {product && toMinor(price) !== toMinor(product.price) && (
+          <>
+            <label htmlFor="p-price-reason">Why is the price changing?</label>
+            <input
+              id="p-price-reason"
+              value={priceReason}
+              onChange={(e) => setPriceReason(e.target.value)}
+              placeholder="Supplier increase, promotion, correction…"
+            />
+          </>
+        )}
 
         <label htmlFor="p-image">Picture</label>
         <input

@@ -454,3 +454,57 @@ a.secondary-button { text-decoration: none; display: inline-block; }
    with an underline through it. */
 .kpi-link { text-decoration: none; color: inherit; }
 .kpi-link:hover { border-color: var(--accent); }
+
+/* ---------------------------------------------------------------- inventory */
+
+/* A thumbnail small enough that a hundred rows still scan as a list, big enough
+   to tell two similar packets apart. */
+.product-thumb {
+  width: 2.2rem; height: 2.2rem; border-radius: 6px;
+  object-fit: cover; display: block; background: var(--panel-2);
+}
+.product-thumb-empty {
+  display: grid; place-items: center;
+  color: var(--muted); font-weight: 700; font-size: 0.95rem;
+}
+
+.chip-count {
+  margin-left: 0.4rem; padding: 0.05rem 0.35rem;
+  border-radius: 999px; font-size: 0.72rem;
+  background: rgba(148, 163, 184, 0.2);
+}
+.chip-active .chip-count { background: rgba(0, 0, 0, 0.18); }
+
+.tag-row { display: inline-flex; gap: 0.3rem; margin-left: 0.5rem; flex-wrap: wrap; }
+.tag {
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 999px; padding: 0.05rem 0.45rem;
+  font-size: 0.72rem; color: var(--muted);
+}
+
+/* Expired stock is a stronger signal than low stock: one is a shelf someone has
+   to clear today, the other is an order to place this week. */
+.row-danger td { background: rgba(239, 68, 68, 0.09); }
+
+.batch-form {
+  display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;
+  background: var(--panel-2); border-radius: 8px; padding: 0.6rem;
+}
+.batch-form > input:first-child { flex: 1 1 10rem; min-width: 0; }
+.batch-form .notice { flex-basis: 100%; }
+
+.table td .pill { margin-left: 0.4rem; }
+
+/* Wide content scrolls inside its own box rather than pushing the page. A till
+   is often a tablet, and a page that scrolls sideways takes the header and the
+   filters off screen with it. */
+.table-scroll { overflow-x: auto; max-width: 100%; }
+.table-scroll .table { min-width: 44rem; }
+
+/*
+ * The same guarantee for every other page, without having to wrap each table.
+ * Scrolling rather than hiding on purpose: `overflow-x: hidden` would stop the
+ * document widening but make the far columns unreachable, which is a worse
+ * failure than a scrollbar — a manager would simply never see the last column.
+ */
+.page { overflow-x: auto; }

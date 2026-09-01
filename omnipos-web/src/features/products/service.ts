@@ -1,5 +1,5 @@
 import { uuidv7 } from "@/core/uuidv7";
-import { db, type LocalProduct } from "@/db/schema";
+import { db, type LocalBatch, type LocalProduct } from "@/db/schema";
 import { toDecimal } from "@/features/pos/cart";
 import { enqueue } from "@/sync/engine";
 
@@ -30,6 +30,7 @@ export type ProductInput = {
   reorderLevel: number;
   categoryId: string | null;
   isActive: boolean;
+  tags?: string[];
 };
 
 export async function saveProduct(
@@ -69,7 +70,7 @@ export async function saveProduct(
     stock: existing?.stock ?? 0,
     reorder_level: input.reorderLevel,
     image_url: existing?.image_url ?? null,
-    tags: existing?.tags ?? [],
+    tags: input.tags ?? existing?.tags ?? [],
     is_active: input.isActive,
     updated_at: new Date().toISOString(),
     search_key: `${name} ${sku}`.toLowerCase(),
@@ -92,6 +93,7 @@ export async function saveProduct(
         reorder_level: product.reorder_level,
         category_id: product.category_id,
         is_active: product.is_active,
+        tags: product.tags,
       },
     });
   });
@@ -167,4 +169,124 @@ export function suggestSku(name: string): string {
       .slice(0, 12) || "ITEM";
 
   return `${stem}-${Date.now().toString(36).toUpperCase().slice(-5)}`;
+}
+
+/**
+ * A batch number for a shop that does not use lot numbers.
+ *
+ * The server requires one and enforces uniqueness per product, but plenty of
+ * shops track expiry without ever seeing a lot number on the box. Deriving it
+ * from the expiry date gives something meaningful rather than a random string —
+ * and makes the uniqueness rule do something useful, since two deliveries that
+ * expire on the same day are the same batch for every practical purpose.
+ *
+ * Shown in the field's placeholder, so it is a visible default rather than a
+ * value that silently appears afterwards.
+ */
+export function suggestBatchNumber(expiryDate: string | null): string {
+  if (expiryDate) return `EXP-${expiryDate.replace(/-/g, "")}`;
+
+  return `IN-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
+}
+
+/**
+ * Record a delivery as its own batch, so its expiry can be tracked separately.
+ *
+ * The batch and the stock movement are two operations, not one. The batch says
+ * "these 48 expire in March"; the movement says "there are 48 more on the
+ * shelf". Collapsing them would either lose the expiry date or let a batch
+ * silently move stock, and the ledger has to stay the only thing that does.
+ */
+export async function addBatch(input: {
+  storeId: string;
+  productId: string;
+  batchNumber: string | null;
+  quantity: number;
+  costPrice: number | null;
+  expiryDate: string | null;
+  /** Whether this delivery also puts the goods on the shelf. */
+  addToStock: boolean;
+}): Promise<LocalBatch> {
+  if (input.quantity <= 0) throw new Error("A batch needs a quantity.");
+
+  const batchNumber = input.batchNumber?.trim() || suggestBatchNumber(input.expiryDate);
+
+  const batch: LocalBatch = {
+    id: uuidv7(),
+    store_id: input.storeId,
+    product_id: input.productId,
+    batch_number: batchNumber,
+    quantity: String(input.quantity),
+    cost_price: input.costPrice === null ? null : toDecimal(input.costPrice),
+    expiry_date: input.expiryDate || null,
+    _state: "pending",
+  };
+
+  await db.transaction("rw", [db.batches, db.outbox], async () => {
+    await db.batches.put(batch);
+    await enqueue({
+      storeId: input.storeId,
+      entity: "product_batches",
+      action: "upsert",
+      recordId: batch.id,
+      payload: {
+        id: batch.id,
+        product_id: batch.product_id,
+        batch_number: batch.batch_number,
+        quantity: input.quantity,
+        cost_price: batch.cost_price,
+        expiry_date: batch.expiry_date,
+      },
+    });
+  });
+
+  if (input.addToStock) {
+    await adjustStock({
+      storeId: input.storeId,
+      productId: input.productId,
+      delta: input.quantity,
+      type: "STOCK_IN",
+      reason: batch.batch_number ? `Batch ${batch.batch_number} received` : "Delivery received",
+    });
+  }
+
+  return batch;
+}
+
+/**
+ * Note that a price moved, and why.
+ *
+ * Recorded as its own record rather than inferred from the product, because a
+ * product only ever shows what it costs now. "It has always been twelve" is a
+ * claim nobody can check without this, and it is the claim that gets made when
+ * a customer disputes a price.
+ */
+export async function recordPriceChange(input: {
+  storeId: string;
+  productId: string;
+  oldPrice: number;
+  newPrice: number;
+  oldCost: number | null;
+  newCost: number | null;
+  reason?: string | null;
+}): Promise<void> {
+  // Nothing moved, nothing to record. Writing a row for every save would bury
+  // the real changes in noise.
+  if (input.oldPrice === input.newPrice && input.oldCost === input.newCost) return;
+
+  await enqueue({
+    storeId: input.storeId,
+    entity: "price_history",
+    action: "upsert",
+    recordId: uuidv7(),
+    payload: {
+      product_id: input.productId,
+      old_sell_price: toDecimal(input.oldPrice),
+      new_sell_price: toDecimal(input.newPrice),
+      old_cost_price: input.oldCost === null ? null : toDecimal(input.oldCost),
+      new_cost_price: input.newCost === null ? null : toDecimal(input.newCost),
+      reason: input.reason?.trim() || "Price updated",
+      client_created_at: new Date().toISOString(),
+    },
+  });
 }

@@ -40,6 +40,15 @@ class PriceHistory extends Model
         ];
     }
 
+    /**
+     * Who changed it. The most useful column in this table: a price that moved
+     * is only actionable once you know who moved it.
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);

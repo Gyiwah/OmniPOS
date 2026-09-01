@@ -16,7 +16,16 @@ class ProductBatch extends Model
     use HasClientMintedUuid;
     use SoftDeletes;
 
+    /**
+     * `id` is fillable because clients mint it.
+     *
+     * ProductBatchHandler reaches this through firstOrNew(['id' => ...]).
+     * Without it that throws, and creating a record fails while updating an
+     * existing one succeeds — a gap no test that only edits existing rows can
+     * find. See ClientMintedIdTest, which now pins this for every such model.
+     */
     protected $fillable = [
+        'id',
         'store_id',
         'product_id',
         'batch_number',
