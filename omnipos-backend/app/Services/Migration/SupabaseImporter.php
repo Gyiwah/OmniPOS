@@ -4,6 +4,7 @@ namespace App\Services\Migration;
 
 use App\Models\Product;
 use App\Services\InventoryService;
+use App\Services\Migration\LegacyStatus;
 use Closure;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Facades\DB;
@@ -378,7 +379,13 @@ class SupabaseImporter
             'register_shift_id' => null,
             'device_id' => null,
             'order_number' => $r->order_number,
-            'status' => $r->status ?? 'completed',
+            // Mapped, not passed through. `part_paid` and friends are not in
+            // orders_status_check, and an unmapped one killed the whole step
+            // two thirds of the way into a rehearsal.
+            'status' => LegacyStatus::map($r->status) ?? throw new \RuntimeException(
+                "Order {$r->order_number} has status [{$r->status}], which has no equivalent here. ".
+                'Run omnipos:preflight-supabase and decide what it should become.'
+            ),
             'subtotal' => $r->subtotal ?? 0,
             'tax' => $r->tax ?? 0,
             'discount' => $r->discount ?? 0,
@@ -579,9 +586,24 @@ class SupabaseImporter
             }
         });
 
-        ($this->log)("stock_reconcile: {$adjusted} products adjusted, {$unchanged} already matched");
+        /*
+         * Now make the cache agree with the ledger, for every product.
+         *
+         * Products import with stock = 0 and their movements are inserted
+         * directly, which never touches products.stock. Only the branch above
+         * wrote it, as a side effect of recordMovement — so a product whose
+         * Supabase movement history was already complete kept a cached zero and
+         * read as OUT OF STOCK at the till, while its ledger said forty. Found
+         * in rehearsal, on exactly the two products that had full history.
+         */
+        $synced = 0;
+        foreach (DB::table('stores')->pluck('id') as $storeId) {
+            $synced += $this->inventory->reconcileStore($storeId);
+        }
 
-        return ['adjusted' => $adjusted, 'already_correct' => $unchanged];
+        ($this->log)("stock_reconcile: {$adjusted} products adjusted, {$unchanged} already matched, {$synced} caches synced");
+
+        return ['adjusted' => $adjusted, 'already_correct' => $unchanged, 'caches_synced' => $synced];
     }
 
     /**

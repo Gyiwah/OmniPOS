@@ -4,6 +4,17 @@
          bootstrap="vendor/autoload.php"
          colors="true">
     <testsuites>
+        <!--
+            Unit first: it needs no database and fails in under a second, so a
+            broken mapping is reported before the Feature suite spends half a
+            minute proving the same thing.
+
+            This directory was not listed at all, so tests in it were silently
+            never run — the suite reported green over a file it had not opened.
+        -->
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
         </testsuite>

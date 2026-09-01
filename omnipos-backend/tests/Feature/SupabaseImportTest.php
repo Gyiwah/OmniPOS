@@ -28,6 +28,8 @@ class SupabaseImportTest extends TestCase
     private const CUSTOMER = '0192aaaa-0000-7000-8000-000000000005';
     private const PRODUCT_A = '0192aaaa-0000-7000-8000-00000000000a';
     private const PRODUCT_B = '0192aaaa-0000-7000-8000-00000000000b';
+    /** Movements already sum to the quantity Supabase reported, so nothing is adjusted. */
+    private const PRODUCT_C = '0192aaaa-0000-7000-8000-00000000000c';
     private const ORDER_CASH = '0192aaaa-0000-7000-8000-0000000000c1';
     private const ORDER_SPLIT = '0192aaaa-0000-7000-8000-0000000000c2';
 
@@ -186,8 +188,22 @@ class SupabaseImportTest extends TestCase
 
         DB::statement("insert into legacy.products values
             (?, ?, 'Widget A', 'SKU-A', null, 10, 6, 40, 5, null, '{\"tag1\",\"tag2\"}', null, true, ?, ?),
-            (?, ?, 'Widget B', 'SKU-B', null, 25, 15, 7, 5, null, '{}', null, true, ?, ?)",
-            [self::PRODUCT_A, self::STORE, $now, $now, self::PRODUCT_B, self::STORE, $now, $now]);
+            (?, ?, 'Widget B', 'SKU-B', null, 25, 15, 7, 5, null, '{}', null, true, ?, ?),
+            (?, ?, 'Widget C', 'SKU-C', null, 5, 3, 12, 5, null, '{}', null, true, ?, ?)",
+            [self::PRODUCT_A, self::STORE, $now, $now, self::PRODUCT_B, self::STORE, $now, $now,
+             self::PRODUCT_C, self::STORE, $now, $now]);
+
+        /*
+         * C's one movement already sums to the 12 Supabase reports, so
+         * reconciliation posts nothing for it — which is exactly the branch that
+         * used to leave products.stock at zero while the ledger said twelve.
+         */
+        DB::table('legacy.stock_movements')->insert([
+            ['id' => '0192aaaa-0000-7000-8000-00000000e3c3', 'store_id' => self::STORE,
+                'product_id' => self::PRODUCT_C, 'batch_id' => null, 'type' => 'STOCK_IN',
+                'quantity' => 12, 'quantity_before' => 0, 'quantity_after' => 12,
+                'reason' => 'Delivery', 'notes' => null, 'created_at' => $now],
+        ]);
 
         // Two historical movements for A: a sale of 3 and a stock-in of 10.
         // A's stock in Supabase is 40, so the ledger must be topped up by 33.
@@ -294,6 +310,33 @@ class SupabaseImportTest extends TestCase
         $b = Product::find(self::PRODUCT_B);
         $this->assertSame(7, (int) $b->stock);
         $this->assertSame(7.0, $inventory->ledgerBalance(self::PRODUCT_B));
+    }
+
+    /**
+     * The bug a rehearsal found and this suite did not.
+     *
+     * Products import with stock = 0 and their movements are inserted directly,
+     * which never touches products.stock. Only the adjusting branch wrote it, as
+     * a side effect of recordMovement — so a product whose Supabase history was
+     * already complete kept a cached zero and read as OUT OF STOCK at the till
+     * while its ledger said twelve.
+     *
+     * The old fixture missed it because both its products needed an adjustment.
+     */
+    public function test_a_product_needing_no_adjustment_still_gets_its_cached_stock(): void
+    {
+        $this->runAll();
+
+        $c = Product::find(self::PRODUCT_C);
+
+        $this->assertSame(12, (int) $c->stock, 'the cache must be written even when nothing was adjusted');
+        $this->assertSame(12.0, app(InventoryService::class)->ledgerBalance(self::PRODUCT_C));
+
+        // And no adjusting movement was invented for it.
+        $this->assertSame(
+            0,
+            DB::table('stock_movements')->where('product_id', self::PRODUCT_C)->where('type', 'AUDIT')->count(),
+        );
     }
 
     public function test_payments_are_synthesised_and_split_tender_is_not_filed_as_cash(): void

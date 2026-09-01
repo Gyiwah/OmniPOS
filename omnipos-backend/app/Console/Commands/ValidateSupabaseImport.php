@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Migration\LegacyStatus;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -84,6 +85,19 @@ class ValidateSupabaseImport extends Command
             }
 
             $target = DB::table($table)->count();
+
+            /*
+             * The reconciliation step posts its own AUDIT movements to make the
+             * ledger sum to the quantity Supabase reported, so the target
+             * legitimately holds more rows than the source. Counting them as a
+             * mismatch made this command fail every single successful migration
+             * — and a gate that always fails is a gate nobody reads.
+             */
+            if ($table === 'stock_movements') {
+                $target = DB::table($table)->where('source_type', '!=', 'migration')
+                    ->orWhereNull('source_type')->count();
+            }
+
             $ok = $source === $target;
             if (! $ok) {
                 $this->failed = true;
@@ -107,6 +121,26 @@ class ValidateSupabaseImport extends Command
         $this->table(['table', 'supabase', 'omnipos', 'result'], $rows);
     }
 
+    /**
+     * Every legacy status the importer turns into `completed`.
+     *
+     * Derived from the mapping itself rather than listed here, so the two cannot
+     * drift — which is the mistake that made the pre-flight promise a mapping
+     * the importer did not perform.
+     *
+     * @return array<int, string>
+     */
+    private function statusesMeaningCompleted(): array
+    {
+        $distinct = DB::connection('supabase')->table('orders')->distinct()->pluck('status');
+
+        return $distinct
+            ->filter(fn ($s) => LegacyStatus::map($s) === 'completed')
+            ->map(fn ($s) => strtolower(trim((string) $s)))
+            ->values()
+            ->all();
+    }
+
     private function financials(): void
     {
         $storeFilter = $this->option('store');
@@ -114,8 +148,24 @@ class ValidateSupabaseImport extends Command
         $scope = fn ($q) => $storeFilter ? $q->where('store_id', $storeFilter) : $q;
 
         $checks = [
+            /*
+             * Compared like with like.
+             *
+             * The importer maps legacy statuses onto the four this schema has,
+             * and part_paid becomes completed — the goods left the shop, and the
+             * unpaid remainder is carried as amount_paid < total rather than as
+             * a status. Summing Supabase's literal 'completed' against the
+             * target's therefore differs by exactly the credit sales, and
+             * reported a failure on a migration that had lost nothing.
+             *
+             * So the source side is summed over every status that maps to
+             * completed. A sale that actually went missing still shows.
+             */
             'gross sales (completed)' => [
-                fn () => $scope(DB::connection('supabase')->table('orders')->where('status', 'completed'))->sum('total'),
+                fn () => $scope(
+                    DB::connection('supabase')->table('orders')
+                        ->whereIn(DB::raw('lower(status)'), $this->statusesMeaningCompleted())
+                )->sum('total'),
                 fn () => $scope(DB::table('orders')->where('status', 'completed'))->sum('total'),
             ],
             'amount paid' => [
