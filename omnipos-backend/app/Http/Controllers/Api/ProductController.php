@@ -176,7 +176,12 @@ class ProductController extends Controller
         $model = $this->find($request, $product);
 
         return \App\Http\Resources\StockMovementResource::collection(
-            $model->movements()->with('product')->latest('created_at')->paginate($this->perPage($request))
+            // Tie-broken on the id, which is a UUIDv7 and therefore ordered by
+            // the millisecond it was minted. created_at alone has one-second
+            // resolution here, so two movements in the same second came back in
+            // arbitrary order — and a ledger read out of sequence shows running
+            // balances that appear to contradict each other.
+            $model->movements()->with('product')->latest('created_at')->latest('id')->paginate($this->perPage($request))
         );
     }
 

@@ -14,6 +14,9 @@ const NAV = [
   { to: "/customers", label: "Customers" },
   { to: "/settings", label: "Settings", roles: ["admin", "manager"] },
   { to: "/sync", label: "Sync" },
+  // Only a platform administrator. `can` grants super_admin everything, so the
+  // role is named explicitly rather than relying on that.
+  { to: "/platform", label: "Platform", superAdminOnly: true },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -60,7 +63,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="shell-nav">
-          {NAV.filter((item) => !item.roles || can(item.roles)).map((item) => (
+          {NAV.filter((item) => {
+            if ("superAdminOnly" in item) return user?.is_super_admin === true;
+            return !item.roles || can(item.roles);
+          }).map((item) => (
             <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => (isActive ? "active" : "")}>
               {item.label}
               {item.to === "/sync" && conflicts.length > 0 && <span className="badge badge-error">{conflicts.length}</span>}

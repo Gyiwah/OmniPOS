@@ -252,14 +252,43 @@ sold before a cost price was recorded are excluded from both sides — the margi
 is accurate for what it covers and covers less of the business than a bare
 "revenue" would imply.
 
+## Corrections, counts and the ledger
+
+**Voiding** is online-only, which is the opposite of the rule for selling — and
+the difference is who is waiting. A cashier with a customer at the counter cannot
+wait for a network; a manager correcting yesterday's mistake can. A void reverses
+stock and a balance across the whole store, and only the server knows what has
+happened to that sale since. The dialog says plainly that voiding does not return
+the money: it corrects the books, and somebody still has to hand the cash over.
+
+**Stock takes** send the counted total, not the difference. The server works out
+each delta and posts a movement for it, so a count made against a stale local
+figure still lands correctly. An empty box means "not counted", which is a
+different thing from zero — sending every product as zero would write the
+catalogue off.
+
+**Product history** is the ledger behind a stock number, which is the only way to
+answer "why does it say 12 when there are 9 on the shelf". It needs a connection
+on purpose: this device only ever saw its own movements, and a local-only history
+would be the same partial view that caused the disagreement.
+
+**Statements** interleave charges and payments in the order they happened, with a
+running balance. Server-side, because a customer buys at one counter and settles
+at another — a statement built from one device would show charges without their
+payments, and someone would ask for money already handed over.
+
 ## Not built yet
 
 - ESC/POS printing over a local connection. Receipts print through the browser
   today, which works on whatever hardware the shop already has; the plan calls
   for direct ESC/POS eventually.
-- Editing categories.
-- Product images from the web. The API supports uploads; mobile does them.
-- A super-admin area on the web. Mobile has one.
+
+Every other server endpoint now has a client. Six are deliberately unused:
+`customers/{id}/payments` and `customers/{id}/orders` are covered by the sync
+`payments` entity and the statement; `inventory/low-stock` and `oversold` by the
+inventory report; and `orders/{id}/receipt` and `register-shifts/{id}/z-report`
+are built locally so they work with no connection, which is when a receipt and a
+drawer count are most needed.
 
 ## Verified end to end
 

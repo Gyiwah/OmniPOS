@@ -441,3 +441,11 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
 @media (max-width: 640px) {
   .form-row, .form-row.three { grid-template-columns: 1fr; }
 }
+
+/* A history or statement is a table, and 30rem of modal turns every row into
+   three. These get the width the content actually needs. */
+.modal-wide { width: min(52rem, 100%); }
+
+/* Anchor-as-button, so a link can sit next to real buttons without looking
+   like stray text among them. */
+a.secondary-button { text-decoration: none; display: inline-block; }

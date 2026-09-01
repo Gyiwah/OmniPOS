@@ -5,6 +5,8 @@ import { db, type LocalProduct } from "@/db/schema";
 import { formatMoney, toMinor } from "@/features/pos/cart";
 import { useSession } from "@/state/session";
 import { useSync } from "@/state/sync";
+import { Link } from "react-router-dom";
+import { ProductDetail } from "./ProductDetail";
 import { ProductForm } from "./ProductForm";
 import { StockAdjustForm } from "./StockAdjustForm";
 
@@ -26,6 +28,7 @@ export function ProductsPage() {
   const [lowOnly, setLowOnly] = useState(false);
   const [editing, setEditing] = useState<LocalProduct | "new" | null>(null);
   const [adjusting, setAdjusting] = useState<LocalProduct | null>(null);
+  const [inspecting, setInspecting] = useState<LocalProduct | null>(null);
 
   // Only admins and managers may write products; the server's handler refuses
   // a cashier outright, so offering them the button would only produce a
@@ -66,7 +69,10 @@ export function ProductsPage() {
             Low stock only
           </label>
           {canEdit && (
-            <button type="button" className="pay-button" onClick={() => setEditing("new")}>Add product</button>
+            <>
+              <Link to="/stock-take" className="secondary-button">Stock take</Link>
+              <button type="button" className="pay-button" onClick={() => setEditing("new")}>Add product</button>
+            </>
           )}
         </div>
       </header>
@@ -91,6 +97,9 @@ export function ProductsPage() {
               <td className="muted">{p.reorder_level}</td>
               {canEdit && (
                 <td className="row-actions">
+                  {/* The ledger answers "why does it say 12 when there are 9
+                      on the shelf", which is otherwise unanswerable here. */}
+                  <button type="button" className="link" onClick={() => setInspecting(p)}>History</button>
                   <button type="button" className="link" onClick={() => setEditing(p)}>Edit</button>
                   <button type="button" className="link" onClick={() => setAdjusting(p)}>Adjust stock</button>
                 </td>
@@ -111,6 +120,8 @@ export function ProductsPage() {
           onSaved={afterWrite}
         />
       )}
+
+      {inspecting && <ProductDetail product={inspecting} onClose={() => setInspecting(null)} />}
 
       {adjusting && storeId && (
         <StockAdjustForm

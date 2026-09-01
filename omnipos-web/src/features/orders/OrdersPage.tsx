@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Link } from "react-router-dom";
 
 import { db, type LocalOrder } from "@/db/schema";
 import { formatMoney, toMinor } from "@/features/pos/cart";
 import { useSession } from "@/state/session";
+import { useSync } from "@/state/sync";
+import { VoidDialog } from "./VoidDialog";
 
 /**
  * Recent sales from this till.
@@ -15,6 +18,12 @@ import { useSession } from "@/state/session";
 export function OrdersPage() {
   const storeId = useSession((s) => s.storeId);
   const currency = useSession((s) => s.store?.currency) ?? "GHS";
+  const can = useSession((s) => s.can);
+
+  // Voiding reverses stock and a customer's balance across the whole store, so
+  // it is a manager's decision, matching the server's own policy.
+  const mayVoid = can(["admin", "manager"]);
+  const [voiding, setVoiding] = useState<LocalOrder | null>(null);
 
   const orders = useLiveQuery(
     async () => {
@@ -58,9 +67,13 @@ export function OrdersPage() {
                   {o._state === "clean" && <span className="pill pill-online">Synced</span>}
                   {o._state === "conflict" && <span className="pill pill-offline">Needs a decision</span>}
                   {o._state === "discarded" && <span className="pill pill-discarded">Discarded</span>}
+                  {o.status === "voided" && <span className="pill pill-discarded">Voided</span>}
                 </td>
                 <td className="row-actions">
                   <Link to={`/receipt/${o.id}`}>Receipt</Link>
+                  {mayVoid && o.status !== "voided" && o._state !== "discarded" && (
+                    <button type="button" className="link danger" onClick={() => setVoiding(o)}>Void</button>
+                  )}
                 </td>
               </tr>
             );
@@ -69,6 +82,18 @@ export function OrdersPage() {
       </table>
 
       {orders.length === 0 && <p className="muted">No sales yet on this till.</p>}
+
+      {voiding && (
+        <VoidDialog
+          order={voiding}
+          currency={currency}
+          onClose={() => setVoiding(null)}
+          onVoided={() => {
+            setVoiding(null);
+            if (storeId) void useSync.getState().sync(storeId);
+          }}
+        />
+      )}
     </div>
   );
 }

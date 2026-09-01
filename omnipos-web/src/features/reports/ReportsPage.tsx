@@ -299,13 +299,52 @@ type InventoryResponse = {
   expiring_batches: Array<{ id: string; name: string; batch_number: string | null; quantity: number; expiry_date: string }>;
 };
 
+type ValuationResponse = {
+  products: number;
+  units: number;
+  value_at_cost: string;
+  value_at_retail: string;
+  potential_margin: string;
+};
+
 function InventoryReport() {
+  const currency = useSession((s) => s.store?.currency) ?? "GHS";
+  const can = useSession((s) => s.can);
   const { data, error, isLoading } = useReport<InventoryResponse>("/api/reports/inventory", ["report-inventory"]);
+
+  // Cost prices across the whole catalogue disclose supplier pricing, so the
+  // server restricts this to roles that may see cost. A cashier simply does not
+  // see the section rather than seeing an error.
+  const valuation = useQuery({
+    queryKey: ["valuation"],
+    queryFn: () => api.get<ValuationResponse>("/api/inventory/valuation"),
+    enabled: can(["admin", "manager"]),
+    retry: false,
+  });
 
   if (!data) return <ReportState error={error} isLoading={isLoading} />;
 
   return (
     <>
+      {valuation.data && (
+        <>
+          <h2 className="settings-subhead">What the stock is worth</h2>
+          <div className="kpi-grid">
+            <Kpi label="At cost" value={formatMoney(toMinor(valuation.data.value_at_cost), currency)} />
+            <Kpi label="At retail" value={formatMoney(toMinor(valuation.data.value_at_retail), currency)} />
+            <Kpi label="Margin in stock" value={formatMoney(toMinor(valuation.data.potential_margin), currency)} />
+            <Kpi label="Units" value={`${valuation.data.units} across ${valuation.data.products}`} />
+          </div>
+          {/* Retail value is what the shelves would fetch if everything sold at
+              list. It is not money the shop has, and labelling it plainly stops
+              it being read as one. */}
+          <p className="conflict-hint">
+            Retail value assumes everything sells at full price. It is what the shelves could fetch, not what the
+            shop holds.
+          </p>
+        </>
+      )}
+
       {/*
         Oversold first. Negative stock means the shelf and the books already
         disagree, which is a today problem; a reorder level is a next-week one.

@@ -320,6 +320,108 @@ class ResourceControllerTest extends TestCase
         ]);
     }
 
+    /**
+     * A sale entered twice moved stock once, not twice. Restocking a void of the
+     * duplicate would invent inventory that was never on the shelf.
+     */
+    public function test_a_void_can_leave_the_stock_alone(): void
+    {
+        $product = $this->makeProduct();
+        app(InventoryService::class)->recordMovement((string) Str::uuid7(), $product, 'STOCK_IN', 10, 'Delivery');
+
+        $order = Order::create([
+            'store_id' => $this->store->id,
+            'cashier_user_id' => $this->cashier->id,
+            'order_number' => 'V-3', 'status' => 'completed',
+            'subtotal' => 20, 'total' => 20, 'amount_paid' => 20,
+            'client_created_at' => now(),
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id, 'store_id' => $this->store->id, 'product_id' => $product->id,
+            'product_name' => 'Widget', 'unit_price' => 10, 'quantity' => 2, 'line_total' => 20,
+        ]);
+
+        $this->as($this->manager)->postJson("/api/orders/{$order->id}/void", [
+            'reason' => 'Duplicate entry', 'restock' => false,
+        ])->assertOk()->assertJsonPath('restocked', false);
+
+        $this->assertSame('voided', $order->refresh()->status);
+        $this->assertSame(10, (int) $product->refresh()->stock, 'nothing should have been put back');
+    }
+
+    /** Voiding twice would restock twice, inventing stock out of a second click. */
+    public function test_an_order_cannot_be_voided_twice(): void
+    {
+        $order = Order::create([
+            'store_id' => $this->store->id,
+            'cashier_user_id' => $this->cashier->id,
+            'order_number' => 'V-4', 'status' => 'completed',
+            'subtotal' => 10, 'total' => 10, 'client_created_at' => now(),
+        ]);
+
+        $this->as($this->manager)->postJson("/api/orders/{$order->id}/void", ['reason' => 'first'])->assertOk();
+
+        $this->as($this->manager)->postJson("/api/orders/{$order->id}/void", ['reason' => 'second'])
+            ->assertStatus(422);
+    }
+
+    public function test_a_void_requires_a_reason(): void
+    {
+        $order = Order::create([
+            'store_id' => $this->store->id,
+            'cashier_user_id' => $this->cashier->id,
+            'order_number' => 'V-5', 'status' => 'completed',
+            'subtotal' => 10, 'total' => 10, 'client_created_at' => now(),
+        ]);
+
+        $this->as($this->manager)->postJson("/api/orders/{$order->id}/void", [])->assertStatus(422);
+        $this->assertSame('completed', $order->refresh()->status);
+    }
+
+    /**
+     * The ledger is the evidence behind a stock figure, and reading it is how
+     * anyone answers "why does it say 12 when there are 9 on the shelf".
+     */
+    public function test_a_products_movement_history_is_readable(): void
+    {
+        $product = $this->makeProduct();
+        $inventory = app(InventoryService::class);
+
+        $inventory->recordMovement((string) Str::uuid7(), $product, 'STOCK_IN', 10, 'Delivery');
+        $inventory->recordMovement((string) Str::uuid7(), $product, 'SALE', -3, 'Sale');
+
+        $response = $this->as($this->manager)->getJson("/api/products/{$product->id}/movements")->assertOk();
+
+        $rows = collect($response->json('data'));
+
+        $this->assertCount(2, $rows);
+        // Newest first, and each row carries the running balance it produced.
+        $this->assertSame('SALE', $rows->first()['type']);
+        $this->assertSame('7.00', (string) $rows->first()['quantity_after']);
+    }
+
+    public function test_batches_can_be_filtered_to_one_product(): void
+    {
+        $product = $this->makeProduct();
+        $other = $this->makeProduct();
+
+        \App\Models\ProductBatch::create([
+            'store_id' => $this->store->id, 'product_id' => $product->id,
+            'batch_number' => 'B-1', 'quantity' => 12, 'expiry_date' => now()->addDays(20)->toDateString(),
+        ]);
+        \App\Models\ProductBatch::create([
+            'store_id' => $this->store->id, 'product_id' => $other->id,
+            'batch_number' => 'B-2', 'quantity' => 5,
+        ]);
+
+        $response = $this->as($this->manager)
+            ->getJson("/api/inventory/batches?product_id={$product->id}")
+            ->assertOk();
+
+        $this->assertCount(1, $response->json('data'));
+        $this->assertSame('B-1', $response->json('data.0.batch_number'));
+    }
+
     public function test_a_cashier_cannot_void_an_order(): void
     {
         $order = Order::create([

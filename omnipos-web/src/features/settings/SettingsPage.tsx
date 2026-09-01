@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api, ApiError } from "@/api/client";
 import { useSession } from "@/state/session";
+import { CategoriesSection } from "./CategoriesSection";
 import { StaffSection } from "./StaffSection";
 
 type StoreSettings = {
@@ -62,6 +63,7 @@ export function SettingsPage() {
       </header>
 
       <StoreDetails settings={data} canEdit={isAdmin} />
+      <CategoriesSection />
       <StaffSection />
     </div>
   );

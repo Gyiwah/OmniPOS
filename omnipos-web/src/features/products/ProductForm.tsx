@@ -3,6 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 
 import { db, type LocalCategory, type LocalProduct } from "@/db/schema";
 import { toMinor } from "@/features/pos/cart";
+import { uploadProductImage } from "./imageUpload";
 import { saveProduct, suggestSku } from "./service";
 
 type Props = {
@@ -32,6 +33,8 @@ export function ProductForm({ storeId, currency, product, onClose, onSaved }: Pr
   const [active, setActive] = useState(product?.is_active ?? true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [image, setImage] = useState<File | null>(null);
+  const [imageUrl, setImageUrl] = useState(product?.image_url ?? null);
 
   const categories = useLiveQuery(
     () => db.categories.where("store_id").equals(storeId).sortBy("position"),
@@ -59,6 +62,20 @@ export function ProductForm({ storeId, currency, product, onClose, onSaved }: Pr
         },
         product,
       );
+      // Uploaded after the save, because the server files it under the
+      // product's id and a new product does not have one until it exists. A
+      // failure here is reported but does not undo the save — the product is
+      // real, it simply has no picture yet.
+      if (image) {
+        try {
+          setImageUrl(await uploadProductImage({ storeId, productId: saved.id, file: image }));
+        } catch (uploadError) {
+          setError(uploadError instanceof Error ? uploadError.message : "Saved, but the image did not upload.");
+          setBusy(false);
+          return;
+        }
+      }
+
       onSaved(saved);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save the product.");
@@ -112,6 +129,19 @@ export function ProductForm({ storeId, currency, product, onClose, onSaved }: Pr
             </select>
           </div>
         </div>
+
+        <label htmlFor="p-image">Picture</label>
+        <input
+          id="p-image"
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          onChange={(e) => setImage(e.target.files?.[0] ?? null)}
+        />
+        {image ? (
+          <p className="muted">{image.name} will be uploaded when you save.</p>
+        ) : imageUrl ? (
+          <p className="muted">Has a picture. Choosing a new one replaces it.</p>
+        ) : null}
 
         <label className="checkbox">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />

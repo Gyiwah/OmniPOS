@@ -7,6 +7,7 @@ import { useSession } from "@/state/session";
 import { useSync } from "@/state/sync";
 import { CustomerForm } from "./CustomerForm";
 import { PaymentForm } from "./PaymentForm";
+import { StatementDialog } from "./StatementDialog";
 
 export function CustomersPage() {
   const storeId = useSession((s) => s.storeId);
@@ -16,6 +17,7 @@ export function CustomersPage() {
   const [debtOnly, setDebtOnly] = useState(false);
   const [editing, setEditing] = useState<LocalCustomer | "new" | null>(null);
   const [settling, setSettling] = useState<LocalCustomer | null>(null);
+  const [statement, setStatement] = useState<LocalCustomer | null>(null);
 
   const customers = useLiveQuery(
     async () => {
@@ -71,6 +73,7 @@ export function CustomersPage() {
               </td>
               <td>{c._state === "pending" && <span className="pill pill-pending">Queued</span>}</td>
               <td className="row-actions">
+                <button type="button" className="link" onClick={() => setStatement(c)}>Statement</button>
                 {/* Only offered where there is something to settle. */}
                 {Number(c.outstanding_balance) > 0 && (
                   <button type="button" className="link" onClick={() => setSettling(c)}>Take payment</button>
@@ -83,6 +86,8 @@ export function CustomersPage() {
       </table>
 
       {customers.length === 0 && <p className="muted">No customers match.</p>}
+
+      {statement && <StatementDialog customer={statement} onClose={() => setStatement(null)} />}
 
       {settling && storeId && (
         <PaymentForm
