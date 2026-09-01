@@ -219,13 +219,47 @@ another till's sales.
 **Multi-store switching** appears in the header only for someone who belongs to
 more than one store.
 
+## Settling a customer's account
+
+Both clients could put a customer into debt and neither could take them out of
+it. Debt only ever grew.
+
+Settlements go through the sync queue rather than the REST endpoint, because
+taking cash across a counter cannot depend on a connection. They are cash in the
+drawer, so they reach the reconciliation — but as their own line, never folded
+into sales. A debt paid today is money in the box; it is not trade done today,
+and adding it to the day's takings would report business the shop never did.
+
+Overpayment is refused rather than held as credit. It is almost always a typo at
+a counter, and the money is easier to hand back now than to explain on a
+statement later.
+
+## Settings, staff and reports
+
+Settings is deliberately online-only and says so when it cannot reach the server.
+Nobody changes a VAT rate mid-queue, and queueing it offline would let two
+managers set different rates on different devices with no way to tell which was
+meant. Selling, returns and the drawer keep working regardless.
+
+The staff rules live on the server and are only reflected in the UI — a manager
+cannot mint an admin, and the last admin cannot be removed or demoted. A shop
+must not be able to lock itself out from a device with a stale idea of who else
+is an admin.
+
+Reports cover every till, which is why every figure comes from the server. The
+profit report names its revenue line "revenue with known cost", because lines
+sold before a cost price was recorded are excluded from both sides — the margin
+is accurate for what it covers and covers less of the business than a bare
+"revenue" would imply.
+
 ## Not built yet
 
 - ESC/POS printing over a local connection. Receipts print through the browser
   today, which works on whatever hardware the shop already has; the plan calls
   for direct ESC/POS eventually.
-- Taking a payment against a customer's outstanding balance.
 - Editing categories.
+- Product images from the web. The API supports uploads; mobile does them.
+- A super-admin area on the web. Mobile has one.
 
 ## Verified end to end
 

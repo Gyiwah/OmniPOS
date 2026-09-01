@@ -6,6 +6,7 @@ import { useSync } from "@/state/sync";
 const NAV = [
   { to: "/", label: "POS", end: true },
   { to: "/dashboard", label: "Dashboard", roles: ["admin", "manager"] },
+  { to: "/reports", label: "Reports" },
   { to: "/orders", label: "Orders" },
   { to: "/returns", label: "Returns" },
   { to: "/shift", label: "Drawer" },

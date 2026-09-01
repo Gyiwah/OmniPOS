@@ -75,9 +75,7 @@ Seeded accounts (after `php artisan db:seed`) all use the password `password`:
 - Production data has not been migrated. `omnipos-backend/MIGRATION.md` is the
   runbook; the importer is idempotent and meant to be rehearsed first.
 - ESC/POS receipt printing. The web till prints through the browser today.
-- Taking a payment against a customer's outstanding balance, from either client.
-- The mobile app has no conflict-resolution screen. Rejected operations are kept
-  and returned by `pendingConflicts()`, but nothing renders them; a manager
-  settles them from the web till instead.
+- Category management, product images and a super-admin area on the web. The API
+  supports all three; mobile has the last two.
 - A cold offline start of the web PWA has not been executed in a real browser —
   the precache is verified by test, the cache-serving step is not.

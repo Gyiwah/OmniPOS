@@ -12,6 +12,7 @@ import { ReturnsPage } from "@/features/returns/ReturnsPage";
 import { ShiftPage } from "@/features/shifts/ShiftPage";
 import { ReceiptPage } from "@/features/receipt/ReceiptPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
+import { ReportsPage } from "@/features/reports/ReportsPage";
 import { SyncPage } from "@/features/sync/SyncPage";
 import { useSession } from "@/state/session";
 import { startSyncScheduler } from "@/state/sync";
@@ -48,6 +49,7 @@ export default function App() {
         <Route path="/returns" element={<Protected><ReturnsPage /></Protected>} />
         <Route path="/shift" element={<Protected><ShiftPage /></Protected>} />
         <Route path="/receipt/:orderId" element={<Protected><ReceiptPage /></Protected>} />
+        <Route path="/reports" element={<Protected><ReportsPage /></Protected>} />
         <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />
         <Route path="/sync" element={<Protected><SyncPage /></Protected>} />
         <Route path="*" element={<Navigate to="/" replace />} />

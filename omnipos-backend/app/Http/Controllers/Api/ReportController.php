@@ -185,15 +185,25 @@ class ReportController extends Controller
     {
         $storeId = $this->storeId($request);
 
+        // Every column here is qualified because products and product_batches
+        // BOTH carry expiry_date, and Postgres rejects the unqualified name
+        // outright. Unqualified, this endpoint threw on every call — which is
+        // why it went unnoticed until a screen finally asked for it.
         $expiring = DB::table('product_batches')
             ->join('products', 'products.id', '=', 'product_batches.product_id')
             ->where('product_batches.store_id', $storeId)
             ->whereNull('product_batches.deleted_at')
-            ->whereNotNull('expiry_date')
-            ->whereDate('expiry_date', '<=', now()->addDays(30))
-            ->orderBy('expiry_date')
+            ->whereNotNull('product_batches.expiry_date')
+            ->whereDate('product_batches.expiry_date', '<=', now()->addDays(30))
+            ->orderBy('product_batches.expiry_date')
             ->limit(100)
-            ->get(['product_batches.id', 'products.name', 'batch_number', 'quantity', 'expiry_date']);
+            ->get([
+                'product_batches.id',
+                'products.name',
+                'product_batches.batch_number',
+                'product_batches.quantity',
+                'product_batches.expiry_date',
+            ]);
 
         return response()->json([
             'low_stock' => DB::table('products')->where('store_id', $storeId)
