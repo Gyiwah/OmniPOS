@@ -79,6 +79,46 @@ class ReportEndpointTest extends TestCase
             ->assertJsonStructure(['sales', 'profit', 'top_products']);
     }
 
+    /**
+     * A sale rung up offline yesterday and synced today belongs to yesterday in
+     * every figure, including its tender. Windowing payments on server time put
+     * the order's total in one day and its cash in another, so the takings by
+     * method stopped adding up to the day's sales — for exactly the shops that
+     * work offline and most need them to.
+     */
+    public function test_takings_by_method_follow_when_the_money_changed_hands(): void
+    {
+        $yesterday = now()->subDay();
+
+        $order = Order::create([
+            'id' => (string) Str::uuid7(), 'store_id' => $this->store->id,
+            'order_number' => 'OM-'.Str::random(6), 'status' => 'completed',
+            'subtotal' => 40, 'tax' => 0, 'discount' => 0, 'total' => 40,
+            'amount_paid' => 40, 'change_due' => 0, 'payment_method' => 'cash',
+            'cashier_user_id' => $this->cashier->id,
+            'client_created_at' => $yesterday,
+        ]);
+
+        // Recorded on the server today, but taken from the customer yesterday.
+        \App\Models\Payment::create([
+            'id' => (string) Str::uuid7(), 'store_id' => $this->store->id,
+            'order_id' => $order->id, 'received_by_user_id' => $this->cashier->id,
+            'method' => 'cash', 'amount' => 40, 'client_created_at' => $yesterday,
+        ]);
+
+        $today = $this->as($this->manager)->getJson('/api/reports/dashboard')->assertOk();
+        $this->assertSame([], $today->json('payments_by_method'), "yesterday's cash is not today's");
+        $this->assertSame('0', $today->json('sales.gross'));
+
+        $range = $yesterday->toDateString();
+        $then = $this->as($this->manager)->getJson("/api/reports/dashboard?from={$range}&to={$range}")->assertOk();
+
+        $this->assertSame('40.00', $then->json('payments_by_method.cash.total'));
+        // gross comes back unpadded when the sum is an integer; parse rather
+        // than string-compare, as every client does.
+        $this->assertSame(40.0, (float) $then->json('sales.gross'));
+    }
+
     public function test_sales_answers(): void
     {
         $this->as($this->manager)->getJson('/api/reports/sales?group_by=day')

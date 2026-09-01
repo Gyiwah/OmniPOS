@@ -300,10 +300,23 @@ class ReportController extends Controller
             })->all();
     }
 
+    /**
+     * Takings split by tender.
+     *
+     * Windowed on client_created_at — when the money actually changed hands —
+     * not created_at, which is when the server heard about it. Every other
+     * figure in these reports uses the client time, so filtering payments by
+     * server time made them disagree: a sale rung up offline on Monday and
+     * synced on Tuesday put its total in Monday's gross and its tender in
+     * Tuesday's breakdown, and the two stopped adding up for exactly the shops
+     * that most need them to.
+     *
+     * Coalesced because an imported row may predate the column.
+     */
     private function paymentsByMethod(string $storeId, Carbon $from, Carbon $to): array
     {
         return Payment::where('store_id', $storeId)
-            ->whereBetween('created_at', [$from, $to])
+            ->whereRaw('coalesce(client_created_at, created_at) between ? and ?', [$from, $to])
             ->groupBy('method')
             ->selectRaw('method, coalesce(sum(amount), 0) as total, count(*) as count')
             ->get()

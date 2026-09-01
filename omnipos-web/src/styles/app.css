@@ -449,3 +449,8 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
 /* Anchor-as-button, so a link can sit next to real buttons without looking
    like stray text among them. */
 a.secondary-button { text-decoration: none; display: inline-block; }
+
+/* A KPI that links somewhere still has to read as a tile, not as body text
+   with an underline through it. */
+.kpi-link { text-decoration: none; color: inherit; }
+.kpi-link:hover { border-color: var(--accent); }
