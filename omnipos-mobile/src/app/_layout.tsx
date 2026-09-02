@@ -9,12 +9,17 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { database } from "@/src/database";
 import { useAuthBootstrap } from "@/src/hooks/useAuthBootstrap";
 import { useOfflineSyncOrchestrator } from "@/src/hooks/useOfflineSyncOrchestrator";
+import { useStoreProfile } from "@/src/hooks/useStoreProfile";
 import { useBootstrapStore } from "@/src/store/bootstrapStore";
 
 function AppBootstrap({ children }: { children: ReactNode }) {
   useAuthBootstrap();
   const ready = useBootstrapStore((s) => s.ready);
   useOfflineSyncOrchestrator(ready);
+
+  // The shop's own name, email and tax rates, which until now arrived only if
+  // somebody happened to open the Settings screen.
+  useStoreProfile();
 
   if (!ready) {
     return (

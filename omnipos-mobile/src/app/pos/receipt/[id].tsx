@@ -9,7 +9,7 @@ import { Colors } from "@/src/constants/colors";
 import { usePrintReceipt } from "@/src/features/printer/hooks";
 import type { PrintableReceipt } from "@/src/core/printing/receipt";
 import { supabase } from "@/src/services/supabase";
-import { useSettingsStore } from "@/src/store/settingsStore";
+import { useSettingsStore, UNNAMED_STORE } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
 import { toErrorMessage } from "@/src/utils/errors";
 
@@ -244,7 +244,7 @@ export default function ReceiptScreen() {
   async function onShareReceipt() {
     if (!remoteData) return;
     await shareReceiptAsPdf({
-      shopName,
+      shopName: shopName || UNNAMED_STORE,
       orderNumber,
       dateLabel: dateLabel ?? new Date().toLocaleString(),
       data: remoteData,
@@ -310,7 +310,7 @@ export default function ReceiptScreen() {
         </View>
       ) : (
         <ReceiptDocument
-          store={{ name: shopName }}
+          store={{ name: shopName || UNNAMED_STORE }}
           order={{
             orderNumber,
             dateLabel: dateLabel ?? "—",

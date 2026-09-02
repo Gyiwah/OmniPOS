@@ -17,7 +17,7 @@ import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
 import { useManualSync } from "@/src/hooks/useManualSync";
 import { supabase } from "@/src/services/supabase";
-import { useSettingsStore } from "@/src/store/settingsStore";
+import { useSettingsStore, UNNAMED_STORE } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
 import { database } from "@/src/database";
 import type Product from "@/src/database/models/Product";
@@ -374,7 +374,7 @@ export default function HomeScreen() {
   return (
     <>
       <AppScrollScreen
-        title={shopName}
+        title={shopName || UNNAMED_STORE}
         subtitle={`Executive POS Dashboard · ${currency} active`}
         left={
           <Pressable style={styles.shopAvatarBtn} onPress={() => setDrawerOpen(true)} hitSlop={10}>
@@ -415,7 +415,7 @@ export default function HomeScreen() {
                 <View style={styles.liveIndicatorDot} />
                 <Text style={styles.liveTagText}>STORE ONLINE</Text>
               </View>
-              <Text style={styles.heroTitle}>{shopName}</Text>
+              <Text style={styles.heroTitle}>{shopName || UNNAMED_STORE}</Text>
               <Text style={styles.heroSub}>{heroSub}</Text>
             </View>
             <Pressable
@@ -662,8 +662,8 @@ export default function HomeScreen() {
                     <Ionicons name="camera" size={13} color={Colors.white} />
                   </View>
                 </Pressable>
-                <Text style={styles.drawerShopName}>{shopName}</Text>
-                <Text style={styles.drawerShopEmail}>{shopEmail || "contact@omnipos.store"}</Text>
+                <Text style={styles.drawerShopName}>{shopName || UNNAMED_STORE}</Text>
+                {shopEmail ? <Text style={styles.drawerShopEmail}>{shopEmail}</Text> : null}
                 <View style={styles.storeStatusBadge}>
                   <View style={styles.statusDot} />
                   <Text style={styles.storeStatusText}>Active Store</Text>

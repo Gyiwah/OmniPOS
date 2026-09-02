@@ -30,6 +30,7 @@ import type Order from "@/src/database/models/Order";
 import type OrderItem from "@/src/database/models/OrderItem";
 import type Customer from "@/src/database/models/Customer";
 import { usingLaravel } from "@/src/core/api/config";
+import { tenderSuggestions } from "@/src/utils/cartMath";
 
 function symbolFor(currency: string) {
   if (currency === "USD") return "$";
@@ -596,19 +597,15 @@ export default function OrderInfoScreen() {
           >
             <Text style={styles.quickCashText}>Exact ({sym}{total.toFixed(2)})</Text>
           </Pressable>
-          {[10, 20, 50, 100].map((step) => {
-            const suggested = Math.ceil(total / step) * step;
-            if (suggested <= total) return null;
-            return (
-              <Pressable
-                key={`step-${step}`}
-                style={({ pressed }) => [styles.quickCashChip, pressed && { opacity: 0.7 }]}
-                onPress={() => setAmountPaid(suggested)}
-              >
-                <Text style={styles.quickCashText}>{sym}{suggested}</Text>
-              </Pressable>
-            );
-          })}
+          {tenderSuggestions(total).map((suggested) => (
+            <Pressable
+              key={`tender-${suggested}`}
+              style={({ pressed }) => [styles.quickCashChip, pressed && { opacity: 0.7 }]}
+              onPress={() => setAmountPaid(suggested)}
+            >
+              <Text style={styles.quickCashText}>{sym}{suggested}</Text>
+            </Pressable>
+          ))}
         </View>
 
         {/* Change & Balance Indicator */}

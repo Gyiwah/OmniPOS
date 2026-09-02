@@ -30,17 +30,39 @@ type SettingsState = {
   }) => void;
 };
 
+/**
+ * Shown where a shop name is required and the server has not supplied one yet:
+ * a first run, or a till that has never had a connection.
+ *
+ * Deliberately obvious. It reads as a setup step left undone, which is what it
+ * is — unlike a plausible-looking name, which reads as fact and was wrong.
+ */
+export const UNNAMED_STORE = "Unnamed store";
+
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
-      shopName: "Superb Media",
-      shopEmail: "superbmedi63@gmail.com",
+      /*
+       * Blank until the server says otherwise. These are not settings, they are
+       * placeholders for settings that have not arrived yet, and every one of
+       * them used to be a specific shop's real details: a name and a working
+       * personal email address, shipped to every till and printed at the top of
+       * every receipt until somebody opened Settings.
+       *
+       * The rates matter more than the name. A fabricated 2% was applied to
+       * real sales on a till nobody had configured — money taken from a
+       * customer that the shop had never asked for. A rate this app invented is
+       * always wrong; zero is at worst incomplete, and the server supplies the
+       * real one on startup.
+       */
+      shopName: "",
+      shopEmail: "",
       shopLogoUri: null,
       language: "English",
       currency: "GHS",
       appModeDark: false,
-      taxRate: 2,
-      vatRate: 0.02,
+      taxRate: 0,
+      vatRate: 0,
       serviceRate: 0,
       setShopProfile: ({ name, email, logoUri }) =>
         set((s) => ({

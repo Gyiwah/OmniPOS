@@ -21,7 +21,7 @@ import type Product from "@/src/database/models/Product";
 import type SyncQueueItem from "@/src/database/models/SyncQueueItem";
 import { calculateExpiryStatus, getAllStoreBatches } from "@/src/features/inventory/batchService";
 import { resolveProductImageUrl } from "@/src/services/storage";
-import { useSettingsStore } from "@/src/store/settingsStore";
+import { useSettingsStore, UNNAMED_STORE } from "@/src/store/settingsStore";
 import { synchronise } from "@/src/sync";
 import { useStoreSlice } from "@/src/store/storeSlice";
 
@@ -435,7 +435,7 @@ export default function InventoryScreen() {
         onClose={() => setExportModalVisible(false)}
         products={exportProductList}
         currencySymbol={currencySymbol}
-        storeName={shopName}
+        storeName={shopName || UNNAMED_STORE}
       />
 
       {/* Add Product Options Pop-up Modal */}
