@@ -110,7 +110,25 @@ export async function runLaravelSync(storeIdHint?: string | null): Promise<SyncO
     return { ok: true, pushed: pushed.applied, conflicts: pushed.conflicts, pulled };
   } catch (error) {
     if (error instanceof ApiError && error.isUnreachable) {
-      return { ok: false, pushed: 0, conflicts: 0, pulled: 0, reason: "offline" };
+      /*
+       * The device has a network — that was checked above — and the request
+       * still did not arrive. That is NOT the same as being offline, and
+       * calling it so is what made a whole class of failure invisible on
+       * hardware: a platform blocking cleartext HTTP, a firewall, a server
+       * bound to 127.0.0.1, a wrong address. Every one of them showed an
+       * Offline badge on a phone with four bars of Wi-Fi, and the till looked
+       * like it was working.
+       *
+       * The underlying message is carried so the home screen can show what
+       * actually happened rather than a word that is not true.
+       */
+      return {
+        ok: false,
+        pushed: 0,
+        conflicts: 0,
+        pulled: 0,
+        reason: `Cannot reach the server: ${error.message}`,
+      };
     }
     throw error;
   }

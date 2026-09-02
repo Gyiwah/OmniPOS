@@ -35,6 +35,7 @@ const MENU = [
  */
 const LARAVEL_ONLY_MENU = [
   { label: "Rejected Sales", subtitle: "Settle sales the server refused", route: "/sync/conflicts", icon: "alert-circle-outline" as const },
+  { label: "Device Check", subtitle: "Diagnose this device against the server", route: "/settings/diagnostics", icon: "pulse-outline" as const },
 ];
 
 const LANGUAGES = ["English", "French", "Spanish"] as const;

@@ -119,7 +119,23 @@ them yet. The web till has the full flow — including a manager settling anothe
 till's conflict remotely — and the mobile equivalent is outstanding.
 
 **Not verified on hardware.** Everything above was proven against local servers,
-not against a phone on a real network.
+not against a phone on a real network. `HARDWARE-TEST.md` is the procedure, and
+Settings → Device Check is the first step of it.
+
+Three things that would have made a first device session unproductive have been
+fixed without one:
+
+- **Plain HTTP was blocked before any request left the app.** Android 9+ refuses
+  cleartext and iOS refuses it through ATS, so a LAN address over `http://` fails
+  at the platform. `app.config.ts` now allows it for non-production builds only.
+- **That failure was reported as "offline".** A request that fails while the
+  device *has* a network is not the same as having no network, and calling it so
+  covered a blocked scheme, a firewall, a server bound to 127.0.0.1 and a wrong
+  address — each showing an Offline badge on a phone with four bars.
+- **Nothing was reported at all on a Laravel build.** Only the Supabase engine
+  wrote to the sync store, so the status stayed idle for ever and the home
+  screen's error line never rendered. A till whose sync had failed all day looked
+  like one with nothing to send.
 
 ---
 

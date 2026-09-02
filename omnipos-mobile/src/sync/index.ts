@@ -1,6 +1,7 @@
 import { usingLaravel } from "@/src/core/api/config";
 import { runSyncCycle } from "./syncEngine";
 import { runLaravelSync } from "./laravelSync";
+import { useSyncStore } from "@/src/store/syncStore";
 
 /**
  * The single entry point the app calls to synchronise.
@@ -25,10 +26,43 @@ export type SyncSummary = {
   lastError?: string;
 };
 
+/**
+ * Report the outcome so a person can see it.
+ *
+ * Only the Supabase engine ever wrote to this store, so on a Laravel build the
+ * status stayed "idle" for ever and the home screen's error line — which is
+ * conditional on it — never rendered. A till whose sync had been failing for a
+ * day looked exactly like one that had nothing to send.
+ *
+ * Done here rather than in either transport, because this is the one place both
+ * of them pass through.
+ */
+function report(summary: SyncSummary): SyncSummary {
+  const store = useSyncStore.getState();
+
+  if (summary.ok) {
+    store.setSyncStatus("idle");
+    store.setLastError(null);
+    return summary;
+  }
+
+  /*
+   * Genuinely having no network is not an error to shout about — a till is
+   * expected to work offline, and colouring that red would train people to
+   * ignore the colour. Anything else is worth someone's attention.
+   */
+  const merelyOffline = summary.reason === "offline";
+
+  store.setSyncStatus(merelyOffline ? "idle" : "error");
+  store.setLastError(merelyOffline ? null : (summary.lastError ?? summary.reason ?? "Sync failed"));
+
+  return summary;
+}
+
 export async function synchronise(storeIdHint?: string | null): Promise<SyncSummary> {
   if (usingLaravel) {
     const result = await runLaravelSync(storeIdHint);
-    return {
+    return report({
       ok: result.ok,
       pushed: result.pushed,
       failed: 0,
@@ -36,7 +70,7 @@ export async function synchronise(storeIdHint?: string | null): Promise<SyncSumm
       pulled: result.pulled,
       reason: result.reason,
       lastError: result.ok ? undefined : result.reason,
-    };
+    });
   }
 
   const result = await runSyncCycle(storeIdHint);
