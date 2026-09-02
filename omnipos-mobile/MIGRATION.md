@@ -113,8 +113,24 @@ migrate onto:
 
 ## Not done
 
-**Bluetooth receipt printing** has never been exercised against real hardware on
-a Laravel build.
+**Bluetooth receipt printing** now encodes ESC/POS in `src/core/printing`, the
+same module the web till uses — byte-for-byte, with a test that fails the build
+if the two copies drift. Bytes go straight to the native `printRaw`, replacing a
+block format only the printer library understood.
+
+Two bugs came out of that:
+
+- **Receipts printed today's tax rates, not what the sale was charged.** The
+  layout derived subtotal, tax and total from the store's current rates, so a
+  receipt reprinted after a VAT change showed the new rate applied to an old
+  sale. The stored figures now win, on the printed receipt, the on-screen one
+  and the PDF alike.
+- **The cedi sign printed as `?`.** It is in no printer code page, so every line
+  of a Ghanaian receipt read `?16.00`. Only the dollar happened to survive —
+  correct on the one currency a developer is most likely to test with. Receipts
+  use the currency code now, as the web till already did.
+
+It has still never been sent to an actual printer.
 
 **Background sync** while the app is not in the foreground is untested.
 

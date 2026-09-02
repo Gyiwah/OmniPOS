@@ -25,6 +25,21 @@ export type ReceiptData = {
   discountMode: "percentage" | "amount";
   discountValue: number;
   amountPaid: number;
+  /**
+   * The figures the sale was actually booked at.
+   *
+   * Everything below them — the rates — is kept only for display. Deriving the
+   * totals from those rates printed today's VAT on a sale made before it
+   * changed, and could differ by a penny from what the customer paid whenever
+   * rounding fell differently. Where these are present they win.
+   */
+  charged?: {
+    subtotal: number;
+    discount: number;
+    tax: number;
+    total: number;
+    changeDue: number;
+  };
   customerName?: string | null;
   customerPhone?: string | null;
   shippingAddress?: string | null;
@@ -88,14 +103,25 @@ export function ReceiptDocument({ order, store, data, onPrint, onShare }: Receip
   const sourceCurrency = data?.currency ?? settings.currency;
   const sym = currencySymbol(sourceCurrency);
 
-  const subtotal = sourceLines.reduce((sum: number, line: ReceiptLine) => sum + (Number(line.price) || 0) * (Number(line.quantity) || 0), 0);
-  const discount = sourceDiscountMode === "percentage" ? subtotal * (sourceDiscountValue / 100) : sourceDiscountValue;
-  const base = Math.max(0, subtotal - discount);
-  const tax = base * (sourceTaxRate / 100);
-  const vat = base * (sourceVatRate / 100);
-  const service = base * (sourceServiceRate / 100);
-  const total = base + tax + vat + service;
-  const change = Math.max(0, sourceAmountPaid - total);
+  const charged = data?.charged;
+
+  const derivedSubtotal = sourceLines.reduce(
+    (sum: number, line: ReceiptLine) => sum + (Number(line.price) || 0) * (Number(line.quantity) || 0),
+    0,
+  );
+  const derivedDiscount =
+    sourceDiscountMode === "percentage" ? derivedSubtotal * (sourceDiscountValue / 100) : sourceDiscountValue;
+  const derivedBase = Math.max(0, derivedSubtotal - derivedDiscount);
+  const vat = derivedBase * (sourceVatRate / 100);
+  const service = derivedBase * (sourceServiceRate / 100);
+
+  // What was charged, wherever it is known. The derivation is the fallback for
+  // an old record that predates these fields being carried.
+  const subtotal = charged?.subtotal ?? derivedSubtotal;
+  const discount = charged?.discount ?? derivedDiscount;
+  const tax = charged?.tax ?? derivedBase * (sourceTaxRate / 100);
+  const total = charged?.total ?? derivedBase + tax + vat + service;
+  const change = charged?.changeDue ?? Math.max(0, sourceAmountPaid - total);
 
   const orderNum = order?.orderNumber ?? "—";
   const dateStr = order?.dateLabel ?? new Date().toLocaleString();

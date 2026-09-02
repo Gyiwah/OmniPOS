@@ -13,18 +13,27 @@ export type ReceiptPdfProps = {
 
 export function buildReceiptHtml({ shopName, orderNumber, dateLabel, data }: ReceiptPdfProps): string {
   const sym = data.currency === "USD" ? "$" : data.currency === "NGN" ? "₦" : "₵";
-  const subtotal = data.lines.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
-  const discount =
+  // What was charged wins over what can be derived. See ReceiptData.charged.
+  const charged = data.charged;
+  const derivedSubtotal = data.lines.reduce(
+    (sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0),
+    0,
+  );
+  const subtotal = charged?.subtotal ?? derivedSubtotal;
+  const derivedDiscount =
     data.discountMode === "percentage"
-      ? subtotal * ((Number(data.discountValue) || 0) / 100)
+      ? derivedSubtotal * ((Number(data.discountValue) || 0) / 100)
       : Number(data.discountValue) || 0;
-  const base = Math.max(0, subtotal - discount);
-  const tax = base * ((Number(data.taxRate) || 0) / 100);
+  const discount = charged?.discount ?? derivedDiscount;
+
+  const base = Math.max(0, derivedSubtotal - derivedDiscount);
   const vat = base * ((Number(data.vatRate) || 0) / 100);
   const service = base * ((Number(data.serviceRate) || 0) / 100);
-  const grandTotal = base + tax + vat + service;
+
+  const tax = charged?.tax ?? base * ((Number(data.taxRate) || 0) / 100);
+  const grandTotal = charged?.total ?? base + tax + vat + service;
   const amountPaid = Number(data.amountPaid) || 0;
-  const change = Math.max(0, amountPaid - grandTotal);
+  const change = charged?.changeDue ?? Math.max(0, amountPaid - grandTotal);
 
   const itemsHtml = data.lines
     .map(

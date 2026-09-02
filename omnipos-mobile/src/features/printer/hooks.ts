@@ -4,7 +4,8 @@ import { useSettingsStore } from "@/src/store/settingsStore";
 import { usePrinterStore } from "@/src/store/printerStore";
 
 import { printerFeatureService } from "./service";
-import type { PrinterDevice, ReceiptPrintPayload } from "./types";
+import { buildReceipt, buildTestPrint, type PrintableReceipt } from "@/src/core/printing/receipt";
+import type { PrinterDevice } from "./types";
 
 export function usePrinterAvailability() {
   return {
@@ -37,14 +38,34 @@ export function usePairPrinter() {
   });
 }
 
+/**
+ * Print a sale.
+ *
+ * The receipt is encoded here, from the figures the sale was booked at, and the
+ * service only carries the bytes. Encoding and transport were tangled before,
+ * which is how the layout ended up recomputing tax from the store's current
+ * rates instead of printing what the customer paid.
+ */
 export function usePrintReceipt() {
   const device = usePrinterStore((s) => s.device);
   const paperSize = usePrinterStore((s) => s.paperSize);
+  const shopName = useSettingsStore((s) => s.shopName);
+  const shopEmail = useSettingsStore((s) => s.shopEmail);
+  const currency = useSettingsStore((s) => s.currency);
 
   return useMutation({
-    mutationFn: (payload: ReceiptPrintPayload) => {
+    mutationFn: ({ receipt, reprint }: { receipt: PrintableReceipt; reprint?: boolean }) => {
       if (!device) throw new Error("No Bluetooth printer is paired.");
-      return printerFeatureService.printReceipt(device, payload, paperSize);
+
+      const bytes = buildReceipt(receipt, {
+        storeName: shopName,
+        storeEmail: shopEmail || null,
+        currency,
+        width: paperSize === "58mm" ? 58 : 80,
+        reprint,
+      });
+
+      return printerFeatureService.printBytes(device, bytes);
     },
   });
 }
@@ -57,8 +78,10 @@ export function useTestPrint() {
   return useMutation({
     mutationFn: () => {
       if (!device) throw new Error("No Bluetooth printer is paired.");
-      const payload = printerFeatureService.buildSampleReceipt(shopName, paperSize);
-      return printerFeatureService.printReceipt(device, payload, paperSize);
+
+      const bytes = buildTestPrint({ storeName: shopName, width: paperSize === "58mm" ? 58 : 80 });
+
+      return printerFeatureService.printBytes(device, bytes);
     },
   });
 }

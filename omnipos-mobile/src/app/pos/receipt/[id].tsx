@@ -7,7 +7,7 @@ import { AppScrollScreen } from "@/src/components/layout/AppScrollScreen";
 import { type ReceiptData, ReceiptDocument } from "@/src/components/organisms/ReceiptDocument";
 import { Colors } from "@/src/constants/colors";
 import { usePrintReceipt } from "@/src/features/printer/hooks";
-import type { ReceiptPrintPayload } from "@/src/features/printer/types";
+import type { PrintableReceipt } from "@/src/core/printing/receipt";
 import { supabase } from "@/src/services/supabase";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
@@ -31,6 +31,11 @@ type OrderRow = {
   discount_mode: "percentage" | "amount";
   discount_value: number;
   amount_paid: number;
+  change_due: number;
+  subtotal: number;
+  tax: number;
+  discount: number;
+  total: number;
   customer_name: string | null;
   customer_phone: string | null;
   shipping_address: string | null;
@@ -78,7 +83,7 @@ export default function ReceiptScreen() {
         : await supabase
             .from("orders")
             .select(
-              "id, order_number, created_at, discount_mode, discount_value, amount_paid, customer_name, customer_phone, shipping_address, tax_rate, vat_rate, service_rate",
+              "id, order_number, created_at, discount_mode, discount_value, amount_paid, change_due, subtotal, tax, discount, total, customer_name, customer_phone, shipping_address, tax_rate, vat_rate, service_rate",
             )
             .eq("store_id", activeStoreId)
             .eq("id", ref)
@@ -104,6 +109,13 @@ export default function ReceiptScreen() {
               discountMode: "amount",
               discountValue: Number(localMatch.discount ?? 0),
               amountPaid: Number(localMatch.amountPaid ?? 0),
+              charged: {
+                subtotal: Number(localMatch.subtotal ?? 0),
+                discount: Number(localMatch.discount ?? 0),
+                tax: Number(localMatch.tax ?? 0),
+                total: Number(localMatch.total ?? 0),
+                changeDue: Number(localMatch.changeDue ?? 0),
+              },
               customerName: localMatch.customerName,
               customerPhone: localMatch.customerPhone,
               shippingAddress: undefined,
@@ -148,6 +160,14 @@ export default function ReceiptScreen() {
         discountMode: order.discount_mode,
         discountValue: Number(order.discount_value ?? 0),
         amountPaid: Number(order.amount_paid ?? 0),
+        // What the sale was booked at, rather than what today's rates would make it.
+        charged: {
+          subtotal: Number(order.subtotal ?? 0),
+          discount: Number(order.discount ?? 0),
+          tax: Number(order.tax ?? 0),
+          total: Number(order.total ?? 0),
+          changeDue: Number(order.change_due ?? 0),
+        },
         customerName: order.customer_name,
         customerPhone: order.customer_phone,
         shippingAddress: order.shipping_address,
@@ -166,25 +186,46 @@ export default function ReceiptScreen() {
 
   async function onPrintReceipt() {
     if (!remoteData) return;
+
+    const charged = remoteData.charged;
+    if (!charged) {
+      Alert.alert(
+        "Cannot print this one",
+        "This sale predates the figures a receipt needs. Open it on the web till, or share it as a PDF.",
+      );
+      return;
+    }
+
     try {
-      const payload: ReceiptPrintPayload = {
-        storeName: shopName,
+      /*
+       * Built from what was charged, never recomputed. The previous version
+       * passed the store's tax rates and let the layout derive the totals,
+       * which printed today's VAT on a sale made before it changed.
+       */
+      const receipt: PrintableReceipt = {
         orderNumber,
         dateLabel: dateLabel ?? new Date().toLocaleString(),
-        currency: remoteData.currency ?? settingsCurrency,
-        lines: remoteData.lines,
-        discountMode: remoteData.discountMode,
-        discountValue: remoteData.discountValue,
+        lines: remoteData.lines.map((line) => ({
+          name: line.name,
+          quantity: line.quantity,
+          lineTotal: line.price * line.quantity,
+        })),
+        subtotal: charged.subtotal,
+        discount: charged.discount,
+        tax: charged.tax,
+        total: charged.total,
         amountPaid: remoteData.amountPaid,
+        changeDue: charged.changeDue,
+        // Supabase kept no tender breakdown, so the receipt reports the one
+        // figure it has rather than inventing a split.
+        tenders: [{ method: "other", amount: Math.min(remoteData.amountPaid, charged.total) }],
         customerName: remoteData.customerName,
-        customerPhone: remoteData.customerPhone,
-        shippingAddress: remoteData.shippingAddress,
-        taxRate: remoteData.taxRate,
-        vatRate: remoteData.vatRate,
-        serviceRate: remoteData.serviceRate,
       };
-      await printReceipt.mutateAsync(payload);
-      Alert.alert("Receipt sent", "The receipt was sent to your paired printer.");
+
+      // Anything opened from this screen is a second copy by definition — the
+      // first was printed at the till when the sale was rung up.
+      await printReceipt.mutateAsync({ receipt, reprint: true });
+      Alert.alert("Receipt sent", "Marked as a reprint so it cannot be taken for a second sale.");
     } catch (err) {
       Alert.alert("Print failed", toErrorMessage(err, "Could not print receipt."));
     }

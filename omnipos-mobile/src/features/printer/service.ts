@@ -1,7 +1,6 @@
 import { NativeModules, PermissionsAndroid, Platform } from "react-native";
 
-import type { PrinterDevice, PrinterConnectionType, ReceiptPrintPayload, ScanPrintersResult } from "./types";
-import { buildReceiptPrintJob } from "./buildReceiptJob";
+import type { PrinterDevice, PrinterConnectionType, ScanPrintersResult } from "./types";
 
 type NativeScanRow = {
   name?: string;
@@ -11,8 +10,19 @@ type NativeScanRow = {
 
 type ThermalPrinterModule = {
   scanDevices: () => Promise<{ paired?: NativeScanRow[]; found?: NativeScanRow[] }>;
-  printReceipt: (job: ReturnType<typeof buildReceiptPrintJob>) => Promise<unknown>;
   testConnection?: (address: string) => Promise<boolean>;
+  /**
+   * Bytes, straight to the printer.
+   *
+   * Used in preference to the library's own printReceipt, which takes a block
+   * format of its own invention and does the ESC/POS encoding itself. Sending
+   * bytes means the layout is ours, is shared with the web till, and is covered
+   * by tests that assert the actual bytes — none of which is true of a format
+   * only the library understands.
+   */
+  NativePrinter?: {
+    printRaw: (address: string, data: number[], options?: Record<string, unknown>) => Promise<unknown>;
+  };
 };
 
 function loadThermalPrinter(): ThermalPrinterModule | null {
@@ -23,8 +33,12 @@ function loadThermalPrinter(): ThermalPrinterModule | null {
   }
 
   try {
-    const mod = require("@finan-me/react-native-thermal-printer") as { ThermalPrinter?: ThermalPrinterModule };
-    return mod.ThermalPrinter ?? null;
+    const mod = require("@finan-me/react-native-thermal-printer") as {
+      ThermalPrinter?: Omit<ThermalPrinterModule, "NativePrinter"> & {
+        NativePrinter?: ThermalPrinterModule["NativePrinter"];
+      };
+    };
+    return (mod.ThermalPrinter as ThermalPrinterModule) ?? null;
   } catch {
     return null;
   }
@@ -131,41 +145,26 @@ export const printerFeatureService = {
     return true;
   },
 
-  async printReceipt(
-    device: PrinterDevice,
-    payload: ReceiptPrintPayload,
-    paperSize: "58mm" | "80mm",
-  ): Promise<void> {
+  /**
+   * Send an already-encoded receipt.
+   *
+   * The bytes come from src/core/printing, which the web till uses unchanged —
+   * so a shop with a phone and a browser hands out the same document from both,
+   * and the layout is covered by tests rather than by whatever a library does
+   * with a block format.
+   */
+  async printBytes(device: PrinterDevice, bytes: Uint8Array): Promise<void> {
     const native = loadThermalPrinter();
     if (!native) {
       throw new Error("Bluetooth printing requires a development build. Expo Go is not supported.");
     }
 
-    const paperWidthMm = paperSize === "58mm" ? 58 : 80;
-    const job = buildReceiptPrintJob(payload, paperWidthMm, device.address);
+    if (!native.NativePrinter?.printRaw) {
+      throw new Error("This printer module cannot send raw bytes. Update the app.");
+    }
 
-    await native.printReceipt(job);
+    // The bridge takes a plain array; a typed array does not survive it.
+    await native.NativePrinter.printRaw(device.address, Array.from(bytes));
   },
 
-  buildSampleReceipt(storeName: string, paperSize: "58mm" | "80mm"): ReceiptPrintPayload {
-    return {
-      storeName,
-      orderNumber: "TEST-001",
-      dateLabel: new Date().toLocaleString(),
-      currency: "GHS",
-      lines: [
-        { id: "1", name: "Sample Item A", quantity: 1, price: 25 },
-        { id: "2", name: "Sample Item B", quantity: 2, price: 10 },
-      ],
-      discountMode: "percentage",
-      discountValue: 0,
-      amountPaid: 45,
-      customerName: "Walk-in customer",
-      customerPhone: null,
-      shippingAddress: null,
-      taxRate: 0,
-      vatRate: 0,
-      serviceRate: 0,
-    };
-  },
 };
