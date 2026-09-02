@@ -33,6 +33,33 @@ installing a second JDK:
 export JAVA_HOME="C:\\Program Files\\Android\\Android Studio\\jbr"
 ```
 
+**Install the NDK from Android Studio before building, not from Gradle.** The
+build needs it — `expo-modules-core`, `expo-sqlite` and
+`react-native-gesture-handler` all compile C++ through CMake — and Gradle will
+offer to fetch it. It is not reliable at that: on this machine the download
+stopped twice, at 283MB and at 388MB of 745MB, with no error and no resume. It
+prints a clue while it works, which is easy to scroll past:
+
+```
+This version only understands SDK XML versions up to 3 but an SDK XML file
+of version 4 was encountered.
+```
+
+Its own eventual error says the same thing:
+
+> Install the missing components using the SDK manager in Android Studio.
+
+So do that first: **SDK Manager → SDK Tools → NDK (Side by side)**.
+
+If a Gradle attempt has already failed, delete what it left behind before
+retrying. An interrupted install leaves `ndk/<version>/` holding only
+`.installer`, and Gradle then reads that as installed-but-broken and stops
+retrying altogether:
+
+```
+[CXX1101] NDK at ...\ndk\27.1.12297006 did not have a source.properties file
+```
+
 **Point it at the machine, not at itself.** In `.env`:
 
 ```
@@ -183,6 +210,14 @@ EXPO_PUBLIC_API_URL=http://10.0.2.2:8000
 generated `AndroidManifest.xml` carries `android:usesCleartextTraffic="true"` and
 the Bluetooth permissions; sign-in against Laravel; the device check; sync push
 and pull; the offline queue and its drain on reconnect; anything the till renders.
+
+**Settled without one, and worth doing first**, because it needs only curl and a
+bearer token from `/api/auth/token`: the money paths over real HTTP. Pushing the
+same `operation_id` three times must leave one order, one payment and one stock
+movement. A refund must appear as a negative payment and put the goods back. A
+second till refunding a sale the first has already refunded in full must be
+refused. Each of those found something the handler tests did not, because a
+handler test is written with a complete payload and a real client is not.
 
 **Not settled by one, at all:** Bluetooth and USB printing. An AVD has no radio.
 The printer service returns null when the native module is absent, so the app

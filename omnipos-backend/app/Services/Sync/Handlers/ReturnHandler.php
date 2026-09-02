@@ -211,10 +211,11 @@ class ReturnHandler implements EntityHandler
             if ($quantity > $remaining) {
                 return UpsertOutcome::conflict(
                     sprintf(
-                        'Only %d of "%s" can still be returned; %d were requested.',
+                        'Only %d of "%s" can still be returned; %d %s requested.',
                         max(0, $remaining),
                         $orderItem->product_name,
                         $quantity,
+                        $quantity === 1 ? 'was' : 'were',
                     ),
                     [
                         'order_item_id' => $orderItemId,
