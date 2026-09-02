@@ -96,6 +96,26 @@ export async function restoreStockForOrder(storeId: string, lines: DraftLine[]):
     }).catch(() => {});
   }
 
+  /*
+   * Under Laravel the server owns stock: it derives products.stock from the
+   * stock_movements ledger, and the order/return push posts those movements
+   * itself. Pushing an absolute quantity from here would be the very race the
+   * ledger exists to remove — two offline tills each writing what they believe
+   * the total is, and the later one winning.
+   *
+   * The local figure has already been updated above so the next customer sees a
+   * truthful number; the server reconciles from the ledger.
+   *
+   * This returns BEFORE the catalogue push below, which is where it always
+   * meant to be. It used to sit after it, so every sale queued exactly the
+   * write this comment calls harmful. A cashier may not edit the catalogue, so
+   * the server refused each one — leaving a rejected item in the outbox for
+   * every sale, and a "settle the rejected sales" prompt that cried wolf until
+   * nobody read it. For a manager, whose role does permit it, there was no
+   * refusal and the race was real.
+   */
+  if (usingLaravel) return;
+
   for (const product of updatedProducts) {
     await enqueueChange({
       storeId,
@@ -117,17 +137,6 @@ export async function restoreStockForOrder(storeId: string, lines: DraftLine[]):
     });
   }
 
-  /*
-   * Under Laravel the server owns stock: it derives products.stock from the
-   * stock_movements ledger, and the order/return push posts those movements
-   * itself. Pushing an absolute quantity from here would be the very race the
-   * ledger exists to remove — two offline tills each writing what they believe
-   * the total is, and the later one winning.
-   *
-   * The local figure has already been updated above so the next customer sees a
-   * truthful number; the server reconciles from the ledger.
-   */
-  if (usingLaravel) return;
 
   for (const line of lines) {
     const remoteId = line.remoteId ?? line.id;
@@ -199,6 +208,26 @@ export async function decrementStockForOrder(storeId: string, lines: DraftLine[]
     }).catch(() => {});
   }
 
+  /*
+   * Under Laravel the server owns stock: it derives products.stock from the
+   * stock_movements ledger, and the order/return push posts those movements
+   * itself. Pushing an absolute quantity from here would be the very race the
+   * ledger exists to remove — two offline tills each writing what they believe
+   * the total is, and the later one winning.
+   *
+   * The local figure has already been updated above so the next customer sees a
+   * truthful number; the server reconciles from the ledger.
+   *
+   * This returns BEFORE the catalogue push below, which is where it always
+   * meant to be. It used to sit after it, so every sale queued exactly the
+   * write this comment calls harmful. A cashier may not edit the catalogue, so
+   * the server refused each one — leaving a rejected item in the outbox for
+   * every sale, and a "settle the rejected sales" prompt that cried wolf until
+   * nobody read it. For a manager, whose role does permit it, there was no
+   * refusal and the race was real.
+   */
+  if (usingLaravel) return;
+
   for (const product of updatedProducts) {
     await enqueueChange({
       storeId,
@@ -220,17 +249,6 @@ export async function decrementStockForOrder(storeId: string, lines: DraftLine[]
     });
   }
 
-  /*
-   * Under Laravel the server owns stock: it derives products.stock from the
-   * stock_movements ledger, and the order/return push posts those movements
-   * itself. Pushing an absolute quantity from here would be the very race the
-   * ledger exists to remove — two offline tills each writing what they believe
-   * the total is, and the later one winning.
-   *
-   * The local figure has already been updated above so the next customer sees a
-   * truthful number; the server reconciles from the ledger.
-   */
-  if (usingLaravel) return;
 
   for (const line of lines) {
     const remoteId = line.remoteId ?? line.id;

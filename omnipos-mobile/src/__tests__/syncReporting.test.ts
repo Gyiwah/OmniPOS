@@ -37,6 +37,37 @@ describe("a failing sync is visible", () => {
   });
 
   /**
+   * The server a till talks to is usually NOT on the public internet — it is a
+   * machine on the shop's own LAN. isInternetReachable reports whether Android
+   * could validate access to the internet at large, so consulting it refuses to
+   * sync against a server that is one hop away and perfectly reachable.
+   *
+   * Observed on a device: Android dropped VALIDATED from the active network
+   * while both the host and 8.8.8.8 answered pings, and the till then made zero
+   * requests. It reported "offline", which is treated as unremarkable, so the
+   * badge stayed green and the home screen said all changes were synced.
+   */
+  it("does not ask the internet for permission to reach the shop's own server", () => {
+    expect(laravel).not.toMatch(/isInternetReachable\s*===\s*false/);
+  });
+
+  /** No network interface at all is still worth not trying. */
+  it("still short-circuits when there is no network whatsoever", () => {
+    expect(laravel).toMatch(/net\.isConnected\s*===\s*false/);
+  });
+
+  /**
+   * "Last synced" read "Not synced yet" for ever on a Laravel build, including
+   * straight after a sync that had just worked, because only the Supabase
+   * engine called markSynced. A cashier cannot tell a till that is up to date
+   * from one that has never reached the server, and the second is the one worth
+   * acting on.
+   */
+  it("records when a Laravel sync actually landed", () => {
+    expect(laravel).toContain("markSynced");
+  });
+
+  /**
    * A till is expected to work offline. Colouring that red would train people to
    * ignore the colour, and then the real failure goes unnoticed too.
    */

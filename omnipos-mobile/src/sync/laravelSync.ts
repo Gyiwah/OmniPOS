@@ -9,6 +9,7 @@ import type Product from "@/src/database/models/Product";
 import type SyncQueueItem from "@/src/database/models/SyncQueueItem";
 import { SYNC_STORAGE } from "./keys";
 import { refreshPendingSyncCount } from "./syncCounters";
+import { useSyncStore } from "@/src/store/syncStore";
 
 /**
  * Push/pull synchronisation against the Laravel API.
@@ -95,8 +96,28 @@ export async function runLaravelSync(storeIdHint?: string | null): Promise<SyncO
   const storeId = storeIdHint ?? (await storage.getItem(SYNC_STORAGE.activeStoreId));
   if (!storeId) return { ok: true, pushed: 0, conflicts: 0, pulled: 0 };
 
+  /*
+   * Only a total absence of network stops us trying.
+   *
+   * isInternetReachable is deliberately NOT consulted. It reports whether
+   * Android could validate access to the public internet, and the server this
+   * till talks to is very often not on the public internet: it is a machine on
+   * the shop's own LAN, one hop away. A shop whose broadband is down, or behind
+   * a captive portal, or whose firewall blocks Android's connectivity check,
+   * has a perfectly reachable server and an unvalidated network — and this
+   * returned "offline" without making a single request.
+   *
+   * That failed silently, which is the worst part: "offline" is treated as
+   * unremarkable, so the badge stayed green, the home screen said all changes
+   * were synced, and nothing reached the server for as long as it lasted.
+   *
+   * The same mistake, one layer down, is what the ApiError branch below exists
+   * to prevent. Guessing at reachability before trying is how a till that
+   * cannot sync comes to look exactly like one with nothing to send. If the
+   * request fails, that branch says so accurately.
+   */
   const net = await network.getState();
-  if (net.isConnected === false || net.isInternetReachable === false) {
+  if (net.isConnected === false) {
     return { ok: false, pushed: 0, conflicts: 0, pulled: 0, reason: "offline" };
   }
 
@@ -104,7 +125,17 @@ export async function runLaravelSync(storeIdHint?: string | null): Promise<SyncO
     const pushed = await pushQueue(storeId);
     const pulled = await pullChanges(storeId);
 
-    await storage.setItem(LAST_SYNC_KEY, new Date().toISOString());
+    const finishedAt = new Date().toISOString();
+    await storage.setItem(LAST_SYNC_KEY, finishedAt);
+
+    /*
+     * Tell the sync store too. Only the Supabase engine ever did, so on a
+     * Laravel build "Last synced" read "Not synced yet" for ever — including
+     * immediately after a sync that had just worked. A cashier cannot tell a
+     * till that is up to date from one that has never reached the server, and
+     * the second is the one worth acting on.
+     */
+    useSyncStore.getState().markSynced(finishedAt);
     await refreshPendingSyncCount();
 
     return { ok: true, pushed: pushed.applied, conflicts: pushed.conflicts, pulled };
