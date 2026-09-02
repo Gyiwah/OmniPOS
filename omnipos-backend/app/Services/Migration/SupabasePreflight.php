@@ -395,12 +395,19 @@ class SupabasePreflight
 
     private function checkPayments(): void
     {
-        $placeholders = implode(',', array_fill(0, count(Payment::METHODS), '?'));
+        /*
+         * Against everything the target accepts, not only what it stores. The
+         * legacy 'momo' is imported as mobile_money and loses nothing, so
+         * reporting it as data loss would send someone hunting a problem that
+         * is not there — and worse, teach them to skim this section.
+         */
+        $accepted = Payment::acceptedMethodInputs();
+        $placeholders = implode(',', array_fill(0, count($accepted), '?'));
 
         $unknown = $this->scan(
             "select distinct payment_method from orders
              where payment_method is not null and lower(payment_method) not in ({$placeholders})",
-            array_map('strtolower', Payment::METHODS)
+            array_map('strtolower', $accepted)
         );
         $this->add(self::ALTERED, 'payments', $unknown['count'],
             "Payment methods the target does not have. These become 'other', which is deliberately excluded from cash drawer reconciliation.",

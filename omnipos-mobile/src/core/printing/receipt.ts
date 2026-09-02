@@ -53,10 +53,17 @@ export type ReceiptContext = {
   openDrawer?: boolean;
 };
 
+/**
+ * Both spellings are here on purpose. The picker on this device stores 'momo';
+ * the server, and anything that came back from it, says 'mobile_money'. A
+ * receipt printed from a local record and one printed from a synced record are
+ * the same sale, and must read the same.
+ */
 const METHOD_LABELS: Record<string, string> = {
   cash: "Cash",
   card: "Card",
   transfer: "Transfer",
+  momo: "Mobile money",
   mobile_money: "Mobile money",
   store_credit: "Store credit",
   loyalty: "Loyalty",

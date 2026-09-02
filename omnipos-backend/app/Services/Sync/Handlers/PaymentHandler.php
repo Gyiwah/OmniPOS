@@ -84,11 +84,15 @@ class PaymentHandler implements EntityHandler
             return UpsertOutcome::conflict('A settlement must be a positive amount; refunds go through returns.');
         }
 
-        $method = $payload['method'] ?? 'cash';
-        if (! in_array($method, Payment::METHODS, true)) {
+        // A settlement is a deliberate act at a keyboard, so an unrecognised
+        // method is worth a conflict the cashier can correct rather than a
+        // silent 'other'. Aliases are still accepted: the client's vocabulary
+        // and the schema's need not match for the money to be real.
+        $method = Payment::canonicalMethod($payload['method'] ?? 'cash');
+        if ($method === null) {
             return UpsertOutcome::conflict(
-                sprintf('Unknown payment method [%s].', $method),
-                ['allowed' => Payment::METHODS],
+                sprintf('Unknown payment method [%s].', $payload['method'] ?? ''),
+                ['allowed' => Payment::acceptedMethodInputs()],
             );
         }
 

@@ -322,6 +322,31 @@ describe("a printed receipt", () => {
     expect(text).toContain("VOIDED");
   });
 
+  /**
+   * The picker on this device stores 'momo'; anything that has been to the
+   * server and back says 'mobile_money'. They are the same sale, so they must
+   * print the same word — and neither may fall through to the raw key, which
+   * would put "momo" on a customer's receipt.
+   */
+  it.each(["momo", "mobile_money"])("names a mobile money tender given %s", (method) => {
+    const text = printedLines(buildReceipt(order({ tenders: [{ method, amount: 16 }] }), context)).join("\n");
+
+    expect(text).toMatch(/Mobile money\s+GHS 16\.00/);
+  });
+
+  /**
+   * A method with no label prints as it is rather than as "Other". It is the
+   * only honest option: an unrecognised tender is not the same as an
+   * unidentified one, and a receipt should not claim to know less than it does.
+   */
+  it("prints an unlabelled method rather than hiding it", () => {
+    const text = printedLines(
+      buildReceipt(order({ tenders: [{ method: "voucher", amount: 16 }] }), context),
+    ).join("\n");
+
+    expect(text).toMatch(/voucher\s+GHS 16\.00/);
+  });
+
   /** Two identical receipts is how a refund gets processed twice. */
   it("marks a reprint so a duplicate is not mistaken for a second sale", () => {
     const text = printedLines(buildReceipt(order(), { ...context, reprint: true })).join("\n");

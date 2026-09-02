@@ -192,7 +192,15 @@ class OrderHandler implements EntityHandler
                 'register_shift_id' => $order->register_shift_id,
                 'received_by_user_id' => $user->id,
                 'device_id' => $device?->id,
-                'method' => $split['method'] ?? 'cash',
+                /*
+                 * Normalised, and 'other' where it cannot be. A sale reaching
+                 * this point happened: the customer paid and walked out. The
+                 * unnormalised value went straight into a column with a check
+                 * constraint, so a method this schema did not recognise — the
+                 * mobile till's 'momo', for one — failed the whole push and
+                 * left the sale off the books entirely.
+                 */
+                'method' => Payment::canonicalMethod($split['method'] ?? null) ?? 'other',
                 'amount' => $amount,
                 'reference' => $split['reference'] ?? null,
                 'client_created_at' => $order->client_created_at,

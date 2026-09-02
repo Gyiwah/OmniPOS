@@ -2,6 +2,7 @@
 
 namespace App\Services\Migration;
 
+use App\Models\Payment;
 use App\Models\Product;
 use App\Services\InventoryService;
 use App\Services\Migration\LegacyStatus;
@@ -724,15 +725,20 @@ class SupabaseImporter
         return in_array($type, $allowed, true) ? $type : 'ADJUSTMENT';
     }
 
+    /**
+     * The legacy method string, as this schema spells it.
+     *
+     * Shared with the live sync path rather than restated, so a method the till
+     * accepts today is not filed as 'other' when its history is imported. The
+     * earlier version listed three methods and defaulted everything else, which
+     * put every historic mobile money sale into a bucket that drawer
+     * reconciliation deliberately ignores.
+     *
+     * 'split' is the one that genuinely cannot be recovered: money arrived, and
+     * the breakdown was never written down.
+     */
     private function paymentMethod(?string $method): string
     {
-        return match ($method) {
-            'cash' => 'cash',
-            'card' => 'card',
-            'transfer' => 'transfer',
-            // Money arrived; how, was never recorded.
-            'split' => 'other',
-            default => 'other',
-        };
+        return Payment::canonicalMethod($method) ?? 'other';
     }
 }

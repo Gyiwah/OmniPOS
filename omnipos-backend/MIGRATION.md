@@ -168,6 +168,17 @@ never recorded and cannot be invented; filing it as cash would make every
 affected till appear short at reconciliation. `other` records the money honestly
 and keeps it out of the cash total.
 
+Everything else is translated rather than dropped. The mobile till's picker says
+"MoMo" and stores `momo`; this schema spells it `mobile_money`. Both the importer
+and the live sync path go through `Payment::canonicalMethod`, so historic mobile
+money sales arrive as mobile money instead of being swept into `other` — which
+reporting shows as an unidentified tender and drawer reconciliation ignores. For
+a shop taking most of its money that way, the difference is most of its history.
+
+Only `split` and genuinely unrecognised strings become `other`. The pre-flight
+audit lists what it found under `payments`, so an unfamiliar method in the source
+is reported before the migration rather than discovered in a report afterwards.
+
 ### 3. Passwords carry over, mostly
 
 GoTrue stores bcrypt (`$2a$`) and Laravel's default hasher is bcrypt.

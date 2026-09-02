@@ -36,6 +36,7 @@ type OrderRow = {
   tax: number;
   discount: number;
   total: number;
+  payment_method: string | null;
   customer_name: string | null;
   customer_phone: string | null;
   shipping_address: string | null;
@@ -83,7 +84,7 @@ export default function ReceiptScreen() {
         : await supabase
             .from("orders")
             .select(
-              "id, order_number, created_at, discount_mode, discount_value, amount_paid, change_due, subtotal, tax, discount, total, customer_name, customer_phone, shipping_address, tax_rate, vat_rate, service_rate",
+              "id, order_number, created_at, discount_mode, discount_value, amount_paid, change_due, subtotal, tax, discount, total, payment_method, customer_name, customer_phone, shipping_address, tax_rate, vat_rate, service_rate",
             )
             .eq("store_id", activeStoreId)
             .eq("id", ref)
@@ -116,6 +117,7 @@ export default function ReceiptScreen() {
                 total: Number(localMatch.total ?? 0),
                 changeDue: Number(localMatch.changeDue ?? 0),
               },
+              paymentMethod: localMatch.paymentMethod,
               customerName: localMatch.customerName,
               customerPhone: localMatch.customerPhone,
               shippingAddress: undefined,
@@ -168,6 +170,7 @@ export default function ReceiptScreen() {
           total: Number(order.total ?? 0),
           changeDue: Number(order.change_due ?? 0),
         },
+        paymentMethod: order.payment_method,
         customerName: order.customer_name,
         customerPhone: order.customer_phone,
         shippingAddress: order.shipping_address,
@@ -216,9 +219,16 @@ export default function ReceiptScreen() {
         total: charged.total,
         amountPaid: remoteData.amountPaid,
         changeDue: charged.changeDue,
-        // Supabase kept no tender breakdown, so the receipt reports the one
-        // figure it has rather than inventing a split.
-        tenders: [{ method: "other", amount: Math.min(remoteData.amountPaid, charged.total) }],
+        /*
+         * One tender, because this till has only ever taken one per sale. It
+         * used to print "Other" regardless — so a cash sale reprinted on a
+         * phone showed a tender nobody had used, and the customer could not
+         * check the receipt against how they had paid.
+         */
+        tenders: [{
+          method: remoteData.paymentMethod || "cash",
+          amount: Math.min(remoteData.amountPaid, charged.total),
+        }],
         customerName: remoteData.customerName,
       };
 

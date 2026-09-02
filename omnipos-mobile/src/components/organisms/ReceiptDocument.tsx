@@ -40,6 +40,8 @@ export type ReceiptData = {
     total: number;
     changeDue: number;
   };
+  /** How it was paid. One tender: this till has never offered a split. */
+  paymentMethod?: string | null;
   customerName?: string | null;
   customerPhone?: string | null;
   shippingAddress?: string | null;
