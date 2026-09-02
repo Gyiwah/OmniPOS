@@ -102,6 +102,51 @@ class ReturnSyncTest extends TestCase
         ], $over);
     }
 
+    /**
+     * The goods come back even when the client does not say which product they
+     * are. The order line already settles that, and eligibility has just proved
+     * the line belongs to this sale.
+     *
+     * Before this, a payload without product_id refunded the money and skipped
+     * the restock silently: the customer was paid and the stock stayed down for
+     * ever, with nothing reporting it.
+     */
+    public function test_a_line_without_a_product_id_still_restocks(): void
+    {
+        $this->assertSame(15, (int) $this->product->refresh()->stock);
+
+        $payload = $this->payload(2);
+        unset($payload['items'][0]['product_id']);
+
+        $outcome = $this->push($payload);
+        $this->assertFalse($outcome->isConflict());
+
+        $this->assertSame(17, (int) $this->product->refresh()->stock);
+    }
+
+    /**
+     * And the order line wins over a client that names a different one. A till
+     * with a stale cache would otherwise put stock back against some other
+     * product, which is worse than not restocking at all: two products wrong
+     * instead of one, and neither obviously.
+     */
+    public function test_the_order_line_wins_over_a_product_id_the_client_invented(): void
+    {
+        $other = Product::create([
+            'store_id' => $this->store->id, 'name' => 'Not this one',
+            'sku' => 'SKU-X'.Str::random(4), 'price' => 10, 'stock' => 0,
+        ]);
+
+        $payload = $this->payload(2);
+        $payload['items'][0]['product_id'] = $other->id;
+
+        $outcome = $this->push($payload);
+        $this->assertFalse($outcome->isConflict());
+
+        $this->assertSame(17, (int) $this->product->refresh()->stock);
+        $this->assertSame(0, (int) $other->refresh()->stock);
+    }
+
     public function test_a_return_restocks_through_the_ledger(): void
     {
         $this->assertSame(15, (int) $this->product->refresh()->stock);
