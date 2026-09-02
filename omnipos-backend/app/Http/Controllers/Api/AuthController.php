@@ -41,6 +41,25 @@ class AuthController extends Controller
             ]);
         }
 
+        /*
+         * A cookie session only exists if Sanctum recognised this request as
+         * coming from the SPA, which it decides from the Origin or Referer
+         * against SANCTUM_STATEFUL_DOMAINS. When that list does not name the
+         * deployed frontend — the first thing to go wrong on a real domain —
+         * there is no session, and regenerate() throws a RuntimeException the
+         * caller sees as a bare 500.
+         *
+         * A 500 says nothing. This says which setting is wrong, and names the
+         * host it actually saw, which is the value that has to go in the list.
+         */
+        if (! $request->hasSession()) {
+            return response()->json([
+                'message' => 'This host is not configured for cookie sessions. '
+                    .'Add it to SANCTUM_STATEFUL_DOMAINS, or authenticate at /api/auth/token instead.',
+                'host' => $request->getHttpHost(),
+            ], 419);
+        }
+
         $request->session()->regenerate();
 
         $user = $request->user();
