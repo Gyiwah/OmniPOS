@@ -24,6 +24,15 @@ Or an EAS development build if you are not set up for local native builds:
 eas build --profile development --platform android
 ```
 
+**Gradle needs a JDK, and installing Android Studio does not give it one on the
+PATH.** The build fails with `JAVA_HOME is not set and no 'java' command could be
+found`. Android Studio ships its own runtime; point at that rather than
+installing a second JDK:
+
+```bash
+export JAVA_HOME="C:\\Program Files\\Android\\Android Studio\\jbr"
+```
+
 **Point it at the machine, not at itself.** In `.env`:
 
 ```
@@ -155,13 +164,51 @@ The failure this system is built around only appears with two.
 
 ---
 
+## The emulator: what it does and does not settle
+
+An Android Virtual Device is worth running before you find a phone, and worth
+not trusting afterwards.
+
+Use `10.0.2.2` as the API address — the emulator's alias for the host machine's
+loopback. It is not `localhost` (that is the emulated device itself) and it needs
+no LAN address or firewall rule, so it removes the two things most likely to
+waste the first hour.
+
+```
+EXPO_PUBLIC_BACKEND=laravel
+EXPO_PUBLIC_API_URL=http://10.0.2.2:8000
+```
+
+**Settled by an emulator:** that the app builds and installs at all; that the
+generated `AndroidManifest.xml` carries `android:usesCleartextTraffic="true"` and
+the Bluetooth permissions; sign-in against Laravel; the device check; sync push
+and pull; the offline queue and its drain on reconnect; anything the till renders.
+
+**Not settled by one, at all:** Bluetooth and USB printing. An AVD has no radio.
+The printer service returns null when the native module is absent, so the app
+should degrade to "no printer found" rather than crash — that is worth watching
+for, but it is the fallback being tested, not printing.
+
+The camera is a simulated scene rather than a lens, so barcode scanning against
+it proves the plumbing and nothing about focus, glare or a creased label.
+
+---
+
 ## What is already known to be untested
 
 Being honest about the boundary:
 
-- **Nothing in this document has been run.** The device check and the network
+- **Most of this document has not been run.** The device check and the network
   settings were written and unit-tested against the source; the checks
   themselves need a device to execute.
+
+  Two things here have since been verified for real. The prebuilt manifest does
+  carry the cleartext and Bluetooth permissions. And a sale paid by mobile money
+  now reaches the books over real HTTP — it did not before: the till sends the
+  picker's own word, `momo`, and the payments table has a check constraint
+  naming `mobile_money`, so Postgres refused the row and took the whole push
+  down with it. The order is stored with the client's spelling and the ledger
+  row with the canonical one.
 - **Bluetooth receipt printing** has never been exercised against real hardware
   on the Laravel build.
 - **Background sync** while the app is not in the foreground.

@@ -225,7 +225,15 @@ class ReturnHandler implements EntityHandler
             'register_shift_id' => $return->register_shift_id,
             'received_by_user_id' => $user->id,
             'device_id' => $device?->id,
-            'method' => $return->refund_method === 'cash' ? 'cash' : $return->refund_method,
+            /*
+             * Normalised, like every other method that reaches this column.
+             * The ternary this replaces did nothing at all — both arms were the
+             * same value — and passed the client's spelling straight into a
+             * check constraint. No shipping client refunds by a method that
+             * fails it today, which is exactly the state the sale path was in
+             * before a picker was renamed.
+             */
+            'method' => Payment::canonicalMethod($return->refund_method) ?? 'other',
             'amount' => -$amount,
             'notes' => "Refund for return {$return->id}",
             'client_created_at' => $return->client_created_at,
