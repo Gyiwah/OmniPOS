@@ -113,10 +113,10 @@ migrate onto:
 
 ## Not done
 
-**Conflict resolution has no mobile UI.** Rejected operations are kept with
-`status = "conflict"` and `pendingConflicts()` returns them, but nothing renders
-them yet. The web till has the full flow — including a manager settling another
-till's conflict remotely — and the mobile equivalent is outstanding.
+**Bluetooth receipt printing** has never been exercised against real hardware on
+a Laravel build.
+
+**Background sync** while the app is not in the foreground is untested.
 
 **Not verified on hardware.** Everything above was proven against local servers,
 not against a phone on a real network. `HARDWARE-TEST.md` is the procedure, and
