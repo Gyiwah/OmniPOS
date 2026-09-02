@@ -1,10 +1,12 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { db } from "@/db/schema";
 import { formatMoney, toMinor } from "@/features/pos/cart";
 import { useSession } from "@/state/session";
+import { buildReceipt } from "@/features/printing/receipt";
+import { usePrinter } from "@/features/printing/usePrinter";
 
 const METHOD_LABELS: Record<string, string> = {
   cash: "Cash",
@@ -34,16 +36,60 @@ export function ReceiptPage() {
 
   const order = useLiveQuery(() => db.orders.get(orderId), [orderId], undefined);
 
+  const connection = usePrinter((s) => s.connection);
+  const paperWidth = usePrinter((s) => s.width);
+  const sendToPrinter = usePrinter((s) => s.print);
+  const drawerOnCash = usePrinter((s) => s.openDrawer);
+  const [printError, setPrintError] = useState<string | null>(null);
+  const [reprinted, setReprinted] = useState(false);
+
+  /**
+   * Straight to the thermal printer when one is attached, and through the
+   * browser when not. A cashier should not have to know which is happening.
+   */
+  const printNow = useCallback(
+    async (reprint: boolean) => {
+      if (!order) return;
+
+      if (!connection) {
+        window.print();
+        return;
+      }
+
+      setPrintError(null);
+      try {
+        await sendToPrinter(
+          buildReceipt(order, {
+            storeName: store?.name ?? "OmniPOS",
+            currency,
+            cashierName: user?.name ?? null,
+            width: paperWidth,
+            reprint,
+            // Only when cash actually changed hands. A card sale that popped
+            // the drawer would leave it open with nothing going into it.
+            openDrawer: drawerOnCash && order.payments.some((p) => p.method === "cash"),
+          }),
+        );
+        if (reprint) setReprinted(true);
+      } catch (e) {
+        setPrintError(e instanceof Error ? e.message : "The printer did not respond.");
+      }
+    },
+    [order, connection, sendToPrinter, store?.name, currency, user?.name, paperWidth, drawerOnCash],
+  );
+
   // `?print=1` is set when a sale has just completed, so the dialog opens
   // without a second click. Reopening an old receipt does not print itself.
   const autoPrint = params.get("print") === "1";
 
   useEffect(() => {
     if (order && autoPrint) {
-      const timer = window.setTimeout(() => window.print(), 150);
+      // A moment for the page to lay out before the browser dialog opens; the
+      // thermal path does not need it but sharing the delay keeps one branch.
+      const timer = window.setTimeout(() => void printNow(false), 150);
       return () => window.clearTimeout(timer);
     }
-  }, [order, autoPrint]);
+  }, [order, autoPrint, printNow]);
 
   if (order === undefined) {
     return <div className="page"><p className="muted">Loading receipt…</p></div>;
@@ -67,9 +113,23 @@ export function ReceiptPage() {
   return (
     <div className="page receipt-page">
       <div className="receipt-toolbar no-print">
-        <button type="button" className="pay-button" onClick={() => window.print()}>Print</button>
+        <button type="button" className="pay-button" onClick={() => void printNow(true)}>
+          {connection ? "Print on the till printer" : "Print"}
+        </button>
+        {connection && (
+          <button type="button" className="secondary-button" onClick={() => window.print()}>
+            Use the browser instead
+          </button>
+        )}
         <button type="button" className="secondary-button" onClick={() => navigate("/orders")}>Back to orders</button>
       </div>
+
+      {printError && <p className="notice notice-error no-print" role="status">{printError}</p>}
+      {reprinted && (
+        <p className="notice notice-ok no-print" role="status">
+          Sent. It is marked as a reprint, so it cannot be mistaken for a second sale.
+        </p>
+      )}
 
       <article className="receipt">
         <header className="receipt-head">

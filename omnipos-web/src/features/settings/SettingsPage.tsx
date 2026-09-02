@@ -4,6 +4,7 @@ import { Settings } from "lucide-react";
 
 import { api, ApiError } from "@/api/client";
 import { useSession } from "@/state/session";
+import { PrinterSection } from "@/features/printing/PrinterSection";
 import { CategoriesSection } from "./CategoriesSection";
 import { StaffSection } from "./StaffSection";
 
@@ -44,14 +45,21 @@ export function SettingsPage() {
     const offline = error instanceof ApiError && error.isUnreachable;
     return (
       <div className="page">
-        <h1>Settings</h1>
+        <h1><Settings size={20} aria-hidden="true" /> Settings</h1>
         <p className="notice notice-warn">
           {offline
-            ? "Settings need a connection. Selling, returns and the drawer all keep working offline."
+            ? "Store settings need a connection. Selling, returns and the drawer all keep working offline."
             : error instanceof Error
               ? error.message
               : "Could not load settings."}
         </p>
+
+        {/*
+          The printer belongs to this till, not to the store record, so it stays
+          configurable with the server down — which is exactly when a shop is
+          most likely to be setting one up.
+        */}
+        <PrinterSection />
       </div>
     );
   }
@@ -64,6 +72,7 @@ export function SettingsPage() {
       </header>
 
       <StoreDetails settings={data} canEdit={isAdmin} />
+      <PrinterSection />
       <CategoriesSection />
       <StaffSection />
     </div>

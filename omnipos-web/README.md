@@ -366,11 +366,51 @@ kilobytes of WebAssembly that every till would download and precache, including
 the great majority that never use it. Where the API is missing the control is
 simply not offered, rather than appearing and failing.
 
+## Printing to a thermal printer
+
+Two paths, and a cashier should not have to know which is running. With a
+printer attached the receipt goes straight to it as ESC/POS on one press; with
+none, the browser's own print dialog opens exactly as before. The browser path
+is never removed — Firefox and Safari have neither Web Serial nor Web Bluetooth,
+and a shop on either still needs receipts.
+
+`escpos.ts` is the encoder, written rather than delegated. A receipt is a
+document a customer keeps, and "it looked right on the one printer we had" is
+not a test — every function returns bytes and every byte is asserted. That is
+also how three bugs were caught before any hardware existed to catch them on: a
+long word split once and then printed off the edge of the paper, an ellipsis
+that was decoded wrongly, and a code-page map whose two curly quotes had
+collapsed into the same key.
+
+Text is encoded to a single-byte code page, deliberately not with `TextEncoder`.
+A printer reading UTF-8 as cp1252 renders every accented character as two pieces
+of line noise, so a store name from a word processor comes out as rubbish. What
+cannot be represented becomes `?`, which is legible and wrong rather than bytes
+that are neither.
+
+**Every figure comes from the stored order and none is recomputed.** Re-deriving
+totals from the store's current rates would print a receipt disagreeing with the
+books the moment a rate changed, or by a penny whenever rounding fell
+differently. The customer's copy has to say what they paid.
+
+A reprint says so on the paper. Two identical receipts for one sale is how a
+refund gets processed twice, and it is always the second one that gets
+presented.
+
+The cash drawer opens through the printer, because that is how a till is wired —
+nothing else can open one. Only on a sale that took cash, and never on a
+reprint.
+
+**Not tested against a printer.** The bytes are right by the specification and by
+the tests; whether a given cheap printer honours all of them is a question only
+that printer can answer. `Test print` exists for exactly that, and includes a
+ruler because the paper width is the setting people get wrong.
+
 ## Not built yet
 
-- ESC/POS printing over a local connection. Receipts print through the browser
-  today, which works on whatever hardware the shop already has; the plan calls
-  for direct ESC/POS eventually.
+- Network printers on port 9100. A browser cannot open a TCP socket, so this
+  needs a small helper running on the till — a second thing to install and keep
+  running, which is why USB and Bluetooth came first.
 
 Every other server endpoint now has a client. Six are deliberately unused:
 `customers/{id}/payments` and `customers/{id}/orders` are covered by the sync
@@ -501,7 +541,7 @@ report that exact file. That is the realistic regression — a `globPatterns`
 change that quietly stops matching something, which every other test would still
 pass because everything works while the network is up.
 
-The built shell has no external runtime dependency (797 KB precached, 167 KB gzipped
+The built shell has no external runtime dependency (809 KB precached, 172 KB gzipped
 JS, all same-origin), so
 once cached it is genuinely self-sufficient.
 
