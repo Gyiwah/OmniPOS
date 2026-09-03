@@ -104,6 +104,41 @@ class SupabasePreflightTest extends TestCase
         return array_values(array_filter($all, fn ($f) => $f['area'] === $area && $f['grade'] === $grade));
     }
 
+    /**
+     * A source with no return_items table at all.
+     *
+     * Not hypothetical: the production project models a refund as one row with
+     * an amount and no line detail, so the table does not exist. The audit used
+     * to join to it unguarded and died before printing a single finding — the
+     * tool built to find problems before cutover could not run against the real
+     * source.
+     */
+    public function test_a_source_without_return_items_is_reported_not_fatal(): void
+    {
+        DB::statement('drop table if exists legacy.return_items');
+
+        // Against a real sale, so the only thing under test is the absent table.
+        DB::table('legacy.orders')->insert([
+            ['id' => '0192bbbb-0000-7000-8000-0000000000e0', 'store_id' => self::STORE,
+                'order_number' => 'OM-RET-1', 'status' => 'completed'],
+        ]);
+        DB::table('legacy.returns')->insert([
+            ['id' => '0192bbbb-0000-7000-8000-0000000000e1', 'order_id' => '0192bbbb-0000-7000-8000-0000000000e0'],
+        ]);
+
+        $findings = $this->audit();
+
+        $this->assertSame(
+            0,
+            app(SupabasePreflight::class)->blocking($findings),
+            'a missing optional table must not block: '.json_encode(array_column($findings, 'detail')),
+        );
+
+        $found = $this->findings($findings, 'return_items', SupabasePreflight::ALTERED);
+        $this->assertNotEmpty($found, 'the loss should be reported');
+        $this->assertStringContainsString('no return_items table', implode(' ', array_column($found, 'detail')));
+    }
+
     public function test_a_clean_source_reports_nothing_blocking(): void
     {
         $findings = $this->audit();
@@ -142,6 +177,34 @@ class SupabasePreflightTest extends TestCase
         $found = $this->findings($this->audit(), 'users', SupabasePreflight::BLOCKING);
 
         $this->assertStringContainsString('not bcrypt', implode(' ', array_column($found, 'detail')));
+    }
+
+    /**
+     * An account with no password is not an account whose hash we cannot read.
+     *
+     * GoTrue writes '' rather than NULL for a magic-link or provider sign-in,
+     * and the check for a foreign algorithm was `is not null`, so every one of
+     * them was reported as blocking. Blocking findings must be cleared before
+     * the import may run, so a real cutover would have stalled while somebody
+     * looked for a hash format that did not exist. Production had exactly one.
+     */
+    public function test_an_empty_password_is_a_note_not_a_blocking_hash_problem(): void
+    {
+        DB::table('auth.users')->insert([
+            ['id' => '0192bbbb-0000-7000-8000-0000000000d1', 'email' => 'magiclink@legacy.test',
+                'encrypted_password' => ''],
+        ]);
+
+        $findings = $this->audit();
+
+        $this->assertSame(
+            0,
+            app(SupabasePreflight::class)->blocking($findings),
+            'an account with no password must not block: '.json_encode(array_column($findings, 'detail')),
+        );
+
+        $noted = $this->findings($findings, 'users', SupabasePreflight::NOTE);
+        $this->assertStringContainsString('no password at all', implode(' ', array_column($noted, 'detail')));
     }
 
     public function test_it_catches_a_store_whose_owner_is_missing(): void

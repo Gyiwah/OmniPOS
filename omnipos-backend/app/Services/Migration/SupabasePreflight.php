@@ -104,6 +104,12 @@ class SupabasePreflight
     }
 
     /** Rows matching a raw condition, with a few ids to go and look at. */
+    /** @see SupabaseImporter::sourceHasTable() — same reasoning. */
+    private function sourceHasTable(string $table): bool
+    {
+        return $this->source()->getSchemaBuilder()->hasTable($table);
+    }
+
     private function scan(string $sql, array $bindings = []): array
     {
         $rows = $this->source()->select($sql, $bindings);
@@ -139,17 +145,34 @@ class SupabasePreflight
          * and the person simply can never sign in, which is discovered on the
          * morning of cutover by the person least able to wait.
          */
+        /*
+         * An empty string is not a hash in an algorithm we cannot read — it is
+         * no password at all, which is the case immediately below and only a
+         * note. GoTrue writes '' rather than NULL for an account that signs in
+         * by magic link or a provider, and the original test for this used
+         * `is not null`, so every one of them was reported as a blocking
+         * algorithm problem.
+         *
+         * That matters at cutover, not in the abstract: blocking findings have
+         * to be cleared before the import may run, so a migration would stall
+         * while somebody hunted for a hash format that was never there.
+         */
         $badHash = $this->scan(
             "select id, email from auth.users
-             where encrypted_password is not null and encrypted_password not like '\$2%'"
+             where encrypted_password is not null
+               and encrypted_password <> ''
+               and encrypted_password not like '\$2%'"
         );
         $this->add(self::BLOCKING, 'users', $badHash['count'],
             'Password hashes that are not bcrypt. These accounts import but cannot sign in; they need a reset.',
             $badHash['examples']);
 
-        $noHash = $this->scan("select id, email from auth.users where encrypted_password is null");
+        $noHash = $this->scan(
+            "select id, email from auth.users where encrypted_password is null or encrypted_password = ''"
+        );
         $this->add(self::NOTE, 'users', $noHash['count'],
-            'Accounts with no password at all, normally invite-only. They import and will need a reset to sign in.',
+            'Accounts with no password at all, normally invite-only or a provider sign-in. They import, and will '
+            .'need a reset before they can sign in to a system that only has passwords.',
             $noHash['examples']);
     }
 
@@ -449,6 +472,29 @@ class SupabasePreflight
          * but it will make the remaining-eligible figure negative for that line,
          * and a cashier will see it.
          */
+        /*
+         * Some projects have no return_items at all: a refund is one row with an
+         * amount and no line detail. Nothing can be checked, and nothing can be
+         * migrated either, so it is reported as the loss it is rather than
+         * crashing the audit — which is what it did, before any finding at all
+         * had been printed.
+         */
+        if (! $this->sourceHasTable('return_items')) {
+            $returns = $this->scan('select count(*) as n from returns');
+            $count = (int) ($returns['examples'][0]['n'] ?? 0);
+
+            $this->add(self::ALTERED, 'return_items', $count > 0 ? 1 : 0,
+                sprintf(
+                    '%d %s recorded without line detail: this source has no return_items table. '
+                    .'The refund amount carries over, but which goods came back does not, so nothing is restocked '
+                    .'and the sale lines will show as never returned.',
+                    $count,
+                    $count === 1 ? 'refund is' : 'refunds are',
+                ));
+
+            return;
+        }
+
         $over = $this->scan(
             'select ri.order_item_id, oi.quantity as sold, sum(ri.quantity) as returned
              from return_items ri

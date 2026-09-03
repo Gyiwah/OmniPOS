@@ -502,7 +502,14 @@ class SupabaseImporter
             'device_id' => null,
             'reason' => $r->reason ?? '',
             'amount' => $r->amount,
-            'refund_method' => 'cash',
+            /*
+             * Carried across rather than flattened to cash. Supabase gained
+             * this column in 014_returns_refund_method.sql, and where a dump
+             * predates it there is genuinely nothing to carry, so the old
+             * assumption stands only for those rows. Normalised on the way in
+             * because the mobile till's spelling is 'momo'.
+             */
+            'refund_method' => Payment::canonicalMethod($r->refund_method ?? null) ?? 'cash',
             'client_created_at' => $r->created_at,
             'created_at' => $r->created_at,
             'updated_at' => $r->updated_at,
@@ -651,8 +658,30 @@ class SupabaseImporter
      *
      * @param  Closure(object):array  $map
      */
+    /**
+     * Whether the source actually has this table.
+     *
+     * Not every Supabase project has every table this importer knows how to
+     * read. The one that proved it was return_items: a real project models a
+     * refund as a single row with an amount and no line detail at all, so the
+     * table simply is not there. copy() walked into it unguarded and the import
+     * died at step 14 of 16, with thirteen steps of data already written.
+     *
+     * A table that is absent is not the same as a table that failed. Absent
+     * means the source never recorded that shape, which is a fact about the
+     * migration to be reported, not an error to abort on.
+     */
+    private function sourceHasTable(string $table): bool
+    {
+        return $this->source()->getSchemaBuilder()->hasTable($table);
+    }
+
     private function copy(string $sourceTable, string $targetTable, Closure $map): int
     {
+        if (! $this->sourceHasTable($sourceTable)) {
+            return 0;
+        }
+
         $existing = DB::table($targetTable)->pluck('id')->flip();
         $inserted = 0;
 
