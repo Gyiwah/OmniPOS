@@ -1,8 +1,13 @@
 # Running OmniPOS on a real device
 
-The mobile app has never run on hardware against the Laravel API. Everything to
-date was proven against local servers, which does not test the things a phone
-does differently.
+The mobile app has never run on hardware against the Laravel API. It has now run
+on an Android emulator — selling, refunding, surviving being killed mid-sale —
+and "What has been verified" near the bottom lists exactly what that settled.
+
+An emulator is not a phone. It has no Bluetooth radio, no real camera, no
+battery, no mobile network and no operating system reclaiming memory from a
+backgrounded till. Everything a phone does differently is still unproven, and
+that is most of what this document is for.
 
 This is what to do, in order, and what each step is actually checking.
 
@@ -159,8 +164,11 @@ automatic date and time before you start.
 
 ## Step 2: the money paths, in this order
 
-Each of these has been proven against a local server. What is unproven is
-whether they behave the same on a device.
+Steps 1 to 6 have been run on an emulator and pass — see "What has been
+verified" below. Run them again anyway: an emulator has no radio to drop, no
+battery to die and no operating system deciding to reclaim memory mid-sale, and
+those are the conditions this list is really for. Steps 7 and 8 have not been
+run at all.
 
 1. **Sign in.** Close the app fully, reopen it. Still signed in? That is the
    keychain working.
@@ -224,10 +232,12 @@ EXPO_PUBLIC_BACKEND=laravel
 EXPO_PUBLIC_API_URL=http://10.0.2.2:8000
 ```
 
-**Settled by an emulator:** that the app builds and installs at all; that the
-generated `AndroidManifest.xml` carries `android:usesCleartextTraffic="true"` and
-the Bluetooth permissions; sign-in against Laravel; the device check; sync push
-and pull; the offline queue and its drain on reconnect; anything the till renders.
+**Settled by an emulator**, and since confirmed rather than predicted — the
+table under "What has been verified" lists what actually ran: building and
+installing, the generated manifest, sign-in, device registration, the device
+check, sync in both directions, an offline sale surviving a kill and draining
+exactly once, a refund restocking, a schema migration keeping its data, and
+anything the till renders.
 
 **Settled without one, and worth doing first**, because it needs only curl and a
 bearer token from `/api/auth/token`: the money paths over real HTTP. Pushing the
@@ -247,23 +257,58 @@ it proves the plumbing and nothing about focus, glare or a creased label.
 
 ---
 
-## What is already known to be untested
+## What has been verified, and on what
+
+**On an Android emulator against a local Laravel server.** An emulator is not a
+phone: it has no Bluetooth radio, no real camera, no mobile network, no battery
+and no memory pressure. Everything below is real evidence that the software
+works; none of it is evidence that it works *on a phone in a shop*. The title of
+this document still stands.
+
+Each of these was broken when it was first tried. The value was never in the
+green ticks — it was in the six faults found getting there, which are in the
+CHANGELOG.
+
+| Verified | Evidence |
+|---|---|
+| Development build installs and runs | Android 17 x86_64, native libs from `lib/x86_64` |
+| Cleartext HTTP permission reaches the artefact | `usesCleartextTraffic="true"` in the generated manifest |
+| The local database is real SQLite and persists | `omnipos.db`, `-wal`, `-shm` on disk; survives a force-stop |
+| Sign-in against Laravel | Token issued, named after this device |
+| The device registers | Row in `devices` whose id matches the token's |
+| Catalogue pulls to the till | Products searchable with the network off |
+| A sale rings up offline | Receipt issued, server confirmed it had not seen it |
+| An offline sale survives being killed | Database byte-identical across a force-stop |
+| It then syncs exactly once | One order, one payment, one movement |
+| Mobile money reaches the books | `orders.payment_method=momo`, `payments.method=mobile_money` |
+| A refund restocks | Payments `11.00` and `-11.00`, net `0.00`, stock 87 → 88 |
+| Stock movements name their cause | `source_type=order` against the sale's id |
+| A schema migration keeps the data | v6 → v7 in place: `user_version 7`, nothing reset |
+| Printing degrades instead of crashing | "No Bluetooth printer is paired", zero errors |
+
+---
+
+## What is still untested
 
 Being honest about the boundary:
 
-- **Most of this document has not been run.** The device check and the network
-  settings were written and unit-tested against the source; the checks
-  themselves need a device to execute.
-
-  Two things here have since been verified for real. The prebuilt manifest does
-  carry the cleartext and Bluetooth permissions. And a sale paid by mobile money
-  now reaches the books over real HTTP — it did not before: the till sends the
-  picker's own word, `momo`, and the payments table has a check constraint
-  naming `mobile_money`, so Postgres refused the row and took the whole push
-  down with it. The order is stored with the client's spelling and the ledger
-  row with the canonical one.
-- **Bluetooth receipt printing** has never been exercised against real hardware
-  on the Laravel build.
+- **Everything above was an emulator.** Nothing has run on a phone. Battery,
+  memory pressure, a real radio dropping mid-request, a cracked screen in a
+  shop — none of it is covered.
+- **Printing, entirely.** An AVD has no Bluetooth radio, so only the fallback
+  path has been exercised. The byte stream is correct against the ESC/POS
+  specification and 36 byte-level tests, but whether a given printer honours
+  `ESC t 16` for the code page, whether `GS V` cuts, and whether 48 characters
+  fits the paper are all questions only a printer answers. The test slip's
+  ruler line exists to settle the last one in seconds.
+- **A cold start with no network.** Sales survive a restart, but a debug build
+  fetches its JS from a dev server, so the app could not be *relaunched* while
+  still offline. A production build embeds the bundle; test it there.
+- **Two devices** — step 3 below. The conflict the whole design exists for has
+  never been produced.
 - **Background sync** while the app is not in the foreground.
+- **Closing a drawer.** A shift was opened and sold against; the counted-versus-
+  expected reconciliation at close was not exercised.
+- **Settling a customer balance** from the till.
 - **iOS specifically.** The Android path has had more thought here, and the ATS
   and local-network settings are reasoned rather than observed.
