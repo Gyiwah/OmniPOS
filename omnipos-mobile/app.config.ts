@@ -39,7 +39,28 @@ const config: ExpoConfig = {
   scheme: "omnipos",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
-  newArchEnabled: true,
+  /*
+   * Off, because the local database does not work with it on.
+   *
+   * WatermelonDB 0.28 ships a legacy bridge module. The New Architecture runs
+   * bridgeless, where legacy ReactPackage modules are not exposed to JS at all
+   * unless interop is explicitly enabled — so WMDatabaseBridge was compiled,
+   * linked and registered in PackageList, and still invisible at runtime.
+   * Probed on a device: absent from both NativeModules and TurboModuleRegistry,
+   * at module load and three seconds later.
+   *
+   * The app degraded rather than failed, which is why it went unnoticed. It
+   * fell back to the in-memory Loki adapter, so a till rebuilt its schema and
+   * re-pulled the whole catalogue on every launch — slow — and, far worse, kept
+   * every offline sale somewhere that does not survive a restart. In a
+   * production build the same fallback throws instead, so it would not have
+   * shipped silently, but it would have refused to start.
+   *
+   * Turn this back on only once WatermelonDB is bridgeless-compatible, and
+   * prove it by checking the database adapter on a device rather than by the
+   * app merely opening.
+   */
+  newArchEnabled: false,
 
   plugins: [
     "expo-router",

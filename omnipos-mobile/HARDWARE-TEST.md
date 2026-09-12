@@ -33,6 +33,24 @@ installing a second JDK:
 export JAVA_HOME="C:\\Program Files\\Android\\Android Studio\\jbr"
 ```
 
+**Changing app.config.ts does not change an existing native build.** `expo
+run:android` only runs a full prebuild when `android/` is absent; when it already
+exists your change is compiled into nothing and the rebuild produces an
+identical app. Either edit `android/` directly or run `npx expo prebuild
+--clean` — but note that `--clean` regenerates `android/gradle.properties` and
+will discard the `-Djava.net.preferIPv4Stack=true` in `org.gradle.jvmargs` that
+this machine needs to download dependencies at all.
+
+**The New Architecture must stay off.** `newArchEnabled` is false in both
+`app.config.ts` and `android/gradle.properties`, and they have to agree.
+WatermelonDB 0.28 is a legacy bridge module, and the New Architecture runs
+bridgeless, where legacy ReactPackage modules are never exposed to JS. Turning it
+on compiles, links and registers `WMDatabaseBridge` and then hides it, so the app
+silently falls back to an in-memory database that resets on every launch — an
+offline-first till that loses the sales it was built to protect. If you ever
+re-enable it, prove the database works by checking the adapter on a device, not
+by the app opening.
+
 **Install the NDK from Android Studio before building, not from Gradle.** The
 build needs it — `expo-modules-core`, `expo-sqlite` and
 `react-native-gesture-handler` all compile C++ through CMake — and Gradle will
