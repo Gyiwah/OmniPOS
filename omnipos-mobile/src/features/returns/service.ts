@@ -6,7 +6,13 @@ import type Order from "@/src/database/models/Order";
 import type OrderItem from "@/src/database/models/OrderItem";
 import { supabase } from "@/src/services/supabase";
 import { restoreStockForReturn } from "./stock";
-import type { OrderForReturn, ReturnDetail, ReturnLineInput, ReturnListRow } from "./types";
+import type {
+  OrderForReturn,
+  RefundMethod,
+  ReturnDetail,
+  ReturnLineInput,
+  ReturnListRow,
+} from "./types";
 import { usingLaravel } from "@/src/core/api/config";
 import * as laravelReturns from "./laravelReturns";
 import { enqueueChange } from "@/src/sync/enqueue";
@@ -224,6 +230,7 @@ async function supabase_lookupOrderForReturn(storeId: string, ref: string): Prom
         orderNumber: matched.orderNumber,
         createdAt: new Date(Number(matched.createdAt)).toISOString(),
         customerName: matched.customerName ?? null,
+        paymentMethod: matched.paymentMethod ?? null,
         items: orderItems,
       };
     }
@@ -237,7 +244,7 @@ async function supabase_lookupOrderForReturn(storeId: string, ref: string): Prom
   try {
     let query = supabase
       .from("orders")
-      .select("id, order_number, created_at, customer_name, status, total")
+      .select("id, order_number, created_at, customer_name, status, total, payment_method")
       .eq("store_id", storeId);
 
     query = isUuid(cleanRef) ? query.eq("id", cleanRef) : query.eq("order_number", cleanRef);
@@ -311,6 +318,7 @@ async function supabase_lookupOrderForReturn(storeId: string, ref: string): Prom
         orderNumber: String(order.order_number),
         createdAt: String(order.created_at),
         customerName: (order.customer_name as string | null) ?? null,
+        paymentMethod: (order.payment_method as string | null) ?? null,
         items: orderItems,
       };
     }
@@ -370,6 +378,12 @@ export async function processReturn(input: {
   reason: string;
   lines: ReturnLineInput[];
   processedByUserId: string;
+  /**
+   * How the money goes back. Required rather than defaulted: the backend books
+   * the refund as a negative payment on this method, so a caller that forgets
+   * it would quietly charge every refund against the cash drawer.
+   */
+  refundMethod: RefundMethod;
 }): Promise<string> {
   const amount = calculateRefundAmount(input.lines);
   const localReturnId = uuidv7();
@@ -437,13 +451,36 @@ export async function processReturn(input: {
 
     if (localOrderList.length > 0) {
       const orderTotal = Number(localOrderList[0].total ?? 0);
-      const isFullyRefunded = orderTotal > 0 && totalRefunded >= orderTotal - 0.01;
+
+      /*
+       * Accumulated from the refunds this till has actually processed, not
+       * from totalRefunded above — that comes from a Supabase query which
+       * returns nothing on a Laravel build, so it is always zero here. The
+       * visible symptom was a fully refunded sale marked "partially_refunded".
+       *
+       * `amount` is this refund, computed locally moments ago, so the figure
+       * is right whether or not anything can be reached.
+       */
+      const alreadyRefunded = Number(localOrderList[0].refundedAmount ?? 0);
+      const refundedSoFar = Math.min(
+        Math.max(alreadyRefunded, totalRefunded) + amount,
+        orderTotal > 0 ? orderTotal : Number.MAX_SAFE_INTEGER,
+      );
+
+      const isFullyRefunded = orderTotal > 0 && refundedSoFar >= orderTotal - 0.01;
       const nextStatus = isFullyRefunded ? "refunded" : "partially_refunded";
 
       await database.write(async () => {
         for (const lo of localOrderList) {
           await lo.update((rec) => {
             rec.status = nextStatus;
+            /*
+             * For the drawer. Expected cash is computed by walking local
+             * orders, and with nothing recorded here a refund never left that
+             * figure — a correct till reported itself short by whatever had
+             * been handed back.
+             */
+            rec.refundedAmount = refundedSoFar;
           });
         }
       });
@@ -475,7 +512,18 @@ export async function processReturn(input: {
         processed_by_user_id: input.processedByUserId,
         reason: fullReasonWithManifest,
         amount,
-        refund_method: "cash",
+        /*
+         * The method the cashier picked, not an assumption.
+         *
+         * The server books this as a negative payment row on this method. When
+         * every refund from a phone claimed to be cash, a mobile money refund
+         * reduced the drawer's expected cash by money that had never left it,
+         * and the shift counted over by the refund amount.
+         *
+         * 'momo' is this app's spelling; Payment::canonicalMethod maps it to
+         * the schema's 'mobile_money' on arrival.
+         */
+        refund_method: input.refundMethod,
         client_created_at: new Date().toISOString(),
         items: input.lines.map((line) => ({
           id: uuidv7(),
@@ -493,22 +541,43 @@ export async function processReturn(input: {
     try {
       await supabase.from("profiles").upsert({ id: input.processedByUserId }, { onConflict: "id" });
 
-      const { data: inserted, error } = await supabase
+      const row = {
+        id: localReturnId,
+        store_id: input.storeId,
+        order_id: input.orderId,
+        processed_by_user_id: input.processedByUserId,
+        reason: fullReasonWithManifest,
+        amount,
+        // Recorded here too, so the two transports agree on what a refund is.
+        // Supabase gained this column in 014_returns_refund_method.sql.
+        refund_method: input.refundMethod,
+      };
+
+      let { data: inserted, error } = await supabase
         .from("returns")
-        .insert({
-          id: localReturnId,
-          store_id: input.storeId,
-          order_id: input.orderId,
-          processed_by_user_id: input.processedByUserId,
-          reason: fullReasonWithManifest,
-          amount,
-        })
+        .insert(row)
         .select("id")
         .single();
 
+      /*
+       * Fallback for a project that has not run 014 yet, in the same shape the
+       * product sync uses for its own late columns. PostgREST refuses the whole
+       * insert over one unknown column, and the catch below would swallow it —
+       * so the refund would be paid out at the counter and never reach the
+       * server at all. Losing the method is bad; losing the refund is worse.
+       */
+      if (error && error.message.toLowerCase().includes("refund_method")) {
+        const legacyRow: Record<string, unknown> = { ...row };
+        delete legacyRow.refund_method;
+        const retry = await supabase.from("returns").insert(legacyRow).select("id").single();
+        inserted = retry.data;
+        error = retry.error;
+      }
+
       if (!error && inserted?.id) {
+        const remoteReturnId = String(inserted.id);
         const itemsPayload = input.lines.map((line) => ({
-          return_id: String(inserted.id),
+          return_id: remoteReturnId,
           store_id: input.storeId,
           order_item_id: isUuid(line.orderItemId) ? line.orderItemId : null,
           product_id: line.productId && isUuid(line.productId) ? line.productId : null,

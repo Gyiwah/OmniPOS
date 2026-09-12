@@ -193,18 +193,32 @@ export async function getShiftSummary(shiftId: string): Promise<ShiftSummary> {
     const paid = Number(o.amountPaid ?? ordTotal);
     const method = String(o.paymentMethod || "cash").toLowerCase();
 
+    /*
+     * Net of anything handed back. A refund is money leaving the drawer, and
+     * counting the sale at full value made a correct till report itself short
+     * by exactly the amount refunded — which reads as a cashier losing money
+     * they had returned properly.
+     *
+     * Attributed to the method the sale was taken by, which is what the refund
+     * screen defaults to ("Matches how this sale was paid"). A cash sale
+     * deliberately refunded by another method would land in the wrong bucket;
+     * that needs the refund's own method stored here, and is not yet.
+     */
+    const refunded = Math.min(Number(o.refundedAmount ?? 0), paid);
+    const net = paid - refunded;
+
     totalSales += ordTotal;
     totalDiscounts += Number(o.discount ?? 0);
     totalTax += Number(o.tax ?? 0);
 
     if (method === "cash") {
-      cashSales += paid;
+      cashSales += net;
     } else if (method === "card") {
-      cardSales += paid;
+      cardSales += net;
     } else if (method === "momo" || method === "mobile_money") {
-      momoSales += paid;
+      momoSales += net;
     } else {
-      otherSales += paid;
+      otherSales += net;
     }
   }
 

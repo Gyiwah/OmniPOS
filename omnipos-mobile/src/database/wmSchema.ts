@@ -1,6 +1,6 @@
 import { appSchema, tableSchema } from "@nozbe/watermelondb";
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export default appSchema({
   version: SCHEMA_VERSION,
@@ -41,6 +41,13 @@ export default appSchema({
         { name: "customer_name", type: "string", isOptional: true },
         { name: "customer_phone", type: "string", isOptional: true },
         { name: "customer_id", type: "string", isOptional: true },
+        /*
+         * How much of this sale has been handed back. Needed by the drawer:
+         * expected cash is computed from local orders, and without this a
+         * refund never left the figure, so a correct drawer read short by the
+         * amount refunded. Optional — most sales are never refunded.
+         */
+        { name: "refunded_amount", type: "number", isOptional: true },
         { name: "created_at", type: "number", isIndexed: true },
         { name: "dirty", type: "boolean" },
       ],

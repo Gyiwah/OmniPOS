@@ -170,5 +170,14 @@ export default schemaMigrations({
         }),
       ],
     },
+    {
+      toVersion: 8,
+      steps: [
+        addColumns({
+          table: "orders",
+          columns: [{ name: "refunded_amount", type: "number", isOptional: true }],
+        }),
+      ],
+    },
   ],
 });

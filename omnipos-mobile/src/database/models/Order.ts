@@ -19,6 +19,8 @@ export default class Order extends Model {
   @field("customer_name") customerName?: string;
   @field("customer_phone") customerPhone?: string;
   @field("customer_id") customerId?: string;
+  /** How much of this sale has been refunded, for the drawer. */
+  @field("refunded_amount") refundedAmount?: number;
   @field("created_at") createdAt!: number;
   @field("dirty") dirty!: boolean;
 }

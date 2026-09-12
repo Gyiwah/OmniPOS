@@ -129,6 +129,21 @@ client is not. Every one of them lived in that gap.
   which are separate stored columns. Both defaulted to zero, so a receipt
   reprinted from the server showed no tax on a sale that had charged it.
 
+- **A cash refund made the drawer look short at closing time.** Expected cash
+  is computed on the device by walking local orders and summing the cash ones;
+  refunds were never subtracted, and the till has no local returns table to
+  subtract them from. After one ₵11 cash refund a drawer holding exactly the
+  right money reported **"Cash Short by -₵11.00"** — a cashier accused of
+  losing money they had handed back correctly, every time. The server was
+  already right, summing payments including the negative refund, so the two
+  disagreed and the till was the wrong one.
+
+  Orders now carry what has been refunded (local schema 8) and the drawer nets
+  it off. The amount comes from the refund just processed, because the figure
+  it used to read back came from a Supabase query that returns nothing on a
+  Laravel build — always zero, which is also why a fully refunded sale was
+  being marked "partially refunded".
+
 - **A stock movement did not say which sale caused it.** The server had always
   read `source_type` and `source_id` from the push, and set them on movements it
   derived itself; only the ones a till pushed arrived without. The ledger
@@ -275,16 +290,6 @@ Stated plainly, because a changelog that only lists wins is a sales document.
   went back by mobile money the till counts **over** by the refund amount, every
   time. *A refund method picker exists in a working branch and has been seen
   working on a device; this entry stands until it lands.*
-- **A cash refund makes the drawer look short at closing time.** The till
-  computes expected cash by walking its local orders and summing the cash ones;
-  it never subtracts refunds, and the device has no local returns table to
-  subtract them from. Demonstrated on a device: after one ₵11 cash refund, a
-  drawer holding exactly the right money was reported **"Cash Short by
-  -₵11.00"**. A cashier is accused of losing money they handed back correctly,
-  every time they refund cash. The server's own `computeExpectedCash` sums
-  payments including the negative refund, so the two disagree and the *till* is
-  the wrong one.
-
 - **A cold start with no network is unproven.** Sales survive a restart — the
   database files are untouched by a force-stop, and a sale rung up offline
   synced exactly once afterwards. But a debug build fetches its JS from a dev
