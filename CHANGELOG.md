@@ -19,6 +19,54 @@ Unreleased and pre-production.
 
 ## [Unreleased]
 
+### Fixed — running on a device
+
+Nothing in this group was visible from a test suite. Each was found by putting
+the app on hardware and using it, and several were hiding behind one another —
+the database fault had to be fixed before the sync fault could even be reached.
+
+- **The till had no persistent database.** It announced this on every launch and
+  nobody had read it: `WMDatabaseBridge missing — using in-memory Loki (data
+  resets on reload)`. An offline-first POS was keeping every sale in memory, so
+  a sale rung up with no connection did not survive a restart. It also explains
+  the slow start people noticed — a till rebuilding its schema and re-pulling
+  the entire catalogue each time it opened.
+
+  The cause was a dependency conflict in which the database quietly lost.
+  WatermelonDB ships a legacy bridge module, and the New Architecture runs
+  bridgeless, where legacy modules are never exposed to JS — so the bridge was
+  compiled, linked, listed in `PackageList.java`, and invisible. Turning the New
+  Architecture off then failed to build, because Reanimated 4 requires it. That
+  turned out to be dead weight: nothing imported it, no babel plugin was
+  configured for it, and its only referrer was an optional peer. An animation
+  library the app never used was dictating an architecture that broke the local
+  database.
+
+- **`npm start` could not run this app at all.** The scripts said `expo start
+  --go`, and Expo Go cannot load a project with third-party native modules or
+  config plugins at any SDK version. The error it produced advised upgrading to
+  SDK 57, which would not have helped.
+
+- **Every sync died on a duplicate key.** A changefeed carries a row per write,
+  so a record edited twice arrived twice in one page, and both occurrences took
+  the create path into a single batch: `UNIQUE constraint failed: products.id`.
+  The pull threw, so nothing synced and the till read "Not synced yet" for ever
+  while retrying the identical doomed batch. Only reachable once the database
+  persisted — an empty database on every launch had been hiding it.
+
+- **No till had ever registered as a device**, because `registerDevice()` was
+  written and never called. The pull sends `device_id` so the server can
+  withhold a till's own writes from its own changefeed; an unknown device
+  defeats that, and the till pulled back everything it had just pushed.
+
+- **Two tills could not both stay signed in.** The access token is named after
+  the device so that re-authenticating replaces its own token, and the server
+  deletes any existing token of that name. But auth read the device id straight
+  from storage instead of through the function that mints it, and on a fresh
+  install that key does not exist yet — sign-in precedes the first sync. Every
+  new till authenticated as `mobile:unregistered`, so the second sign-in in a
+  shop revoked the first.
+
 ### Fixed — money and stock
 
 These are the ones that would have cost a shop real money. Each was found by
@@ -61,6 +109,36 @@ client is not. Every one of them lived in that gap.
   against everything the target *accepts* rather than only what it *stores*, so
   `momo` is no longer reported as data loss it does not cause — reporting a
   non-problem is not harmless, it teaches people to skim the audit.
+
+- **Sales reached the server with no line items at all.** The order push sent a
+  total and nothing else — three consecutive sales on a device all landed with
+  `order_items = 0`. So no product had ever appeared in a report, and a refund
+  was impossible: the returns screen asks the server which lines are still
+  eligible and was told there were none, against a sale the cashier is holding
+  the receipt for.
+
+  Sending the lines alone would have been worse than the bug. The server records
+  a stock movement per order line, borrowing the line's id so a replay cannot
+  decrement twice — while the till pushed its own movement too, under a
+  different id. Both survive. Measured before changing the app: one unit sold
+  took a product from 90 to 88. The till no longer pushes movements it does not
+  own, which is what the code already claimed in a comment and simply was not
+  doing.
+
+  The same payload was sending tax and discount *rates* but not the amounts,
+  which are separate stored columns. Both defaulted to zero, so a receipt
+  reprinted from the server showed no tax on a sale that had charged it.
+
+- **A stock movement did not say which sale caused it.** The server had always
+  read `source_type` and `source_id` from the push, and set them on movements it
+  derived itself; only the ones a till pushed arrived without. The ledger
+  recorded that a unit had left the shelf and not why, which at a stock take is
+  a decrement nobody can tie back to a receipt.
+
+  It was an ordering problem rather than a forgotten field: stock moved before
+  the order row existed, so there was no id to record. The id is minted at the
+  top of checkout now — which is what client-minted UUIDv7 is for — and is
+  available to the rollback path too, the moment tracing matters most.
 
 - **`refund_method` went into the constrained column unnormalised**, through
   `$x === 'cash' ? 'cash' : $x` — a ternary whose two arms are the same value, so
@@ -156,6 +234,17 @@ client is not. Every one of them lived in that gap.
   outbox, each failure carrying what to do about it. The whole run can be shared
   as text, so a tester on a shop floor can send it without a screenshot.
 
+- **The till's own ledger records what caused a movement** (local schema 7).
+  `source_type` and `source_id` now exist on the device as well as the server,
+  so a till can answer "which sale took this unit" without a connection — which
+  is the situation it is built for.
+
+  The migration is the part that can destroy money: WatermelonDB resets a
+  database it cannot find an upgrade path for, discarding sales a till has not
+  yet pushed. A test now asserts that a migration exists for the declared
+  version, that the version equals the highest migration, that the path has no
+  gaps, and that no version is declared twice.
+
 ### Changed
 
 - **Sync is idempotent on `operation_id`**, verified over HTTP: three pushes of
@@ -184,7 +273,13 @@ Stated plainly, because a changelog that only lists wins is a sales document.
   flow has no method picker, while the web till has had one throughout. A refund
   booked as cash reduces the drawer's *expected* cash, so if the money actually
   went back by mobile money the till counts **over** by the refund amount, every
-  time.
+  time. *A refund method picker exists in a working branch and has been seen
+  working on a device; this entry stands until it lands.*
+- **A cold start with no network is unproven.** Sales survive a restart — the
+  database files are untouched by a force-stop, and a sale rung up offline
+  synced exactly once afterwards. But a debug build fetches its JS from a dev
+  server, so the app could not be *relaunched* while still offline. A
+  production build embeds the bundle; that is the one to test it on.
 - **Bluetooth printing, background sync, and iOS** are unexercised on real
   hardware.
 - **The Supabase publishable key in `omnipos-mobile/.env.example`** is real and
@@ -198,6 +293,10 @@ Stated plainly, because a changelog that only lists wins is a sales document.
 Entries are added in the same commit as the change they describe, not swept up
 afterwards — a changelog assembled from memory at release time is a changelog of
 what someone remembered.
+
+That rule has been broken once already: the device-testing entries were written
+in a batch afterwards, reconstructed from commit messages rather than memory.
+Recorded here because a rule nobody admits to breaking stops being one.
 
 Prefer the symptom over the mechanism in the first sentence. "Mobile money sales
 never reached the books" is findable; "normalise payment method vocabulary" is
