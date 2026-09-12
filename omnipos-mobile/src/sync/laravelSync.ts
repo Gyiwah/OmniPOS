@@ -1,4 +1,4 @@
-import { Q } from "@nozbe/watermelondb";
+import { Q, type Model } from "@nozbe/watermelondb";
 
 import { api, ApiError } from "@/src/core/api/client";
 import { uuidv7 } from "@/src/core/ids";
@@ -198,12 +198,13 @@ async function pushQueue(storeId: string): Promise<{ applied: number; conflicts:
     const unsupported = batch.filter((row) => !SUPPORTED.has(row.entity));
     if (unsupported.length > 0) {
       await database.write(async () => {
-        for (const row of unsupported) {
-          await row.update((r) => {
+        const ops = unsupported.map((row) =>
+          row.prepareUpdate((r) => {
             r.status = "failed";
             r.lastError = `Entity "${r.entity}" is not accepted by this server.`;
-          });
-        }
+          }),
+        );
+        await database.batch(...ops);
       });
     }
 
@@ -220,6 +221,8 @@ async function pushQueue(storeId: string): Promise<{ applied: number; conflicts:
     const byId = new Map((response.results ?? []).map((r) => [r.operation_id, r]));
 
     await database.write(async () => {
+      const ops: Model[] = [];
+
       for (const row of batch) {
         const result = byId.get(row.id);
         if (!result) continue;
@@ -227,25 +230,33 @@ async function pushQueue(storeId: string): Promise<{ applied: number; conflicts:
         // A duplicate is a success: the server already has this write, which is
         // exactly what a retry after a dropped response looks like.
         if (result.status === "applied" || result.status === "duplicate") {
-          await row.destroyPermanently();
+          ops.push(row.prepareDestroyPermanently());
           applied += 1;
           continue;
         }
 
         if (result.status === "conflict") {
           // Kept, not discarded. A rejected sale needs a person to look at it.
-          await row.update((r) => {
-            r.status = "conflict";
-            r.lastError = result.reason ?? "Rejected by the server.";
-          });
+          ops.push(
+            row.prepareUpdate((r) => {
+              r.status = "conflict";
+              r.lastError = result.reason ?? "Rejected by the server.";
+            }),
+          );
           conflicts += 1;
           continue;
         }
 
-        await row.update((r) => {
-          r.attempts = r.attempts + 1;
-          r.lastError = result.reason ?? "Failed.";
-        });
+        ops.push(
+          row.prepareUpdate((r) => {
+            r.attempts = r.attempts + 1;
+            r.lastError = result.reason ?? "Failed.";
+          }),
+        );
+      }
+
+      if (ops.length > 0) {
+        await database.batch(...ops);
       }
     });
 
@@ -299,114 +310,150 @@ async function pullChanges(storeId: string): Promise<number> {
   return total;
 }
 
+/**
+ * One change per record, the newest.
+ *
+ * A changefeed carries a row per write, so a product edited twice arrives
+ * twice. The code below decides create-or-update from a map of what the
+ * database already holds, built once before the loop — so a repeated record
+ * took the create path on every occurrence and the batch contained two inserts
+ * for one primary key:
+ *
+ *   SQLiteConstraintException: UNIQUE constraint failed: products.id
+ *
+ * That killed the whole pull, so nothing synced and the till reported "Not
+ * synced yet" for ever while quietly retrying the same doomed batch.
+ *
+ * Keeping only the last is also what the records mean: the feed is ordered by
+ * sequence, so the newest change is the current state and replaying the older
+ * ones would only overwrite it with history.
+ */
+function latestPerRecord<T extends { record_id: string }>(list: T[]): T[] {
+  const byId = new Map<string, T>();
+  for (const change of list) {
+    byId.set(change.record_id, change);
+  }
+  return [...byId.values()];
+}
+
 export async function applyChanges(
   storeId: string,
   changes: Array<{ entity: string; action: string; record_id: string; payload: Record<string, unknown> }>,
 ): Promise<void> {
+  const productChanges = latestPerRecord(changes.filter((c) => c.entity === "products"));
+  const customerChanges = latestPerRecord(changes.filter((c) => c.entity === "customers"));
+
+  const productIds = productChanges.map((c) => c.record_id);
+  const customerIds = customerChanges.map((c) => c.record_id);
+
+  const productsCollection = database.get<Product>("products");
+  const customersCollection = database.get<Customer>("customers");
+
+  // Query existing records outside database.write to avoid adapter queue deadlock
+  const existingProducts = productIds.length
+    ? await productsCollection.query(Q.where("id", Q.oneOf(productIds))).fetch()
+    : [];
+  const existingCustomers = customerIds.length
+    ? await customersCollection.query(Q.where("id", Q.oneOf(customerIds))).fetch()
+    : [];
+
+  const productMap = new Map(existingProducts.map((p) => [p.id, p]));
+  const customerMap = new Map(existingCustomers.map((c) => [c.id, c]));
+
   await database.write(async () => {
-    for (const change of changes) {
-      if (change.entity === "products") await applyProduct(storeId, change);
-      else if (change.entity === "customers") await applyCustomer(storeId, change);
-      // Entities the till does not keep locally are ignored rather than treated
-      // as an error.
+    const operations: Model[] = [];
+
+    for (const change of productChanges) {
+      const current = productMap.get(change.record_id);
+
+      if (change.action === "delete") {
+        if (current) operations.push(current.prepareDestroyPermanently());
+        continue;
+      }
+
+      const p = change.payload;
+      if (current?.dirty) continue;
+
+      if (current) {
+        operations.push(
+          current.prepareUpdate((r) => {
+            r.name = str(p.name, r.name);
+            r.sku = str(p.sku, r.sku);
+            r.barcode = p.barcode ? String(p.barcode) : undefined;
+            r.stock = num(p.stock, r.stock);
+            r.sellPrice = num(p.price, r.sellPrice);
+            r.costPrice = p.cost_price == null ? undefined : num(p.cost_price, 0);
+            r.reorderLevel = num(p.reorder_level, r.reorderLevel);
+            r.imageUrl = p.image_url ? String(p.image_url) : undefined;
+            r.updatedAt = Date.now();
+            r.dirty = false;
+          }),
+        );
+      } else {
+        operations.push(
+          productsCollection.prepareCreate((r) => {
+            r._raw.id = change.record_id;
+            r.storeId = storeId;
+            r.remoteId = change.record_id;
+            r.name = str(p.name, "");
+            r.sku = str(p.sku, "");
+            r.barcode = p.barcode ? String(p.barcode) : undefined;
+            r.stock = num(p.stock, 0);
+            r.sellPrice = num(p.price, 0);
+            r.costPrice = p.cost_price == null ? undefined : num(p.cost_price, 0);
+            r.reorderLevel = num(p.reorder_level, 5);
+            r.imageUrl = p.image_url ? String(p.image_url) : undefined;
+            r.updatedAt = Date.now();
+            r.dirty = false;
+          }),
+        );
+      }
     }
-  });
-}
 
-async function applyProduct(
-  storeId: string,
-  change: { action: string; record_id: string; payload: Record<string, unknown> },
-): Promise<void> {
-  const collection = database.get<Product>("products");
-  const existing = await collection.query(Q.where("id", change.record_id)).fetch();
-  const current = existing[0];
+    for (const change of customerChanges) {
+      const current = customerMap.get(change.record_id);
 
-  if (change.action === "delete") {
-    if (current) await current.destroyPermanently();
-    return;
-  }
+      if (change.action === "delete") {
+        if (current) operations.push(current.prepareDestroyPermanently());
+        continue;
+      }
 
-  const p = change.payload;
+      const c = change.payload;
+      if (current?.dirty) continue;
 
-  // A local edit not yet pushed outranks the server's copy; overwriting it
-  // would throw away work the user has already done.
-  if (current?.dirty) return;
+      if (current) {
+        operations.push(
+          current.prepareUpdate((r) => {
+            r.name = str(c.name, r.name);
+            r.phone = c.phone ? String(c.phone) : undefined;
+            r.email = c.email ? String(c.email) : undefined;
+            r.totalSpend = num(c.total_spend, r.totalSpend);
+            r.outstandingBalance = num(c.outstanding_balance, r.outstandingBalance);
+            r.updatedAt = Date.now();
+            r.dirty = false;
+          }),
+        );
+      } else {
+        operations.push(
+          customersCollection.prepareCreate((r) => {
+            r._raw.id = change.record_id;
+            r.storeId = storeId;
+            r.remoteId = change.record_id;
+            r.name = str(c.name, "");
+            r.phone = c.phone ? String(c.phone) : undefined;
+            r.email = c.email ? String(c.email) : undefined;
+            r.totalSpend = num(c.total_spend, 0);
+            r.outstandingBalance = num(c.outstanding_balance, 0);
+            r.updatedAt = Date.now();
+            r.dirty = false;
+          }),
+        );
+      }
+    }
 
-  if (current) {
-    await current.update((r) => {
-      r.name = str(p.name, r.name);
-      r.sku = str(p.sku, r.sku);
-      r.barcode = p.barcode ? String(p.barcode) : undefined;
-      r.stock = num(p.stock, r.stock);
-      r.sellPrice = num(p.price, r.sellPrice);
-      r.costPrice = p.cost_price == null ? undefined : num(p.cost_price, 0);
-      r.reorderLevel = num(p.reorder_level, r.reorderLevel);
-      r.imageUrl = p.image_url ? String(p.image_url) : undefined;
-      r.updatedAt = Date.now();
-      r.dirty = false;
-    });
-    return;
-  }
-
-  await collection.create((r) => {
-    // The server's id becomes the local id: one identity everywhere.
-    r._raw.id = change.record_id;
-    r.storeId = storeId;
-    r.remoteId = change.record_id;
-    r.name = str(p.name, "");
-    r.sku = str(p.sku, "");
-    r.barcode = p.barcode ? String(p.barcode) : undefined;
-    r.stock = num(p.stock, 0);
-    r.sellPrice = num(p.price, 0);
-    r.costPrice = p.cost_price == null ? undefined : num(p.cost_price, 0);
-    r.reorderLevel = num(p.reorder_level, 5);
-    r.imageUrl = p.image_url ? String(p.image_url) : undefined;
-    r.updatedAt = Date.now();
-    r.dirty = false;
-  });
-}
-
-async function applyCustomer(
-  storeId: string,
-  change: { action: string; record_id: string; payload: Record<string, unknown> },
-): Promise<void> {
-  const collection = database.get<Customer>("customers");
-  const existing = await collection.query(Q.where("id", change.record_id)).fetch();
-  const current = existing[0];
-
-  if (change.action === "delete") {
-    if (current) await current.destroyPermanently();
-    return;
-  }
-
-  const c = change.payload;
-  if (current?.dirty) return;
-
-  if (current) {
-    await current.update((r) => {
-      r.name = str(c.name, r.name);
-      r.phone = c.phone ? String(c.phone) : undefined;
-      r.email = c.email ? String(c.email) : undefined;
-      // Balances are server-derived; the client reads them and never writes them.
-      r.totalSpend = num(c.total_spend, r.totalSpend);
-      r.outstandingBalance = num(c.outstanding_balance, r.outstandingBalance);
-      r.updatedAt = Date.now();
-      r.dirty = false;
-    });
-    return;
-  }
-
-  await collection.create((r) => {
-    r._raw.id = change.record_id;
-    r.storeId = storeId;
-    r.remoteId = change.record_id;
-    r.name = str(c.name, "");
-    r.phone = c.phone ? String(c.phone) : undefined;
-    r.email = c.email ? String(c.email) : undefined;
-    r.totalSpend = num(c.total_spend, 0);
-    r.outstandingBalance = num(c.outstanding_balance, 0);
-    r.updatedAt = Date.now();
-    r.dirty = false;
+    if (operations.length > 0) {
+      await database.batch(...operations);
+    }
   });
 }
 
