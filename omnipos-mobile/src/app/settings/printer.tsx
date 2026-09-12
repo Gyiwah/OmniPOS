@@ -203,9 +203,16 @@ export default function SettingsPrinterScreen() {
             onPress={() => void onTestPrint()}
           >
             <Ionicons name="receipt-outline" size={16} color={Colors.white} />
-            <Text style={styles.heroPrimaryBtnText}>
-              {connected ? "Print Test Slip" : "Preview Test Slip"}
-            </Text>
+            {/*
+              * Always "Print", because it always prints. The label used to
+              * soften to "Preview Test Slip" when no printer was paired —
+              * which is precisely when it cannot preview anything, so pressing
+              * it returned "No Bluetooth printer is paired". Worse, the button
+              * immediately beside it in that same state is "View Layout",
+              * which genuinely does preview: two adjacent buttons, one of them
+              * describing the other.
+              */}
+            <Text style={styles.heroPrimaryBtnText}>Print Test Slip</Text>
           </Pressable>
 
           {connected ? (
