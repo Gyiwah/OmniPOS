@@ -343,6 +343,15 @@ export default function OrderInfoScreen() {
           cashier_user_id: cashierUserId,
           status: orderStatus,
           subtotal,
+          /*
+           * The amounts, not only the rates. The server stores tax and
+           * discount on the order, and a receipt reprinted from the server is
+           * meant to show what was charged — with only the rates sent, both
+           * columns defaulted to zero and the sale's own figures were lost the
+           * moment it left the till.
+           */
+          tax,
+          discount: discountAmount,
           tax_rate: taxRate,
           vat_rate: vatRate,
           service_rate: serviceRate,
@@ -356,6 +365,26 @@ export default function OrderInfoScreen() {
           customer_phone: customerPhone || null,
           customer_id: customerId || null,
           shipping_address: shippingAddress || null,
+          /*
+           * The lines. Without them the server received a total and nothing
+           * else: no product ever appeared in a report, and a refund was
+           * impossible because the returns screen asks the server which lines
+           * are eligible and was told there were none.
+           *
+           * Sending them also makes the server record the stock movements, by
+           * borrowing each line's id so a replay cannot decrement twice. That
+           * is why the till no longer pushes its own.
+           */
+          items: lines.map((line) => ({
+            id: uuidv7(),
+            product_id: line.remoteId || line.id,
+            product_name: line.name,
+            sku: line.sku ?? null,
+            barcode: line.barcode ?? null,
+            unit_price: line.price,
+            quantity: line.quantity,
+            line_total: line.price * line.quantity,
+          })),
         },
       });
     } catch {

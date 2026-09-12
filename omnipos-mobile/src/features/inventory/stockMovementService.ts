@@ -44,6 +44,20 @@ export async function recordStockMovement(params: {
    */
   sourceType?: string;
   sourceId?: string;
+  /**
+   * Whether to queue this movement for the server.
+   *
+   * False when something else already tells the server the stock moved. Under
+   * Laravel an order or return push carries its own lines, and the server
+   * records a movement per line — borrowing the line's id so a replay cannot
+   * decrement twice. Pushing ours as well produces a second movement with a
+   * different id, and the stock falls by twice what was sold. Measured: one
+   * unit sold took a product from 90 to 88.
+   *
+   * The local row is still written either way, because the till has to show a
+   * truthful figure to the next customer without waiting for a round trip.
+   */
+  push?: boolean;
 }): Promise<StockMovement> {
   const movementId = uuidv7();
   const now = Date.now();
@@ -68,6 +82,10 @@ export async function recordStockMovement(params: {
       r.dirty = true;
     });
   });
+
+  if (params.push === false) {
+    return record!;
+  }
 
   await enqueueChange({
     storeId: params.storeId,

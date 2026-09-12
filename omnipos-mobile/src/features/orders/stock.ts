@@ -105,6 +105,12 @@ export async function restoreStockForOrder(
        */
       sourceType: orderId ? "order" : undefined,
       sourceId: orderId,
+      /*
+       * Local only under Laravel: the order push carries its lines, and the
+       * server records a movement for each one. Sending ours too would be a
+       * second movement for the same sale and stock would fall twice.
+       */
+      push: !usingLaravel,
     }).catch(() => {});
   }
 
@@ -224,6 +230,12 @@ export async function decrementStockForOrder(
       // The sale that took the unit off the shelf.
       sourceType: orderId ? "order" : undefined,
       sourceId: orderId,
+      /*
+       * Local only under Laravel: the order push carries its lines, and the
+       * server records a movement for each one. Sending ours too would be a
+       * second movement for the same sale and stock would fall twice.
+       */
+      push: !usingLaravel,
     }).catch(() => {});
   }
 
