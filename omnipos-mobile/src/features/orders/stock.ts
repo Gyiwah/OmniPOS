@@ -57,7 +57,11 @@ export function canIncreaseQuantity(
   return requestedQty <= available;
 }
 
-export async function restoreStockForOrder(storeId: string, lines: DraftLine[]): Promise<void> {
+export async function restoreStockForOrder(
+  storeId: string,
+  lines: DraftLine[],
+  orderId?: string,
+): Promise<void> {
   if (lines.length === 0) return;
 
   const now = Date.now();
@@ -93,6 +97,14 @@ export async function restoreStockForOrder(storeId: string, lines: DraftLine[]):
       quantityBefore: log.before,
       quantityAfter: log.after,
       reason: "Order Refund / Return",
+      /*
+       * Which sale the goods came back to. Without it the ledger records that
+       * stock moved and not why, so a stock take turns up a change nobody can
+       * tie to a receipt — and this is the compensating path, which is exactly
+       * when someone is trying to work out what happened.
+       */
+      sourceType: orderId ? "order" : undefined,
+      sourceId: orderId,
     }).catch(() => {});
   }
 
@@ -160,7 +172,11 @@ export async function restoreStockForOrder(storeId: string, lines: DraftLine[]):
   }
 }
 
-export async function decrementStockForOrder(storeId: string, lines: DraftLine[]): Promise<void> {
+export async function decrementStockForOrder(
+  storeId: string,
+  lines: DraftLine[],
+  orderId?: string,
+): Promise<void> {
   if (lines.length === 0) return;
 
   const stockById = await fetchStockByProductId(
@@ -205,6 +221,9 @@ export async function decrementStockForOrder(storeId: string, lines: DraftLine[]
       quantityBefore: log.before,
       quantityAfter: log.after,
       reason: "POS Sale Order",
+      // The sale that took the unit off the shelf.
+      sourceType: orderId ? "order" : undefined,
+      sourceId: orderId,
     }).catch(() => {});
   }
 

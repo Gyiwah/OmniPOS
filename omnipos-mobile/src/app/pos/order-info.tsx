@@ -31,6 +31,7 @@ import type OrderItem from "@/src/database/models/OrderItem";
 import type Customer from "@/src/database/models/Customer";
 import { usingLaravel } from "@/src/core/api/config";
 import { tenderSuggestions } from "@/src/utils/cartMath";
+import { uuidv7 } from "@/src/core/ids";
 
 function symbolFor(currency: string) {
   if (currency === "USD") return "$";
@@ -278,10 +279,10 @@ export default function OrderInfoScreen() {
     }
   }
 
-  async function saveOrderOffline(orderNumber: string, cashierUserId: string) {
+  async function saveOrderOffline(orderNumber: string, cashierUserId: string, orderId: string) {
     if (!activeStoreId) return;
     const now = Date.now();
-    let localOrderId = `local-ord-${now}`;
+    let localOrderId = orderId;
     const orderStatus = amountPaid >= total - 0.01 ? "completed" : amountPaid <= 0 ? "credit" : "part_paid";
 
     await database.write(async () => {
@@ -289,6 +290,12 @@ export default function OrderInfoScreen() {
       const orderItemsCol = database.get<OrderItem>("order_items");
 
       const createdOrder = await ordersCol.create((rec) => {
+        /*
+         * Minted by the caller, before stock moved, so the movements recorded
+         * for this sale can name it. Client-minted UUIDv7 is the identity
+         * scheme throughout: a local primary key is already the server's.
+         */
+        rec._raw.id = orderId;
         rec.storeId = activeStoreId;
         rec.cashierUserId = cashierUserId;
         rec.orderNumber = orderNumber;
@@ -383,6 +390,13 @@ export default function OrderInfoScreen() {
     setSubmitting(true);
     let stockAdjusted = false;
 
+    /*
+     * Minted here, before anything moves, so the order and the stock movements
+     * it causes carry the same identity — including on the rollback path
+     * below, which is precisely when someone needs to trace what happened.
+     */
+    const orderId = uuidv7();
+
     try {
       const orderNumber = `ORD-${Date.now().toString().slice(-6)}`;
       const cashierUserId = userId ?? "00000000-0000-0000-0000-000000000000";
@@ -394,7 +408,7 @@ export default function OrderInfoScreen() {
       );
       validateCartQuantities(lines, freshStock);
 
-      await decrementStockForOrder(activeStoreId, lines);
+      await decrementStockForOrder(activeStoreId, lines, orderId);
       stockAdjusted = true;
 
       const net = await NetInfo.fetch();
@@ -407,12 +421,16 @@ export default function OrderInfoScreen() {
       const isOnline = !usingLaravel && Boolean(net.isConnected && net.isInternetReachable !== false);
 
       if (!isOnline) {
-        await saveOrderOffline(orderNumber, cashierUserId);
+        await saveOrderOffline(orderNumber, cashierUserId, orderId);
       } else {
         try {
           const { data: inserted, error: orderError } = await supabase
             .from("orders")
             .insert({
+              // The same id the stock movements were recorded against. Letting
+              // the server pick its own would leave those movements naming a
+              // sale that does not exist, which is worse than naming none.
+              id: orderId,
               store_id: activeStoreId,
               cashier_user_id: cashierUserId,
               order_number: orderNumber,
@@ -462,13 +480,13 @@ export default function OrderInfoScreen() {
           router.push(`/pos/receipt/${inserted.id}`);
         } catch (cloudErr) {
           if (__DEV__) console.warn(`[OmniPOS] Cloud checkout failed, using offline fallback: ${cloudErr}`);
-          await saveOrderOffline(orderNumber, cashierUserId);
+          await saveOrderOffline(orderNumber, cashierUserId, orderId);
         }
       }
     } catch (error) {
       if (stockAdjusted) {
         try {
-          await restoreStockForOrder(activeStoreId, lines);
+          await restoreStockForOrder(activeStoreId, lines, orderId);
         } catch {
           // ignore
         }

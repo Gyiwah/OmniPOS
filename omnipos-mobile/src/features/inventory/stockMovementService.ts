@@ -36,6 +36,14 @@ export async function recordStockMovement(params: {
   quantityAfter: number;
   reason: string;
   notes?: string;
+  /**
+   * What caused this movement, so the ledger can answer "which sale took this
+   * unit". The server already reads both from the payload; the client simply
+   * never sent them, so a stock take turned up decrements that could not be
+   * tied back to a receipt.
+   */
+  sourceType?: string;
+  sourceId?: string;
 }): Promise<StockMovement> {
   const movementId = uuidv7();
   const now = Date.now();
@@ -76,6 +84,8 @@ export async function recordStockMovement(params: {
       quantity_after: params.quantityAfter,
       reason: params.reason,
       notes: params.notes ?? null,
+      source_type: params.sourceType ?? null,
+      source_id: params.sourceId ?? null,
       created_at: new Date(now).toISOString(),
     },
   });
