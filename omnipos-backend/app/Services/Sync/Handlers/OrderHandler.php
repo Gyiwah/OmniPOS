@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Payment;
 use App\Models\Product;
+use App\Models\RegisterShift;
 use App\Models\StoreMember;
 use App\Models\User;
 use App\Services\InventoryService;
@@ -76,13 +77,32 @@ class OrderHandler implements EntityHandler
             );
         }
 
+        /*
+         * A drawer this server does not know about attributes the sale to no
+         * drawer, rather than refusing the sale.
+         *
+         * register_shift_id carries a foreign key, so an id the server has
+         * never seen makes the whole push fail — and a till can easily hold
+         * one: its shift may still be queued behind this order, or may have
+         * been rejected outright because another shift was already open. Both
+         * happen, and neither is a reason to lose a sale that has been rung up
+         * and receipted.
+         *
+         * The cost of nulling it is that the sale is missing from one drawer
+         * count. The cost of refusing it is a sale missing from the books.
+         */
+        $shiftId = $payload['register_shift_id'] ?? null;
+        if ($shiftId && ! RegisterShift::where('store_id', $storeId)->whereKey($shiftId)->exists()) {
+            $shiftId = null;
+        }
+
         $order = new Order();
         $order->forceFill([
             'id' => $recordId,
             'store_id' => $storeId,
             'cashier_user_id' => $payload['cashier_user_id'] ?? $user->id,
             'customer_id' => $payload['customer_id'] ?? null,
-            'register_shift_id' => $payload['register_shift_id'] ?? null,
+            'register_shift_id' => $shiftId,
             'device_id' => $device?->id,
             'order_number' => $orderNumber,
             'status' => $payload['status'] ?? 'completed',

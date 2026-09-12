@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Customer;
 use App\Models\Device;
+use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Store;
@@ -54,6 +55,49 @@ class PaymentMethodVocabularyTest extends TestCase
             'id' => (string) Str::uuid7(), 'store_id' => $this->store->id,
             'user_id' => $this->cashier->id, 'platform' => 'android',
         ]);
+    }
+
+    /**
+     * A sale naming a drawer the server has never seen.
+     *
+     * register_shift_id carries a foreign key, so an unknown id used to fail
+     * the whole push. A till can easily hold one: its shift may still be
+     * queued behind this order, or may have been rejected because another was
+     * already open — both observed on a device. Losing the sale over it is far
+     * worse than losing its place in one drawer count.
+     */
+    public function test_a_sale_naming_an_unknown_drawer_is_still_booked(): void
+    {
+        $product = Product::create([
+            'id' => (string) Str::uuid7(), 'store_id' => $this->store->id,
+            'name' => 'Sachet water', 'sku' => 'SW-'.Str::random(6), 'price' => '20.00', 'stock' => 50,
+        ]);
+
+        $result = app(SyncService::class)->push($this->store->id, $this->cashier, $this->device, [[
+            'operation_id' => (string) Str::uuid7(),
+            'entity' => 'orders',
+            'action' => 'upsert',
+            'record_id' => (string) Str::uuid7(),
+            'payload' => [
+                'order_number' => 'OM-'.Str::random(6),
+                'status' => 'completed',
+                'subtotal' => '20.00', 'tax' => '0.00', 'discount' => '0.00', 'total' => '20.00',
+                'amount_paid' => '20.00', 'change_due' => '0.00', 'payment_method' => 'cash',
+                // A shift that does not exist here.
+                'register_shift_id' => (string) Str::uuid7(),
+                'client_created_at' => now()->toIso8601String(),
+                'items' => [[
+                    'id' => (string) Str::uuid7(), 'product_id' => $product->id,
+                    'product_name' => 'Sachet water', 'unit_price' => '20.00',
+                    'quantity' => 1, 'line_total' => '20.00',
+                ]],
+            ],
+        ]]);
+
+        $this->assertSame(1, $result['applied'], $result['results'][0]['reason'] ?? 'push rejected');
+
+        $order = Order::where('store_id', $this->store->id)->sole();
+        $this->assertNull($order->register_shift_id, 'the unknown drawer should be dropped, not kept');
     }
 
     /** One sale, pushed the way the mobile till pushes one. */

@@ -275,6 +275,16 @@ Stated plainly, because a changelog that only lists wins is a sales document.
   went back by mobile money the till counts **over** by the refund amount, every
   time. *A refund method picker exists in a working branch and has been seen
   working on a device; this entry stands until it lands.*
+- **A cash refund makes the drawer look short at closing time.** The till
+  computes expected cash by walking its local orders and summing the cash ones;
+  it never subtracts refunds, and the device has no local returns table to
+  subtract them from. Demonstrated on a device: after one ₵11 cash refund, a
+  drawer holding exactly the right money was reported **"Cash Short by
+  -₵11.00"**. A cashier is accused of losing money they handed back correctly,
+  every time they refund cash. The server's own `computeExpectedCash` sums
+  payments including the negative refund, so the two disagree and the *till* is
+  the wrong one.
+
 - **A cold start with no network is unproven.** Sales survive a restart — the
   database files are untouched by a force-stop, and a sale rung up offline
   synced exactly once afterwards. But a debug build fetches its JS from a dev

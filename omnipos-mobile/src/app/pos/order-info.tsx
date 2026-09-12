@@ -32,6 +32,7 @@ import type Customer from "@/src/database/models/Customer";
 import { usingLaravel } from "@/src/core/api/config";
 import { tenderSuggestions } from "@/src/utils/cartMath";
 import { uuidv7 } from "@/src/core/ids";
+import { useActiveShift } from "@/src/features/shifts/hooks";
 
 function symbolFor(currency: string) {
   if (currency === "USD") return "$";
@@ -51,6 +52,7 @@ type CustomerOption = {
 export default function OrderInfoScreen() {
   const router = useRouter();
   const activeStoreId = useStoreSlice((s) => s.activeStoreId);
+  const { data: activeShift } = useActiveShift();
   const userId = useAuthStore((s) => s.userId);
   const {
     lines,
@@ -365,6 +367,14 @@ export default function OrderInfoScreen() {
           customer_phone: customerPhone || null,
           customer_id: customerId || null,
           shipping_address: shippingAddress || null,
+          /*
+           * Which drawer took the money. The server hangs each payment off the
+           * order's shift, and with this absent every mobile sale arrived
+           * unattached — so a shift's expected cash was its opening float and
+           * nothing else, and closing the drawer would show it over by the
+           * whole day's takings. The web till had been sending it all along.
+           */
+          register_shift_id: activeShift?.id ?? null,
           /*
            * The lines. Without them the server received a total and nothing
            * else: no product ever appeared in a report, and a refund was
