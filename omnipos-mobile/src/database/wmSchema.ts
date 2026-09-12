@@ -1,6 +1,6 @@
 import { appSchema, tableSchema } from "@nozbe/watermelondb";
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export default appSchema({
   version: SCHEMA_VERSION,
@@ -102,6 +102,16 @@ export default appSchema({
         { name: "quantity_after", type: "number" },
         { name: "reason", type: "string" },
         { name: "notes", type: "string", isOptional: true },
+        /*
+         * What caused the movement — 'order' and the sale's id, say. Optional
+         * because rows written before this existed have no answer, and an
+         * opening-balance adjustment genuinely has no cause to point at.
+         *
+         * source_id is indexed: the question worth asking of it is "what moved
+         * because of this sale", which is a lookup by that column.
+         */
+        { name: "source_type", type: "string", isOptional: true },
+        { name: "source_id", type: "string", isOptional: true, isIndexed: true },
         { name: "created_at", type: "number", isIndexed: true },
         { name: "dirty", type: "boolean" },
       ],

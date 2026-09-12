@@ -62,6 +62,8 @@ export async function recordStockMovement(params: {
       r.quantityAfter = params.quantityAfter;
       r.reason = params.reason;
       r.notes = params.notes;
+      r.sourceType = params.sourceType;
+      r.sourceId = params.sourceId;
       r.createdAt = now;
       r.dirty = true;
     });

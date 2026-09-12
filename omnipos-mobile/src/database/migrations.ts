@@ -158,5 +158,17 @@ export default schemaMigrations({
         }),
       ],
     },
+    {
+      toVersion: 7,
+      steps: [
+        addColumns({
+          table: "stock_movements",
+          columns: [
+            { name: "source_type", type: "string", isOptional: true },
+            { name: "source_id", type: "string", isOptional: true, isIndexed: true },
+          ],
+        }),
+      ],
+    },
   ],
 });
