@@ -2,6 +2,7 @@ import { Q, type Model } from "@nozbe/watermelondb";
 
 import { api, ApiError } from "@/src/core/api/client";
 import { uuidv7 } from "@/src/core/ids";
+import { getDeviceId } from "./deviceId";
 import { network, storage } from "@/src/core/platform";
 import { database } from "@/src/database";
 import type Customer from "@/src/database/models/Customer";
@@ -30,7 +31,6 @@ import { useSyncStore } from "@/src/store/syncStore";
  */
 
 const CURSOR_KEY = "omnipos_laravel_cursor";
-const DEVICE_KEY = "omnipos_laravel_device_id";
 const LAST_SYNC_KEY = "omnipos_laravel_last_sync";
 
 const MAX_ATTEMPTS = 8;
@@ -69,15 +69,24 @@ type PushResult = {
   reason?: string;
 };
 
-/** Stable per-installation identity, so the server can attribute operations. */
-export async function getDeviceId(): Promise<string> {
-  let id = await storage.getItem(DEVICE_KEY);
-  if (!id) {
-    id = uuidv7();
-    await storage.setItem(DEVICE_KEY, id);
-  }
-  return id;
-}
+/** Re-exported so existing callers keep working; the id itself lives in one place. */
+export { getDeviceId };
+
+/**
+ * Tell the server this device exists. Idempotent, both ends.
+ *
+ * It was written and never called, so no till had ever registered. That is not
+ * only a missing row: the pull sends device_id so the server can withhold the
+ * till's own writes from its own changefeed, and an unknown device defeats
+ * that. A till then pulled back everything it had just pushed — wasted work,
+ * and the way one page came to mention a record twice, which is what the
+ * de-duplication above now absorbs.
+ *
+ * Attempted once per process, before the first push, and never allowed to stop
+ * a sync: a shop whose registration call fails must still be able to send its
+ * takings.
+ */
+let registration: Promise<void> | null = null;
 
 export async function registerDevice(): Promise<void> {
   await api.post("/api/sync/devices", {
@@ -85,6 +94,16 @@ export async function registerDevice(): Promise<void> {
     platform: "mobile",
     terminal_label: await storage.getItem("omnipos_terminal_label"),
   });
+}
+
+function ensureDeviceRegistered(): Promise<void> {
+  registration ??= registerDevice().catch(() => {
+    // Retried on the next sync rather than here. The server may simply be
+    // unreachable, which is the condition this app is built to keep working in.
+    registration = null;
+  });
+
+  return registration;
 }
 
 /**
@@ -122,6 +141,10 @@ export async function runLaravelSync(storeIdHint?: string | null): Promise<SyncO
   }
 
   try {
+    // Before the push, so the operations it sends are attributed to a device
+    // the server knows and can filter back out of this till's own changefeed.
+    await ensureDeviceRegistered();
+
     const pushed = await pushQueue(storeId);
     const pulled = await pullChanges(storeId);
 

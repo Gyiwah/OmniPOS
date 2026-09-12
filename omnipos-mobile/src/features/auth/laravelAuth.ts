@@ -1,5 +1,6 @@
 import { api, setActiveStore, setToken } from "@/src/core/api/client";
 import { storage } from "@/src/core/platform";
+import { getDeviceId } from "@/src/sync/deviceId";
 import { SYNC_STORAGE } from "@/src/sync/keys";
 
 /**
@@ -36,8 +37,15 @@ export type SignInResult = {
  * one device does not revoke another's.
  */
 async function deviceTokenName(): Promise<string> {
-  const existing = await storage.getItem("omnipos_laravel_device_id");
-  return `mobile:${existing ?? "unregistered"}`;
+  /*
+   * getDeviceId mints the id if this installation has not got one yet, which
+   * on a fresh till is always: sign-in happens before the first sync. Reading
+   * the storage key directly found nothing and fell back to "unregistered", so
+   * every new device authenticated under the same name — and since the server
+   * revokes an existing token of the same name when it issues one, signing in
+   * on a second till silently signed the first out.
+   */
+  return `mobile:${await getDeviceId()}`;
 }
 
 export async function signIn(email: string, password: string): Promise<SignInResult> {
@@ -87,10 +95,24 @@ async function finishSession(user: AuthedUser, memberships: Membership[]): Promi
     await storage.setItem(SYNC_STORAGE.activeStoreId, storeId);
   }
 
+  const role =
+    memberships.find((m) => m.store_id === storeId)?.role ?? (user.is_super_admin ? "super_admin" : null);
+
+  // Persist to auth cache immediately so useAuthBootstrap can hydrate instantly
+  void storage.setItem(
+    SYNC_STORAGE.authCacheSession,
+    JSON.stringify({
+      userId: user.id,
+      role,
+      isSuperAdmin: user.is_super_admin,
+      storeId,
+    }),
+  );
+
   return {
     userId: user.id,
     storeId,
-    role: memberships.find((m) => m.store_id === storeId)?.role ?? (user.is_super_admin ? "super_admin" : null),
+    role,
     isSuperAdmin: user.is_super_admin,
     memberships,
   };
@@ -112,5 +134,6 @@ export async function signOut(): Promise<void> {
   } finally {
     await setToken(null);
     setActiveStore(null);
+    await storage.removeItem(SYNC_STORAGE.authCacheSession);
   }
 }
