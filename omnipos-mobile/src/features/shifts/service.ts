@@ -3,6 +3,8 @@ import { uuidv7 } from "@/src/core/ids";
 import { database } from "@/src/database";
 import RegisterShift from "@/src/database/models/RegisterShift";
 import Order from "@/src/database/models/Order";
+import { api, ApiError } from "@/src/core/api/client";
+import { usingLaravel } from "@/src/core/api/config";
 import { enqueueChange } from "@/src/sync/enqueue";
 import type { CashMovement, ShiftRecord, ShiftSummary, ZReportData } from "./types";
 
@@ -56,6 +58,57 @@ export async function getActiveShift(storeId: string, cashierUserId?: string): P
   return null;
 }
 
+/**
+ * A drawer this cashier already has open on the server.
+ *
+ * The local check alone is not enough. The server refuses a second open shift
+ * for one cashier, and when it did the till never noticed: the rejection sat in
+ * the outbox while the till went on selling, attributing and reconciling
+ * against a shift the server did not have. Sales landed with no drawer, the
+ * close created a half-formed record with no opening float, and the Z-report
+ * reconciled against figures the server could not agree with.
+ *
+ * Returns null when there is nothing open, when this is not a Laravel build, or
+ * when the server cannot be reached — a till must still be able to open a
+ * drawer with no connection, which is the whole point of the app.
+ */
+async function serverOpenShift(cashierUserId: string): Promise<ShiftRecord | null> {
+  if (!usingLaravel) return null;
+
+  try {
+    const res = await api.get<{ shift: Record<string, unknown> | null }>("/api/register-shifts/current");
+    const remote = res.shift;
+    if (!remote) return null;
+
+    const id = String(remote.id ?? "");
+    if (!id) return null;
+
+    return {
+      id,
+      storeId: String(remote.store_id ?? ""),
+      cashierUserId: String(remote.cashier_user_id ?? cashierUserId),
+      openedAt: remote.opened_at ? new Date(String(remote.opened_at)).getTime() : Date.now(),
+      closedAt: null,
+      openingFloat: Number(remote.opening_float ?? 0),
+      cashSales: Number(remote.cash_sales ?? 0),
+      cashIn: Number(remote.cash_in ?? 0),
+      cashOut: Number(remote.cash_out ?? 0),
+      expectedCash: Number(remote.expected_cash ?? 0),
+      actualCash: null,
+      discrepancy: null,
+      status: "open",
+      notes: remote.notes ? String(remote.notes) : null,
+      movements: [],
+    };
+  } catch (error) {
+    // Offline, or the endpoint is unavailable. Fall through and open locally;
+    // if the server does have one, the push conflicts and Rejected Sales shows
+    // it, which is worse than preventing it but better than blocking a till.
+    if (error instanceof ApiError) return null;
+    return null;
+  }
+}
+
 export async function openShift(
   storeId: string,
   cashierUserId: string,
@@ -65,6 +118,36 @@ export async function openShift(
   const existing = await getActiveShift(storeId, cashierUserId);
   if (existing) {
     return existing;
+  }
+
+  /*
+   * Adopted rather than refused. The cashier wants a drawer open, and there is
+   * one — theirs, on the server. Handing it back means the till and the server
+   * agree from the first sale, instead of diverging silently until somebody
+   * counts the money.
+   */
+  const remote = await serverOpenShift(cashierUserId);
+  if (remote) {
+    await database.write(async () => {
+      await database.get<RegisterShift>("register_shifts").create((rec) => {
+        rec._raw.id = remote.id;
+        rec.storeId = remote.storeId || storeId;
+        rec.cashierUserId = remote.cashierUserId;
+        rec.openedAt = remote.openedAt;
+        rec.openingFloat = remote.openingFloat;
+        rec.cashSales = remote.cashSales;
+        rec.cashIn = remote.cashIn;
+        rec.cashOut = remote.cashOut;
+        rec.expectedCash = remote.expectedCash;
+        rec.status = "open";
+        rec.notes = remote.notes ?? undefined;
+        rec.movementsJson = JSON.stringify([]);
+        // Already on the server; pushing it back would only conflict.
+        rec.dirty = false;
+      });
+    });
+
+    return remote;
   }
 
   const now = Date.now();
