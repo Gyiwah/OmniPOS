@@ -30,10 +30,14 @@ export function useOfflineSyncOrchestrator(appReady = true): void {
 
   useEffect(() => {
     if (!appReady || !activeStoreId) return;
+    let wasConnected: boolean | null = null;
+
     const unsub = network.subscribe((state) => {
-      if (state.isConnected) {
+      // Only trigger a reconnect sync if the device was previously offline
+      if (state.isConnected && wasConnected === false) {
         void synchronise(activeStoreId);
       }
+      wasConnected = state.isConnected ?? null;
     });
     return unsub;
   }, [activeStoreId, appReady]);

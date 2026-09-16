@@ -1,8 +1,9 @@
 /*
  * OmniPOS.
  *
- * Dark is the default, and that is a working decision rather than a stylistic
- * one: a till often sits under harsh shop lighting where a white screen is a
+ * Colour is the same palette the mobile app uses (primary blue, navy, orange)
+ * so a shop that runs both does not learn two brands. Dark is still the default
+ * theme: a till often sits under harsh shop lighting where a white screen is a
  * mirror. Light is offered because the other half of the estate is a bright
  * office or a tablet by a window.
  *
@@ -15,31 +16,37 @@
 
 :root {
   /*
-   * Light theme.
+   * Light theme — OmniPOS Blue & Orange, matching omnipos-mobile Colors.
    *
    * Defined on bare :root so it is the fallback everywhere, including inside a
    * print stylesheet or a context that never sees the theme attribute.
+   *
+   * --accent is the fill (buttons, active chips). --accent-text is what sits
+   * on a page as a link or price: the same blue in light, a lighter tint in
+   * dark, because #0767de on navy fails WCAG as body-sized text.
    */
-  --bg: #f1f5f9;
+  --bg: #fafbfb;
   --surface: #ffffff;
   --panel: #ffffff;
-  --panel-2: #f1f5f9;
+  --panel-2: #edf2f7;
   --raised: #ffffff;
-  --line: #dbe3ec;
-  --line-strong: #c3cedd;
-  --text: #0f172a;
-  --text-strong: #020617;
-  --muted: #5a6b82;
+  --line: #d8e2f0;
+  --line-strong: #c5d4e8;
+  --text: #1f417a;
+  --text-strong: #042358;
+  --muted: #4b5563;
 
-  --accent: #0369a1;
-  --accent-hover: #075985;
+  --accent: #0767de;
+  --accent-hover: #0554b8;
   --accent-ink: #ffffff;
-  --accent-soft: #e0f2fe;
+  --accent-soft: #dcecff;
+  --accent-text: #0767de;
+  --accent-text-hover: #042358;
 
   --ok: #15803d;
   --ok-soft: #dcfce7;
-  --warn: #b45309;
-  --warn-soft: #fef3c7;
+  --warn: #c2410c;
+  --warn-soft: #fff1e6;
   --danger: #b91c1c;
   --danger-soft: #fee2e2;
 
@@ -68,28 +75,30 @@
  */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0b1220;
-    --surface: #131c2e;
-    --panel: #131c2e;
-    --panel-2: #1c2739;
-    --raised: #1c2739;
-    --line: #2a374d;
-    --line-strong: #3a4a63;
-    --text: #e6edf7;
+    --bg: #020617;
+    --surface: #021634;
+    --panel: #021634;
+    --panel-2: #042358;
+    --raised: #0a2248;
+    --line: #1f417a;
+    --line-strong: #2a4f8c;
+    --text: #e2e8f0;
     --text-strong: #ffffff;
-    --muted: #94a6bf;
+    --muted: #94a3b8;
 
-    --accent: #38bdf8;
-    --accent-hover: #7dd3fc;
-    --accent-ink: #052437;
-    --accent-soft: rgba(56, 189, 248, 0.14);
+    --accent: #0767de;
+    --accent-hover: #0554b8;
+    --accent-ink: #ffffff;
+    --accent-soft: rgba(7, 103, 222, 0.22);
+    --accent-text: #4d93ea;
+    --accent-text-hover: #dcecff;
 
     --ok: #4ade80;
-    --ok-soft: rgba(74, 222, 128, 0.14);
-    --warn: #fbbf24;
-    --warn-soft: rgba(251, 191, 36, 0.14);
+    --ok-soft: rgba(22, 163, 74, 0.16);
+    --warn: #ff9b4a;
+    --warn-soft: rgba(254, 116, 3, 0.16);
     --danger: #f87171;
-    --danger-soft: rgba(248, 113, 113, 0.14);
+    --danger-soft: rgba(220, 38, 38, 0.16);
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.45);
@@ -100,28 +109,30 @@
 }
 
 :root[data-theme="dark"] {
-  --bg: #0b1220;
-  --surface: #131c2e;
-  --panel: #131c2e;
-  --panel-2: #1c2739;
-  --raised: #1c2739;
-  --line: #2a374d;
-  --line-strong: #3a4a63;
-  --text: #e6edf7;
+  --bg: #020617;
+  --surface: #021634;
+  --panel: #021634;
+  --panel-2: #042358;
+  --raised: #0a2248;
+  --line: #1f417a;
+  --line-strong: #2a4f8c;
+  --text: #e2e8f0;
   --text-strong: #ffffff;
-  --muted: #94a6bf;
+  --muted: #94a3b8;
 
-  --accent: #38bdf8;
-  --accent-hover: #7dd3fc;
-  --accent-ink: #052437;
-  --accent-soft: rgba(56, 189, 248, 0.14);
+  --accent: #0767de;
+  --accent-hover: #0554b8;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(7, 103, 222, 0.22);
+  --accent-text: #4d93ea;
+  --accent-text-hover: #dcecff;
 
   --ok: #4ade80;
-  --ok-soft: rgba(74, 222, 128, 0.14);
-  --warn: #fbbf24;
-  --warn-soft: rgba(251, 191, 36, 0.14);
+  --ok-soft: rgba(22, 163, 74, 0.16);
+  --warn: #ff9b4a;
+  --warn-soft: rgba(254, 116, 3, 0.16);
   --danger: #f87171;
-  --danger-soft: rgba(248, 113, 113, 0.14);
+  --danger-soft: rgba(220, 38, 38, 0.16);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.45);
@@ -163,13 +174,13 @@ input, select, textarea {
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 input::placeholder { color: var(--muted); opacity: 0.85; }
-input:hover:not(:disabled), select:hover:not(:disabled) { border-color: var(--accent); }
+input:hover:not(:disabled), select:hover:not(:disabled) { border-color: var(--accent-text); }
 input:disabled, select:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* One focus treatment for everything, and never `outline: none`: a till is
    operated from the keyboard whenever the queue is long. */
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
@@ -217,7 +228,7 @@ input:disabled, select:disabled { opacity: 0.6; cursor: not-allowed; }
 }
 .brand strong { letter-spacing: -0.02em; }
 .brand .muted { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.brand-mark { color: var(--accent); flex: none; }
+.brand-mark { color: var(--accent-text); flex: none; }
 
 .shell-nav { display: flex; flex-direction: column; gap: 0.15rem; flex: 1; min-height: 0; }
 .shell-nav a {
@@ -232,7 +243,7 @@ input:disabled, select:disabled { opacity: 0.6; cursor: not-allowed; }
   transition: background 120ms ease, color 120ms ease;
 }
 .shell-nav a:hover { background: var(--panel-2); color: var(--text); }
-.shell-nav a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.shell-nav a.active { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
 .shell-nav svg { flex: none; }
 .nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -360,14 +371,14 @@ input:disabled, select:disabled { opacity: 0.6; cursor: not-allowed; }
   gap: 0.45rem;
   transition: border-color 120ms ease, background 120ms ease;
 }
-.secondary-button:hover:not(:disabled) { border-color: var(--accent); background: var(--panel-2); }
+.secondary-button:hover:not(:disabled) { border-color: var(--accent-text); background: var(--panel-2); }
 .secondary-button:disabled { opacity: 0.45; cursor: not-allowed; }
 a.secondary-button { text-decoration: none; }
 
 .link {
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--accent-text);
   padding: 0;
   font-weight: 550;
   text-decoration: underline;
@@ -376,8 +387,22 @@ a.secondary-button { text-decoration: none; }
   align-items: center;
   gap: 0.3rem;
 }
-.link:hover { color: var(--accent-hover); }
+.link:hover { color: var(--accent-text-hover); }
 .link.danger { color: var(--danger); }
+.danger-button { color: var(--danger); }
+.danger-button:hover:not(:disabled) { border-color: var(--danger); background: var(--danger-soft); }
+
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.85rem;
+  margin-bottom: 0.75rem;
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+}
+.bulk-actions strong { margin-right: auto; }
 
 .chip {
   display: inline-flex;
@@ -391,7 +416,7 @@ a.secondary-button { text-decoration: none; }
   font-weight: 550;
   transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
-.chip:hover { border-color: var(--accent); color: var(--text); }
+.chip:hover { border-color: var(--accent-text); color: var(--text); }
 .chip-active {
   background: var(--accent);
   color: var(--accent-ink);
@@ -441,10 +466,13 @@ a.secondary-button { text-decoration: none; }
   box-shadow: var(--shadow-sm);
   transition: border-color 120ms ease, transform 80ms ease, box-shadow 120ms ease;
 }
-.product-tile:hover { border-color: var(--accent); box-shadow: var(--shadow-md); }
+.product-tile:hover { border-color: var(--accent-text); box-shadow: var(--shadow-md); }
 .product-tile:active { transform: translateY(1px); }
+.product-tile-disabled,
+.product-tile-disabled:hover { cursor: not-allowed; opacity: 0.62; border-color: var(--line); box-shadow: none; }
+.product-tile-disabled:active { transform: none; }
 .product-name { font-weight: 600; line-height: 1.25; color: var(--text-strong); }
-.product-price { color: var(--accent); font-weight: 650; font-variant-numeric: tabular-nums; }
+.product-price { color: var(--accent-text); font-weight: 650; font-variant-numeric: tabular-nums; }
 .product-stock { font-size: 0.78rem; color: var(--muted); }
 .product-stock-out { color: var(--danger); font-weight: 600; }
 .pos-grid-empty { grid-column: 1 / -1; color: var(--muted); }
@@ -493,7 +521,8 @@ a.secondary-button { text-decoration: none; }
   justify-content: center;
   flex: none;
 }
-.cart-line-controls button:not(.link):hover { border-color: var(--accent); color: var(--accent); }
+.cart-line-controls button:not(.link):hover { border-color: var(--accent-text); color: var(--accent-text); }
+.cart-line-controls button:not(.link):disabled { opacity: 0.4; cursor: not-allowed; }
 .cart-line-controls input { width: 3.5rem; padding: 0.25rem; text-align: center; }
 .cart-line-unit { color: var(--muted); white-space: nowrap; }
 .cart-empty { color: var(--muted); padding: 1.5rem 0; text-align: center; }
@@ -593,7 +622,7 @@ a.secondary-button { text-decoration: none; }
   border-radius: var(--radius-sm);
   padding: 0.5rem 0.65rem;
 }
-.customer-matches button:hover { border-color: var(--accent); }
+.customer-matches button:hover { border-color: var(--accent-text); }
 .debt { color: var(--warn); }
 
 .modal-actions {
@@ -619,6 +648,31 @@ a.secondary-button { text-decoration: none; }
 .page-header h1 { display: flex; align-items: center; gap: 0.5rem; }
 .page-actions { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
 .checkbox { display: flex; align-items: center; gap: 0.4rem; color: var(--muted); white-space: nowrap; }
+.search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: min(22rem, 100%);
+  color: var(--muted);
+}
+.search-field > svg { position: absolute; left: 0.7rem; pointer-events: none; }
+.search-field input { width: 100%; padding-left: 2.2rem; padding-right: 2.2rem; }
+.search-clear {
+  position: absolute;
+  right: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+}
+.search-clear:hover { background: var(--panel-2); color: var(--text); }
+.search-results { margin: -0.4rem 0 0.7rem; }
 
 .table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
 .table th, .table td { text-align: left; padding: 0.6rem 0.65rem; border-bottom: 1px solid var(--line); }
@@ -636,9 +690,57 @@ a.secondary-button { text-decoration: none; }
    to clear today, the other is an order to place this week. */
 .row-danger td { background: var(--danger-soft); }
 .row-muted td { opacity: 0.55; }
-.row-actions { white-space: nowrap; display: flex; gap: 0.7rem; align-items: center; }
-.row-actions a { color: var(--accent); }
+.row-actions { min-width: 7rem; }
+.row-actions a { color: var(--accent-text); }
+.selection-cell { width: 2.5rem; text-align: center; }
+.selection-cell input { width: 1rem; height: 1rem; }
 .table td .pill { margin-left: 0.4rem; }
+
+.action-menu { position: relative; width: max-content; margin-left: auto; }
+.action-menu summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: var(--surface);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+.action-menu summary::-webkit-details-marker { display: none; }
+.action-menu summary:hover { border-color: var(--accent-text); background: var(--panel-2); }
+.action-menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.3rem);
+  z-index: 10;
+  display: grid;
+  min-width: 9rem;
+  padding: 0.3rem;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+}
+.action-menu-list button {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+}
+.action-menu-list button:hover { background: var(--panel-2); }
+.action-menu-list button.danger { color: var(--danger); }
 
 /* Wide content scrolls inside its own box rather than pushing the page. A till
    is often a tablet, and a page that scrolls sideways takes the header and the
@@ -683,7 +785,7 @@ a.secondary-button { text-decoration: none; }
 /* A KPI that links somewhere still has to read as a tile, not as body text with
    an underline through it. */
 .kpi-link { text-decoration: none; color: inherit; }
-.kpi-link:hover { border-color: var(--accent); box-shadow: var(--shadow-md); }
+.kpi-link:hover { border-color: var(--accent-text); box-shadow: var(--shadow-md); }
 
 .notice, .warn {
   padding: 0.7rem 0.85rem;
@@ -698,6 +800,20 @@ a.secondary-button { text-decoration: none; }
 .notice-ok { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
 .notice-warn, .warn { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); }
 .notice-error { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
+.pos-toast {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 60;
+  width: min(26rem, calc(100vw - 2rem));
+  margin: 0;
+  box-shadow: var(--shadow-lg);
+  animation: toast-in 160ms ease-out;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-0.5rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .notice .link, .warn .link { color: inherit; }
 
 /* ---------------------------------------------------------------- login */
@@ -716,6 +832,15 @@ a.secondary-button { text-decoration: none; }
 .login-card h1 { display: flex; align-items: center; gap: 0.5rem; justify-content: center; }
 .login-card label { font-size: 0.85rem; color: var(--muted); margin-top: 0.6rem; font-weight: 550; }
 .login-card .pay-button { margin-top: 1.2rem; }
+
+.password-field { position: relative; display: grid; }
+.password-field input { padding-right: 2.6rem; width: 100%; }
+.password-toggle {
+  position: absolute;
+  right: 0.2rem;
+  top: 50%;
+  transform: translateY(-50%);
+}
 
 /* ---------------------------------------------------------------- conflicts */
 
@@ -737,7 +862,7 @@ a.secondary-button { text-decoration: none; }
   gap: 0.75rem;
   flex-wrap: wrap;
 }
-.conflict-amount { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 650; }
+.conflict-amount { font-variant-numeric: tabular-nums; color: var(--accent-text); font-weight: 650; }
 .conflict-reason { margin: 0; color: var(--danger); font-size: 0.9rem; }
 
 .conflict-detail { display: grid; gap: 0.6rem; background: var(--panel-2); border-radius: var(--radius-sm); padding: 0.75rem; }
@@ -804,6 +929,9 @@ a.secondary-button { text-decoration: none; }
 }
 .return-actions { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
 .return-actions input { flex: 1 1 16rem; min-width: 0; }
+.refund-method-block { flex: 1 1 100%; display: grid; gap: 0.45rem; }
+.refund-methods { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.method-hint { margin: 0; font-size: 0.85rem; }
 .qty-input { width: 4.5rem; text-align: center; }
 
 /* ---------------------------------------------------------------- forms */
@@ -942,7 +1070,7 @@ a.secondary-button { text-decoration: none; }
 }
 .import-drop { justify-content: center; cursor: pointer; }
 .visually-hidden:focus-visible + .import-drop,
-label.import-drop:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+label.import-drop:focus-within { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 
 .pos-scan { position: absolute; right: 0.45rem; top: 50%; transform: translateY(-50%); }
 
@@ -953,7 +1081,7 @@ label.import-drop:focus-within { outline: 2px solid var(--accent); outline-offse
 .scanner-reticle {
   position: absolute;
   inset: 18% 12%;
-  border: 2px solid var(--accent);
+  border: 2px solid var(--accent-text);
   border-radius: var(--radius);
   box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35);
   pointer-events: none;

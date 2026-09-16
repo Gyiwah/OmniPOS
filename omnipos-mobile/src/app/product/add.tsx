@@ -21,16 +21,22 @@ import type Product from "@/src/database/models/Product";
 import { createProductBatch } from "@/src/features/inventory/batchService";
 import { recordPriceChange } from "@/src/features/inventory/priceHistoryService";
 import { recordStockMovement } from "@/src/features/inventory/stockMovementService";
+import { uploadProductImageFromUri } from "@/src/services/storage";
 import { enqueueChange } from "@/src/sync/enqueue";
 import { remoteImageUrlOnly } from "@/src/sync/productRow";
 import { isLocalImageUri } from "@/src/services/storage";
 import { synchronise } from "@/src/sync";
+import { useAuthStore } from "@/src/store/authStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
+import { canEditCatalogue } from "@/src/utils/permissions";
 import { isNonNegativeNumber, isPositiveNumber, isRequired } from "@/src/utils/validators";
 
 export default function AddProductScreen() {
   const router = useRouter();
   const activeStoreId = useStoreSlice((s) => s.activeStoreId);
+  const role = useAuthStore((s) => s.role);
+  const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin);
+  const mayEditCatalogue = canEditCatalogue(isSuperAdmin ? "super_admin" : role);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageMimeType, setImageMimeType] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -128,6 +134,14 @@ export default function AddProductScreen() {
   }
 
   async function saveProduct() {
+    if (!mayEditCatalogue) {
+      Alert.alert(
+        "Not allowed",
+        "Only a manager or admin can add products. Sign in with one of those roles, or ask them to add it.",
+      );
+      return;
+    }
+
     if (!activeStoreId) {
       Alert.alert("Store not selected", "Select an active store before saving products.");
       return;
@@ -183,8 +197,10 @@ export default function AddProductScreen() {
         });
       });
 
-      // Record initial price history
-      void recordPriceChange({
+      // Await dependents before sync so one push can carry product + stock +
+      // batch together. Fire-and-forget raced the first synchronise and left
+      // opening stock / price history sitting in the queue for the next cycle.
+      await recordPriceChange({
         storeId: activeStoreId,
         productId,
         oldSellPrice: 0,
@@ -192,11 +208,10 @@ export default function AddProductScreen() {
         oldCostPrice: 0,
         newCostPrice: cost,
         reason: "Initial Product Creation",
-      }).catch(() => { });
+      }).catch(() => undefined);
 
-      // Record initial stock movement if stock > 0
       if (stock > 0) {
-        void recordStockMovement({
+        await recordStockMovement({
           storeId: activeStoreId,
           productId,
           type: "STOCK_IN",
@@ -205,19 +220,18 @@ export default function AddProductScreen() {
           quantityAfter: Math.floor(stock),
           reason: "Initial Stock on Creation",
           notes: batchNumber.trim() ? `Batch #${batchNumber.trim()}` : undefined,
-        }).catch(() => { });
+        }).catch(() => undefined);
       }
 
-      // Create initial batch if batch number is provided
       if (batchNumber.trim()) {
-        void createProductBatch({
+        await createProductBatch({
           storeId: activeStoreId,
           productId,
           batchNumber: batchNumber.trim(),
           quantity: Math.floor(stock),
           costPrice: cost,
           expiryDate: expiryDate.trim() || undefined,
-        }).catch(() => { });
+        }).catch(() => undefined);
       }
 
       await enqueueChange({
@@ -253,7 +267,54 @@ export default function AddProductScreen() {
               ? `Cloud sync failed: ${syncResult.lastError}. The product will retry syncing automatically.`
               : "Cloud sync failed. The product will retry syncing automatically.",
           );
+        } else if (syncResult.conflicts > 0) {
+          // Laravel rejects cashier catalogue writes as conflicts while still
+          // returning ok:true for the overall cycle. Saying "synced" here was
+          // how products looked saved on the phone and missing from the database.
+          Alert.alert(
+            "Saved on this device only",
+            "The server rejected the catalogue change — usually because this account cannot edit products. Ask a manager or admin to add it, or check Sync for the conflict.",
+          );
         } else {
+          if (imageUri && isLocalImageUri(imageUri)) {
+            try {
+              const imageRef = await uploadProductImageFromUri({
+                storeId: activeStoreId,
+                productId,
+                localUri: imageUri,
+                mimeType: imageMimeType,
+              });
+              await database.write(async () => {
+                const product = await database.get<Product>("products").find(productId);
+                await product.update((r) => {
+                  r.imageUrl = imageRef;
+                  r.dirty = true;
+                });
+              });
+              await enqueueChange({
+                storeId: activeStoreId,
+                entity: "products",
+                operation: "upsert",
+                recordId: productId,
+                remoteId: productId,
+                payload: {
+                  id: productId,
+                  name: cleanName,
+                  sku: cleanSku,
+                  barcode,
+                  price: sell,
+                  cost_price: cost ?? null,
+                  reorder_level: Number.isFinite(reorderVal) ? reorderVal : 5,
+                  image_url: imageRef,
+                  tags: parsedTags,
+                  is_active: true,
+                },
+              });
+              await synchronise(activeStoreId);
+            } catch {
+              Alert.alert("Saved without image", "The product synced, but its image upload failed. Edit it later to retry.");
+            }
+          }
           Alert.alert("Saved", "Product added and synced to the cloud.");
         }
       } else {

@@ -95,7 +95,7 @@ class AuthController extends Controller
 
         return response()->json([
             'token' => $token,
-            ...$this->profilePayload($user->fresh('memberships')),
+            ...$this->profilePayload($user->load('memberships')),
         ]);
     }
 

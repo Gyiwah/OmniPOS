@@ -7,7 +7,6 @@ import {
   canComplete,
   changeDue,
   computeTotals,
-  oversoldLines,
   setQuantity,
   toDecimal,
   toMinor,
@@ -103,9 +102,18 @@ describe("cart operations", () => {
     expect(lines).toHaveLength(0);
   });
 
-  it("reports oversold lines without blocking them", () => {
-    const over = oversoldLines([line({ quantity: 12, availableStock: 10 })]);
-    expect(over).toHaveLength(1);
+  it("does not add an out-of-stock product", () => {
+    expect(addLine([], line({ availableStock: 0 }))).toEqual([]);
+  });
+
+  it("does not increment a product beyond available stock", () => {
+    const lines = addLine([line({ quantity: 2, availableStock: 2 })], line({ id: "l2", availableStock: 2 }));
+    expect(lines[0].quantity).toBe(2);
+  });
+
+  it("caps typed quantities at available stock", () => {
+    const lines = setQuantity([line({ quantity: 1, availableStock: 3 })], "l1", 8);
+    expect(lines[0].quantity).toBe(3);
   });
 });
 

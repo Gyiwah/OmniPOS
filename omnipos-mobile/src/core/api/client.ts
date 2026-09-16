@@ -129,7 +129,12 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   } catch (cause) {
     // Distinguished from an HTTP error so callers can treat it as "offline, try
     // later" rather than "the server rejected this, do not retry".
-    throw new ApiError(0, cause instanceof Error ? cause.message : "Network request failed");
+    const reason = cause instanceof Error ? cause.message : "Network request failed";
+    throw new ApiError(
+      0,
+      `Cannot reach ${API_BASE_URL || "the API"} (${reason}). ` +
+        "Join the same Wi-Fi as this computer, and run `php artisan serve --host=0.0.0.0`.",
+    );
   }
 
   if (response.status === 204) return undefined as T;

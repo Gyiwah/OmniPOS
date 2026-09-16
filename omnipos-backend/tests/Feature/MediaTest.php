@@ -79,6 +79,7 @@ class MediaTest extends TestCase
 
         // The store id prefix IS the authorisation boundary on read.
         $this->assertSame("{$this->store->id}/products/{$this->product->id}.jpg", $path);
+        $this->assertSame($path, $this->product->refresh()->image_url);
         Storage::disk('local')->assertExists($path);
     }
 

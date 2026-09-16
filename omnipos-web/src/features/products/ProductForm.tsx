@@ -4,7 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db, type LocalCategory, type LocalProduct } from "@/db/schema";
 import { toMinor } from "@/features/pos/cart";
 import { uploadProductImage } from "./imageUpload";
-import { recordPriceChange, saveProduct, suggestSku } from "./service";
+import { addBatch, adjustStock, recordPriceChange, saveProduct, suggestSku } from "./service";
 
 type Props = {
   storeId: string;
@@ -14,21 +14,17 @@ type Props = {
   onSaved: (product: LocalProduct) => void;
 };
 
-/**
- * Add or edit a product.
- *
- * Stock is absent on purpose. Quantities move only through the ledger, so a new
- * product starts at zero and the opening count is a separate, explicit stock
- * movement — which is also the only way two tills that were both offline can end
- * up agreeing about how many there are.
- */
+/** Add or edit a product, including an optional ledger-backed opening count. */
 export function ProductForm({ storeId, currency, product, onClose, onSaved }: Props) {
   const [name, setName] = useState(product?.name ?? "");
   const [sku, setSku] = useState(product?.sku ?? "");
   const [barcode, setBarcode] = useState(product?.barcode ?? "");
   const [price, setPrice] = useState(product ? product.price : "");
   const [cost, setCost] = useState(product?.cost_price ?? "");
-  const [reorder, setReorder] = useState(String(product?.reorder_level ?? 0));
+  const [reorder, setReorder] = useState(String(product?.reorder_level ?? 5));
+  const [initialStock, setInitialStock] = useState("");
+  const [batchNumber, setBatchNumber] = useState("");
+  const [expiryDate, setExpiryDate] = useState("");
   const [categoryId, setCategoryId] = useState(product?.category_id ?? "");
   const [active, setActive] = useState(product?.is_active ?? true);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +80,29 @@ export function ProductForm({ storeId, currency, product, onClose, onSaved }: Pr
           reason: priceReason,
         });
       }
+
+      if (!product && Number(initialStock) > 0) {
+        const quantity = Math.floor(Number(initialStock));
+        if (batchNumber.trim() || expiryDate) {
+          await addBatch({
+            storeId,
+            productId: saved.id,
+            batchNumber: batchNumber.trim() || null,
+            quantity,
+            costPrice: cost.trim() === "" ? null : toMinor(cost),
+            expiryDate: expiryDate || null,
+            addToStock: true,
+          });
+        } else {
+          await adjustStock({
+            storeId,
+            productId: saved.id,
+            delta: quantity,
+            type: "STOCK_IN",
+            reason: "Initial stock on creation",
+          });
+        }
+      }
       // Uploaded after the save, because the server files it under the
       // product's id and a new product does not have one until it exists. A
       // failure here is reported but does not undo the save — the product is
@@ -135,6 +154,45 @@ export function ProductForm({ storeId, currency, product, onClose, onSaved }: Pr
             <input id="p-cost" inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="Optional" />
           </div>
         </div>
+
+        {!product && (
+          <div className="form-row">
+            <div>
+              <label htmlFor="p-initial-stock">Initial stock</label>
+              <input
+                id="p-initial-stock"
+                type="number"
+                min={0}
+                step={1}
+                inputMode="numeric"
+                value={initialStock}
+                onChange={(e) => setInitialStock(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label htmlFor="p-batch">Batch / lot number</label>
+              <input
+                id="p-batch"
+                value={batchNumber}
+                onChange={(e) => setBatchNumber(e.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+          </div>
+        )}
+
+        {!product && (
+          <label htmlFor="p-expiry">Expiry date</label>
+        )}
+        {!product && (
+          <input
+            id="p-expiry"
+            type="date"
+            value={expiryDate}
+            onChange={(e) => setExpiryDate(e.target.value)}
+          />
+        )}
 
         <div className="form-row">
           <div>

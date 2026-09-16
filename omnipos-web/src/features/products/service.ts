@@ -102,6 +102,28 @@ export async function saveProduct(
   return product;
 }
 
+export async function deleteProduct(storeId: string, productId: string): Promise<void> {
+  return deleteProducts(storeId, [productId]);
+}
+
+export async function deleteProducts(storeId: string, productIds: string[]): Promise<void> {
+  await db.transaction("rw", [db.products, db.outbox], async () => {
+    for (const productId of productIds) {
+      const product = await db.products.get(productId);
+      if (!product) throw new Error("That product is not on this till.");
+
+      await db.products.delete(productId);
+      await enqueue({
+        storeId,
+        entity: "products",
+        action: "delete",
+        recordId: productId,
+        payload: {},
+      });
+    }
+  });
+}
+
 /**
  * The movement types the server's schema accepts.
  *

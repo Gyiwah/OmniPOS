@@ -197,6 +197,48 @@ class ReturnSyncTest extends TestCase
     }
 
     /**
+     * The other half of the same sum, and the one a phone used to get wrong.
+     *
+     * The mobile till hardcoded 'cash' on every refund because its returns
+     * screen had no picker. Money handed back over mobile money never leaves
+     * the drawer, so booking it as cash took GHS 20 out of the expected cash
+     * that was still physically there, and the shift counted OVER by the refund
+     * on every non-cash refund taken on a phone.
+     *
+     * 'momo' is the spelling the mobile picker stores; canonicalMethod maps it
+     * to the column's 'mobile_money'. Sent here as the client sends it, so this
+     * covers the wire vocabulary too.
+     */
+    public function test_a_mobile_money_refund_leaves_the_expected_drawer_alone(): void
+    {
+        $shift = RegisterShift::create([
+            'store_id' => $this->store->id,
+            'cashier_user_id' => $this->cashier->id,
+            'opened_at' => now(),
+            'opening_float' => 100,
+            'status' => 'open',
+        ]);
+
+        Payment::create([
+            'store_id' => $this->store->id, 'order_id' => $this->order->id,
+            'register_shift_id' => $shift->id, 'method' => 'cash', 'amount' => 50,
+        ]);
+
+        $this->push($this->payload(2, [
+            'register_shift_id' => $shift->id,
+            'refund_method' => 'momo',
+        ]));
+
+        // The refund is on the books as money out...
+        $this->assertDatabaseHas('payments', [
+            'order_id' => $this->order->id, 'amount' => '-20.00', 'method' => 'mobile_money',
+        ]);
+
+        // ...but not out of the drawer: 100 float + 50 taken, unchanged.
+        $this->assertSame('150.00', $shift->refresh()->computeExpectedCash());
+    }
+
+    /**
      * The guard that stops a shop refunding more than it sold. A till decides
      * eligibility from what it knows locally, which goes stale the moment
      * another terminal processes a return against the same sale.

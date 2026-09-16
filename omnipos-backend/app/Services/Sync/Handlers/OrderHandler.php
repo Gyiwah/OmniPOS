@@ -77,6 +77,11 @@ class OrderHandler implements EntityHandler
             );
         }
 
+        $stockConflict = $this->stockConflict($storeId, $payload['items'] ?? $payload['lines'] ?? []);
+        if ($stockConflict) {
+            return UpsertOutcome::conflict($stockConflict);
+        }
+
         /*
          * A drawer this server does not know about attributes the sale to no
          * drawer, rather than refusing the sale.
@@ -130,6 +135,28 @@ class OrderHandler implements EntityHandler
         $this->refreshCustomerTotals($order);
 
         return UpsertOutcome::applied($this->present($order->fresh(['items', 'payments'])));
+    }
+
+    /** @param array<int, array<string, mixed>> $lines */
+    private function stockConflict(string $storeId, array $lines): ?string
+    {
+        $requested = [];
+        foreach ($lines as $line) {
+            $productId = $line['product_id'] ?? null;
+            $quantity = (int) ($line['quantity'] ?? 0);
+            if ($productId && $quantity > 0) {
+                $requested[$productId] = ($requested[$productId] ?? 0) + $quantity;
+            }
+        }
+
+        foreach ($requested as $productId => $quantity) {
+            $product = Product::where('store_id', $storeId)->whereKey($productId)->lockForUpdate()->first();
+            if ($product && $quantity > (int) $product->stock) {
+                return "Not enough stock for {$product->name}. Only {$product->stock} remain.";
+            }
+        }
+
+        return null;
     }
 
     /** @param array<int, array<string, mixed>> $lines */

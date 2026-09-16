@@ -18,7 +18,7 @@ export type CartLine = {
   unitPrice: number;
   unitCost: number | null;
   quantity: number;
-  /** Stock on hand when the line was added, for the oversell warning. */
+  /** Stock on hand when the line was added, for the oversell check. */
   availableStock: number | null;
 };
 
@@ -96,11 +96,18 @@ function clampPercent(value: number): number {
 }
 
 export function addLine(lines: CartLine[], incoming: Omit<CartLine, "quantity">, quantity = 1): CartLine[] {
+  if (incoming.availableStock !== null && incoming.availableStock < quantity) return lines;
+
   // Scanning the same barcode twice increments rather than creating a second
   // line, which is what a cashier expects and keeps the receipt readable.
   const index = lines.findIndex((l) => l.productId !== null && l.productId === incoming.productId);
 
   if (index >= 0) {
+    if (
+      incoming.availableStock !== null
+      && lines[index].quantity + quantity > incoming.availableStock
+    ) return lines;
+
     const next = [...lines];
     next[index] = { ...next[index], quantity: next[index].quantity + quantity };
     return next;
@@ -111,7 +118,11 @@ export function addLine(lines: CartLine[], incoming: Omit<CartLine, "quantity">,
 
 export function setQuantity(lines: CartLine[], lineId: string, quantity: number): CartLine[] {
   if (quantity <= 0) return lines.filter((l) => l.id !== lineId);
-  return lines.map((l) => (l.id === lineId ? { ...l, quantity } : l));
+  return lines.map((l) => {
+    if (l.id !== lineId) return l;
+    const capped = l.availableStock === null ? quantity : Math.min(quantity, l.availableStock);
+    return { ...l, quantity: capped };
+  });
 }
 
 export function removeLine(lines: CartLine[], lineId: string): CartLine[] {
@@ -120,10 +131,6 @@ export function removeLine(lines: CartLine[], lineId: string): CartLine[] {
 
 /**
  * Lines being sold beyond the stock this till knows about.
- *
- * Reported, never blocked. The till's stock figure can be minutes stale, and
- * refusing a sale the shop can physically fulfil is worse than recording an
- * oversell for the manager to reconcile. The server takes the same position.
  */
 export function oversoldLines(lines: CartLine[]): CartLine[] {
   return lines.filter((l) => l.availableStock !== null && l.quantity > l.availableStock);
@@ -162,8 +169,17 @@ export function canComplete(
   total: number,
   tenders: TenderLine[],
   hasCustomer: boolean,
+  lines: CartLine[] = [],
 ): { ok: true } | { ok: false; reason: string } {
   if (total <= 0) return { ok: false, reason: "The cart is empty." };
+
+  const oversold = oversoldLines(lines);
+  if (oversold.length > 0) {
+    return {
+      ok: false,
+      reason: `Not enough stock for: ${oversold.map((line) => line.name).join(", ")}. Reduce the quantity before completing the sale.`,
+    };
+  }
 
   const balance = balanceDue(total, tenders);
 

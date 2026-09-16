@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeftRight } from "lucide-react";
+import { ArrowLeftRight, Banknote, CreditCard, Smartphone, ArrowUpRight } from "lucide-react";
 
 import { db, type LocalReturn } from "@/db/schema";
 import { formatMoney, toMinor } from "@/features/pos/cart";
@@ -9,8 +9,21 @@ import { useSession } from "@/state/session";
 import { useSync } from "@/state/sync";
 import { lookupOrder, processReturn, type ReturnLookup } from "./service";
 import { canRefund, maxCashRefund, refundTotal, type ReturnDraftLine } from "./returns";
+import {
+  defaultRefundMethod,
+  matchRefundMethod,
+  REFUND_METHODS,
+  REFUND_METHOD_LABELS,
+  refundMethodLabel,
+  type RefundMethod,
+} from "./refundMethod";
 
-const REFUND_METHODS = ["cash", "card", "transfer", "mobile_money"];
+const REFUND_METHOD_ICONS = {
+  cash: Banknote,
+  card: CreditCard,
+  transfer: ArrowUpRight,
+  mobile_money: Smartphone,
+} as const;
 
 /**
  * Taking goods back over the counter.
@@ -30,7 +43,7 @@ export function ReturnsPage() {
   const [lookup, setLookup] = useState<ReturnLookup | null>(null);
   const [draft, setDraft] = useState<ReturnDraftLine[]>([]);
   const [reason, setReason] = useState("");
-  const [refundMethod, setRefundMethod] = useState("cash");
+  const [refundMethod, setRefundMethod] = useState<RefundMethod>("cash");
   const [notice, setNotice] = useState<{ kind: "ok" | "warn" | "error"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -63,6 +76,7 @@ export function ReturnsPage() {
       setLookup(found);
       setDraft(found.lines.map((l) => ({ orderItemId: l.orderItemId, quantity: 0, restock: true })));
       setReason("");
+      setRefundMethod(defaultRefundMethod(found.order.payment_method));
     } catch (error) {
       setNotice({ kind: "error", text: error instanceof Error ? error.message : "Lookup failed." });
     } finally {
@@ -103,6 +117,7 @@ export function ReturnsPage() {
       setLookup(null);
       setDraft([]);
       setReference("");
+      setRefundMethod("cash");
       void useSync.getState().sync(storeId);
     } catch (error) {
       setNotice({ kind: "error", text: error instanceof Error ? error.message : "Could not record the return." });
@@ -115,6 +130,8 @@ export function ReturnsPage() {
     setDraft((lines) => lines.map((l) => (l.orderItemId === orderItemId ? { ...l, ...patch } : l)));
     setNotice(null);
   };
+
+  const salePaidBy = lookup ? matchRefundMethod(lookup.order.payment_method) : null;
 
   return (
     <div className="page">
@@ -219,12 +236,35 @@ export function ReturnsPage() {
               placeholder="Faulty, wrong size, changed their mind…"
             />
 
-            <label htmlFor="refund-method">Refund by</label>
-            <select id="refund-method" value={refundMethod} onChange={(e) => setRefundMethod(e.target.value)}>
-              {REFUND_METHODS.map((m) => (
-                <option key={m} value={m}>{m.replace("_", " ")}</option>
-              ))}
-            </select>
+            <div className="refund-method-block">
+              <span id="refund-method-label">Refund by</span>
+              <div className="refund-methods" role="radiogroup" aria-labelledby="refund-method-label">
+                {REFUND_METHODS.map((m) => {
+                  const Icon = REFUND_METHOD_ICONS[m];
+                  const active = refundMethod === m;
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      className={active ? "chip chip-active" : "chip"}
+                      onClick={() => setRefundMethod(m)}
+                    >
+                      <Icon size={16} aria-hidden="true" />
+                      {REFUND_METHOD_LABELS[m]}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="muted method-hint">
+                {salePaidBy === null
+                  ? "This sale did not record a method the till can refund on — check the receipt."
+                  : salePaidBy === refundMethod
+                    ? "Matches how this sale was paid."
+                    : "Different from how this sale was paid — the drawer is reconciled on this choice."}
+              </p>
+            </div>
           </div>
 
           {total > paidCap && (
@@ -250,7 +290,7 @@ export function ReturnsPage() {
           <h2>Recent returns on this till</h2>
           <table className="table">
             <thead>
-              <tr><th>Receipt</th><th>When</th><th>Items</th><th>Reason</th><th>Refunded</th><th /></tr>
+              <tr><th>Receipt</th><th>When</th><th>Items</th><th>Reason</th><th>By</th><th>Refunded</th><th /></tr>
             </thead>
             <tbody>
               {recent.map((r) => (
@@ -259,6 +299,7 @@ export function ReturnsPage() {
                   <td>{new Date(r.client_created_at).toLocaleString()}</td>
                   <td>{r.items.reduce((sum, i) => sum + i.quantity, 0)}</td>
                   <td>{r.reason}</td>
+                  <td>{refundMethodLabel(r.refund_method)}</td>
                   <td>{formatMoney(toMinor(r.amount), currency)}</td>
                   <td>
                     {r._state === "pending" && <span className="pill pill-pending">Queued</span>}

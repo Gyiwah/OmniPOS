@@ -9,11 +9,13 @@ import {
   formatMoney,
   tenderedTotal,
   toMinor,
+  type CartLine,
   type TenderLine,
 } from "./cart";
 
 type Props = {
   total: number;
+  lines: CartLine[];
   currency: string;
   tenders: TenderLine[];
   methods: string[];
@@ -43,6 +45,7 @@ const METHOD_LABELS: Record<string, string> = {
  */
 export function PaymentPanel({
   total,
+  lines,
   currency,
   tenders,
   methods,
@@ -63,7 +66,7 @@ export function PaymentPanel({
 
   const outstanding = useMemo(() => balanceDue(total, tenders), [total, tenders]);
   const change = useMemo(() => changeDue(total, tenders), [total, tenders]);
-  const verdict = canComplete(total, tenders, customer !== null);
+  const verdict = canComplete(total, tenders, customer !== null, lines);
 
   const matches = useLiveQuery(
     async () => {

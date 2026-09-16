@@ -58,6 +58,7 @@ export function SettingsPage() {
           The printer belongs to this till, not to the store record, so it stays
           configurable with the server down — which is exactly when a shop is
           most likely to be setting one up.
+        <CategoriesSection />
         */}
         <PrinterSection />
       </div>

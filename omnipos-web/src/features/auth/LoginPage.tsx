@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { Store } from "lucide-react";
+import { Eye, EyeOff, Store } from "lucide-react";
 
+import { db } from "@/db/schema";
 import { ApiError } from "@/api/client";
-import { bootstrapStore } from "@/sync/engine";
+import { ensureCatalogue } from "@/sync/engine";
 import { useSession } from "@/state/session";
+
+const LAST_EMAIL_KEY = "omnipos.web.last-email";
 
 export function LoginPage() {
   const user = useSession((s) => s.user);
@@ -13,9 +16,19 @@ export function LoginPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(LAST_EMAIL_KEY);
+      if (saved) setEmail(saved);
+    } catch {
+      // Private mode, or a till that has storage disabled.
+    }
+  }, []);
 
   if (user) return <Navigate to="/" replace />;
 
@@ -28,16 +41,26 @@ export function LoginPage() {
       setStage("Signing in…");
       await login(email, password);
 
+      try {
+        localStorage.setItem(LAST_EMAIL_KEY, email.trim());
+      } catch {
+        // Same as above: remembering the email is a convenience, not a requirement.
+      }
+
       const storeId = useSession.getState().storeId;
       if (storeId) {
-        // First load pulls the catalogue down so the till works offline from
-        // here on. Failing this is not fatal — the sync engine will retry.
-        setStage("Downloading catalogue for offline use…");
-        try {
-          await bootstrapStore(storeId);
-        } catch {
-          setStage(null);
-        }
+        // Navigate immediately. The till shows the same download if the local
+        // catalogue is empty, via ensureCatalogue, so this is not abandoned.
+        void (async () => {
+          try {
+            const count = await db.products.where("store_id").equals(storeId).count();
+            if (count === 0) {
+              await ensureCatalogue(storeId);
+            }
+          } catch {
+            // Background sync will retry
+          }
+        })();
       }
 
       navigate("/", { replace: true });
@@ -73,14 +96,25 @@ export function LoginPage() {
         />
 
         <label htmlFor="password">Password</label>
-        <input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
+        <div className="password-field">
+          <input
+            id="password"
+            type={showPassword ? "text" : "password"}
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <button
+            type="button"
+            className="icon-button password-toggle"
+            onClick={() => setShowPassword((v) => !v)}
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-pressed={showPassword}
+          >
+            {showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+          </button>
+        </div>
 
         {error && <p className="notice notice-error" role="alert">{error}</p>}
         {stage && <p className="muted" role="status">{stage}</p>}

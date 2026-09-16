@@ -146,6 +146,7 @@ export async function runLaravelSync(storeIdHint?: string | null): Promise<SyncO
     await ensureDeviceRegistered();
 
     const pushed = await pushQueue(storeId);
+    await bootstrapProductsIfNeeded(storeId);
     const pulled = await pullChanges(storeId);
 
     const finishedAt = new Date().toISOString();
@@ -185,6 +186,39 @@ export async function runLaravelSync(storeIdHint?: string | null): Promise<SyncO
       };
     }
     throw error;
+  }
+}
+
+/**
+ * The changefeed is not guaranteed to contain rows for a catalogue imported
+ * before this device existed. Fetch the current catalogue once so a fresh till
+ * does not authenticate successfully and then open with an empty inventory.
+ */
+async function bootstrapProductsIfNeeded(storeId: string): Promise<void> {
+  const cursorKey = `${CURSOR_KEY}:${storeId}`;
+  if (await storage.getItem(cursorKey)) return;
+
+  const existing = await database
+    .get<Product>("products")
+    .query(Q.where("store_id", storeId), Q.take(1))
+    .fetch();
+  if (existing.length > 0) return;
+
+  for (let page = 1; ; page += 1) {
+    const response = await api.get<{
+      data: Record<string, unknown>[];
+      meta?: { last_page?: number };
+    }>("/api/products", { per_page: 200, page });
+
+    const changes = (response.data ?? []).map((product) => ({
+      entity: "products",
+      action: "upsert",
+      record_id: str(product.id, ""),
+      payload: product,
+    }));
+
+    if (changes.length > 0) await applyChanges(storeId, changes);
+    if (!response.meta?.last_page || page >= response.meta.last_page) break;
   }
 }
 

@@ -96,6 +96,25 @@ describe("completing a sale offline", () => {
     expect(product?.stock).toBe(7);
   });
 
+  it("rejects a sale when local stock is insufficient", async () => {
+    await seedProduct(1);
+
+    await expect(completeSale({
+      storeId: STORE,
+      lines: [line({ quantity: 2 })],
+      discountMode: "percentage",
+      discountValue: 0,
+      rates: NO_TAX,
+      tenders: [{ method: "cash", amount: 2000 }],
+      customer: null,
+      registerShiftId: null,
+      orderNumber: "OM-20260101-0006",
+    })).rejects.toThrow("Not enough stock");
+
+    expect(await db.orders.count()).toBe(0);
+    expect((await db.products.get("0192aaaa-0000-7000-8000-00000000000a"))?.stock).toBe(1);
+  });
+
   it("records change handed back without counting it as revenue", async () => {
     await seedProduct();
 

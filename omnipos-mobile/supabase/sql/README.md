@@ -15,9 +15,11 @@ If your target project already has a partial/older `public` schema, `000` is now
 4. `005_order_items.sql` - order line-item persistence and policies
 5. `002_seed.sql` - optional seed/bootstrap data (edit placeholders first)
 6. `008_store_invites.sql` - staff invite table, RLS, and accept_pending_store_invites RPC
+7. `014_returns_refund_method.sql` - records how each refund was paid back, so a non-cash refund stops reducing the expected drawer
 
 ## Notes
 
+- `000` creates tables with `if not exists`, so it will not add a column to a table a project already has. A project with an existing `public.returns` needs `014_returns_refund_method.sql` as well.
 - Scripts are written to be additive and mostly idempotent (`if not exists`, safe trigger recreation).
 - Keep RLS enabled; table grants in `004` are only for Data API exposure compatibility.
 - `000` is a deployment convenience file for fresh setup; do not run `000` after `001/003/004`.

@@ -85,13 +85,14 @@ function checkUrl(): CheckResult {
     };
   }
 
-  if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])/i.test(API_BASE_URL)) {
+  if (/^https?:\/\/(localhost|127\.0\.0\.1|10\.0\.2\.2|\[::1\])/i.test(API_BASE_URL)) {
     return {
       id: "url",
       title: "API address",
       status: "fail",
-      detail: `${API_BASE_URL} points at this device, not your computer.`,
-      remedy: "Use the machine's LAN address. `ipconfig` on Windows, `ifconfig` on macOS.",
+      detail: `${API_BASE_URL} is only valid on an emulator, not on a physical phone.`,
+      remedy:
+        "Use the machine's Wi-Fi address (the same host Metro shows in the QR URL). `php artisan serve --host=0.0.0.0`.",
     };
   }
 

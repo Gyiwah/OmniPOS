@@ -7,6 +7,7 @@ import { StockPill } from "@/src/components/atoms/StockPill";
 
 type ProductCardProps = {
   imageUrl?: string | null;
+  imageHeaders?: Record<string, string>;
   name: string;
   sku?: string;
   stockCount: number;
@@ -21,6 +22,7 @@ type ProductCardProps = {
 
 export function ProductCard({
   imageUrl,
+  imageHeaders,
   name,
   sku,
   stockCount,
@@ -38,7 +40,7 @@ export function ProductCard({
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.wrap, pressed && styles.wrapPressed]}>
       {imageUrl ? (
-        <Image source={{ uri: imageUrl }} style={styles.thumb} />
+        <Image source={{ uri: imageUrl, headers: imageHeaders }} style={styles.thumb} />
       ) : (
         <View style={[styles.thumb, styles.thumbPlaceholder]}>
           <Text style={styles.placeholderInitial}>

@@ -91,12 +91,21 @@ export async function completeSale(input: CheckoutInput): Promise<LocalOrder> {
   };
 
   await db.transaction("rw", [db.orders, db.products, db.outbox], async () => {
+    // Re-check inside the write transaction: the cart snapshot can be stale if
+    // another tab or sale changed the product after it was added.
+    for (const line of input.lines) {
+      if (!line.productId) continue;
+      const product = await db.products.get(line.productId);
+      if (!product) throw new Error(`${line.name} is no longer available.`);
+      if (line.quantity > product.stock) {
+        throw new Error(`Not enough stock for ${line.name}. Only ${product.stock} remain.`);
+      }
+    }
+
     await db.orders.put(order);
 
     // Decrement what this till believes it has, so the next customer sees a
-    // truthful figure. The server does not take this number: it recomputes from
-    // the movement ledger, which is what lets two offline tills both sell from
-    // the same stock and have both sales survive.
+    // truthful figure. The server recomputes stock from the movement ledger.
     for (const line of input.lines) {
       if (!line.productId) continue;
       const product = await db.products.get(line.productId);

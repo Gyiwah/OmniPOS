@@ -7,6 +7,7 @@ import { db, type LocalCategory, type LocalProduct } from "@/db/schema";
 import { uuidv7 } from "@/core/uuidv7";
 import { useSession } from "@/state/session";
 import { useSync } from "@/state/sync";
+import { ensureCatalogue } from "@/sync/engine";
 import {
   addLine,
   balanceDue,
@@ -60,12 +61,49 @@ export function PosPage() {
   /** Kept so the cashier can print the receipt for the sale they just rang up. */
   const [lastOrderId, setLastOrderId] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [catalogueStatus, setCatalogueStatus] = useState<"idle" | "loading" | "ready" | "failed">("idle");
+  const [catalogueAttempt, setCatalogueAttempt] = useState(0);
 
   const shift = useCurrentShift();
   const navigate = useNavigate();
 
   const searchRef = useRef<HTMLInputElement>(null);
   const focusSearch = useCallback(() => searchRef.current?.focus(), []);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timeout = window.setTimeout(() => setNotice(null), notice.kind === "ok" ? 7000 : 4000);
+    return () => window.clearTimeout(timeout);
+  }, [notice]);
+
+  /**
+   * Login no longer waits for the first catalogue snapshot, so a new till can
+   * land here empty. Share the in-flight download with login rather than
+   * starting a second one, and say so while it runs.
+   */
+  useEffect(() => {
+    if (!storeId) return;
+    let cancelled = false;
+
+    void (async () => {
+      const count = await db.products.where("store_id").equals(storeId).count();
+      if (count > 0) {
+        if (!cancelled) setCatalogueStatus("ready");
+        return;
+      }
+      if (!cancelled) setCatalogueStatus("loading");
+      try {
+        await ensureCatalogue(storeId);
+        if (!cancelled) setCatalogueStatus("ready");
+      } catch {
+        if (!cancelled) setCatalogueStatus("failed");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [storeId, catalogueAttempt]);
 
   const categories = useLiveQuery(
     () =>
@@ -113,20 +151,29 @@ export function PosPage() {
   const oversold = useMemo(() => oversoldLines(lines), [lines]);
 
   const addProduct = useCallback((product: LocalProduct) => {
-    setLines((current) =>
-      addLine(current, {
-        id: uuidv7(),
-        productId: product.id,
-        name: product.name,
-        sku: product.sku,
-        barcode: product.barcode,
-        unitPrice: toMinor(product.price),
-        unitCost: product.cost_price === null ? null : toMinor(product.cost_price),
-        availableStock: product.stock,
-      }),
-    );
+    if (product.stock <= 0) {
+      setNotice({ kind: "warn", text: `${product.name} is out of stock.` });
+      return;
+    }
+
+    const existing = lines.find((line) => line.productId === product.id);
+    if (existing && existing.quantity >= product.stock) {
+      setNotice({ kind: "warn", text: `Only ${product.stock} ${product.name} available.` });
+      return;
+    }
+
+    setLines((current) => addLine(current, {
+      id: uuidv7(),
+      productId: product.id,
+      name: product.name,
+      sku: product.sku,
+      barcode: product.barcode,
+      unitPrice: toMinor(product.price),
+      unitCost: product.cost_price === null ? null : toMinor(product.cost_price),
+      availableStock: product.stock,
+    }));
     setNotice(null);
-  }, []);
+  }, [lines]);
 
   /**
    * Enter either resolves an exact barcode or SKU — the scanner path — or falls
@@ -301,23 +348,50 @@ export function PosPage() {
 
         <div className="pos-grid" role="list">
           {products.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              role="listitem"
-              className="product-tile"
-              onClick={() => { addProduct(p); focusSearch(); }}
-            >
+            (() => {
+              const cartLine = lines.find((line) => line.productId === p.id);
+              const atStockLimit = p.stock <= 0 || (cartLine?.quantity ?? 0) >= p.stock;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="listitem"
+                  className={atStockLimit ? "product-tile product-tile-disabled" : "product-tile"}
+                  aria-disabled={atStockLimit}
+                  aria-label={atStockLimit
+                    ? p.stock <= 0 ? `${p.name}, out of stock` : `${p.name}, maximum quantity in cart`
+                    : undefined}
+                  onClick={() => { addProduct(p); focusSearch(); }}
+                >
               <span className="product-name">{p.name}</span>
               <span className="product-price">{formatMoney(toMinor(p.price), currency)}</span>
               <span className={p.stock <= 0 ? "product-stock product-stock-out" : "product-stock"}>
                 {p.stock <= 0 ? "Out of stock" : `${p.stock} in stock`}
               </span>
-            </button>
+                </button>
+              );
+            })()
           ))}
           {products.length === 0 && (
             <p className="pos-grid-empty">
-              {query ? "No matching products." : "No products yet. Sync or add some in Inventory."}
+              {catalogueStatus === "loading"
+                ? "Downloading the catalogue for this till…"
+                : catalogueStatus === "failed"
+                  ? (
+                    <>
+                      Could not download the catalogue. Check the connection.{" "}
+                      <button
+                        type="button"
+                        className="link"
+                        onClick={() => setCatalogueAttempt((n) => n + 1)}
+                      >
+                        Try again
+                      </button>
+                    </>
+                  )
+                  : query
+                    ? "No matching products."
+                    : "No products yet. Sync or add some in Inventory."}
             </p>
           )}
         </div>
@@ -363,11 +437,17 @@ export function PosPage() {
                 <input
                   type="number"
                   min={0}
+                  max={line.availableStock ?? undefined}
                   value={line.quantity}
                   aria-label={`Quantity for ${line.name}`}
                   onChange={(e) => setLines((l) => setQuantity(l, line.id, Number(e.target.value)))}
                 />
-                <button type="button" onClick={() => setLines((l) => setQuantity(l, line.id, line.quantity + 1))}>
+                <button
+                  type="button"
+                  disabled={line.availableStock !== null && line.quantity >= line.availableStock}
+                  aria-label={`Increase quantity for ${line.name}`}
+                  onClick={() => setLines((l) => setQuantity(l, line.id, line.quantity + 1))}
+                >
                   +
                 </button>
                 {/*
@@ -390,11 +470,10 @@ export function PosPage() {
         </ul>
 
         {oversold.length > 0 && (
-          <p className="warn" role="status">
+          <p className="notice notice-error" role="status">
             <AlertTriangle size={16} aria-hidden="true" />
             <span>
-            Selling more than stock on hand: {oversold.map((l) => l.name).join(", ")}. The sale is allowed and will
-            be flagged for reconciliation.</span>
+            Not enough stock for: {oversold.map((l) => l.name).join(", ")}. Reduce the quantity before completing the sale.</span>
           </p>
         )}
 
@@ -431,7 +510,7 @@ export function PosPage() {
         </dl>
 
         {notice && (
-          <p className={`notice notice-${notice.kind}`} role="status">
+          <p className={`notice notice-${notice.kind} pos-toast`} role="status">
             {notice.text}
             {notice.kind === "ok" && lastOrderId && (
               <>
@@ -469,6 +548,7 @@ export function PosPage() {
       {paying && (
         <PaymentPanel
           total={totals.total}
+          lines={lines}
           currency={currency}
           tenders={tenders}
           methods={[...TENDER_METHODS]}

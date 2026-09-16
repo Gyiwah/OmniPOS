@@ -19,12 +19,14 @@ import { useManualSync } from "@/src/hooks/useManualSync";
 import { supabase } from "@/src/services/supabase";
 import { useSettingsStore, UNNAMED_STORE } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
+import { useAuthStore } from "@/src/store/authStore";
 import { database } from "@/src/database";
 import type Product from "@/src/database/models/Product";
 import type Order from "@/src/database/models/Order";
 import type OrderItem from "@/src/database/models/OrderItem";
 import type Customer from "@/src/database/models/Customer";
 import { formatRelativeSyncTime } from "@/src/utils/date";
+import { canEditCatalogue } from "@/src/utils/permissions";
 import { usingLaravel } from "@/src/core/api/config";
 
 const SHORTCUTS: {
@@ -34,6 +36,7 @@ const SHORTCUTS: {
   color: string;
   bg: string;
   href: "/inventory" | "/product/add" | "/pos/add-order" | "/analytics" | "/returns" | "/customers" | "/pos/shifts";
+  catalogueOnly?: boolean;
 }[] = [
   {
     label: "Create Order",
@@ -66,6 +69,7 @@ const SHORTCUTS: {
     color: "#7c3aed",
     bg: "#f5f3ff",
     href: "/product/add",
+    catalogueOnly: true,
   },
   {
     label: "Customers CRM",
@@ -115,6 +119,13 @@ type TopProduct = {
 export default function HomeScreen() {
   const activeStoreId = useStoreSlice((s) => s.activeStoreId);
   const router = useRouter();
+  const role = useAuthStore((s) => s.role);
+  const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin);
+  const mayEditCatalogue = canEditCatalogue(isSuperAdmin ? "super_admin" : role);
+  const shortcuts = useMemo(
+    () => SHORTCUTS.filter((s) => !s.catalogueOnly || mayEditCatalogue),
+    [mayEditCatalogue],
+  );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [kpis, setKpis] = useState<
     { title: string; value: string; period: string; variant: "primary" | "accent" | "success" }[]
@@ -598,10 +609,10 @@ export default function HomeScreen() {
               <Ionicons name="apps" size={18} color={Colors.primaryBlue} />
               <Text style={styles.sectionTitle}>Management Hub</Text>
             </View>
-            <Text style={styles.sectionHeaderBadge}>6 tools</Text>
+            <Text style={styles.sectionHeaderBadge}>{shortcuts.length} tools</Text>
           </View>
           <View style={styles.shortcutGrid}>
-            {SHORTCUTS.map((s) => (
+            {shortcuts.map((s) => (
               <Pressable
                 key={s.label}
                 style={({ pressed }) => [

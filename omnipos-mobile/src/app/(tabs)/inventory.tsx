@@ -20,10 +20,12 @@ import { database } from "@/src/database";
 import type Product from "@/src/database/models/Product";
 import type SyncQueueItem from "@/src/database/models/SyncQueueItem";
 import { calculateExpiryStatus, getAllStoreBatches } from "@/src/features/inventory/batchService";
-import { resolveProductImageUrl } from "@/src/services/storage";
+import { imageAuthHeaders, resolveProductImageUrl } from "@/src/services/storage";
 import { useSettingsStore, UNNAMED_STORE } from "@/src/store/settingsStore";
 import { synchronise } from "@/src/sync";
+import { useAuthStore } from "@/src/store/authStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
+import { canEditCatalogue } from "@/src/utils/permissions";
 
 type InventoryRow = {
   id: string;
@@ -58,6 +60,9 @@ const FILTER_OPTIONS: {
 export default function InventoryScreen() {
   const router = useRouter();
   const activeStoreId = useStoreSlice((s) => s.activeStoreId);
+  const role = useAuthStore((s) => s.role);
+  const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin);
+  const mayEditCatalogue = canEditCatalogue(isSuperAdmin ? "super_admin" : role);
   const shopName = useSettingsStore((s) => s.shopName);
   const currency = useSettingsStore((s) => s.currency);
   const currencySymbol = currency === "USD" ? "$" : currency === "NGN" ? "₦" : "₵";
@@ -67,6 +72,7 @@ export default function InventoryScreen() {
   const [stockFilter, setStockFilter] = useState<StockFilterType>("all");
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const [products, setProducts] = useState<InventoryRow[]>([]);
+  const [imageHeaders, setImageHeaders] = useState<Record<string, string>>({});
   const [exportModalVisible, setExportModalVisible] = useState(false);
 
   // Add / Import Options Popup Modal State
@@ -80,10 +86,13 @@ export default function InventoryScreen() {
   const loadInventory = useCallback(async () => {
     if (!activeStoreId) {
       setProducts([]);
+      setImageHeaders({});
       setExpiredCount(0);
       setExpiringSoonCount(0);
       return;
     }
+    const headers = await imageAuthHeaders();
+    setImageHeaders(headers);
     // 1. Fetch local WatermelonDB products immediately (instant offline access)
     const rows = await database
       .get<Product>("products")
@@ -241,14 +250,16 @@ export default function InventoryScreen() {
           >
             <Ionicons name="print-outline" size={20} color={Colors.primaryBlue} />
           </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Add or Import Product"
-            style={({ pressed }) => [styles.headerIconBtn, styles.addIconBtn, pressed && styles.headerIconBtnPressed]}
-            onPress={() => setAddMenuVisible(true)}
-          >
-            <Ionicons name="add" size={22} color={Colors.white} />
-          </Pressable>
+          {mayEditCatalogue ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Add or Import Product"
+              style={({ pressed }) => [styles.headerIconBtn, styles.addIconBtn, pressed && styles.headerIconBtnPressed]}
+              onPress={() => setAddMenuVisible(true)}
+            >
+              <Ionicons name="add" size={22} color={Colors.white} />
+            </Pressable>
+          ) : null}
         </View>
       }
     >
@@ -403,6 +414,7 @@ export default function InventoryScreen() {
             <ProductCard
               key={p.id}
               imageUrl={p.imageUrl}
+              imageHeaders={imageHeaders}
               name={p.name}
               sku={p.sku}
               stockCount={p.stockCount}

@@ -71,6 +71,15 @@ class MediaController extends Controller
 
         Storage::disk($this->disk())->put($path, file_get_contents($file->getRealPath()));
 
+        if ($data['kind'] === 'product') {
+            // Keep the catalogue pointing at the object. The upload is shared
+            // by web and mobile, so neither client should have to persist this
+            // separately after a successful upload.
+            Product::whereKey($data['product_id'])
+                ->where('store_id', $storeId)
+                ->update(['image_url' => $path]);
+        }
+
         return response()->json([
             'path' => $path,
             'url' => $this->urlFor($path),

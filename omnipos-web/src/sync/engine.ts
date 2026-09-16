@@ -339,6 +339,19 @@ async function applyChanges(
           case "products":
             await db.products.put(mapProduct(storeId, p));
             break;
+          case "stock_movements": {
+            // Movement changes carry the server-derived balance. Applying that
+            // balance keeps a web till from staying at the product creation
+            // value (often zero) while PostgreSQL has already booked opening
+            // stock through the ledger.
+            const productId = typeof p.product_id === "string" ? p.product_id : null;
+            const stockAfter = Number(p.quantity_after);
+            if (productId && Number.isFinite(stockAfter)) {
+              const product = await db.products.get(productId);
+              if (product) await db.products.update(productId, { stock: stockAfter });
+            }
+            break;
+          }
           case "customers": {
             // A local edit not yet pushed outranks the server's copy; overwriting
             // it would throw away work the cashier has already done.
@@ -600,6 +613,23 @@ export async function bootstrapStore(storeId: string): Promise<{ products: numbe
   await setMeta(CURSOR_KEY, head.cursor ?? 0);
 
   return { products, customers };
+}
+
+/**
+ * First-load catalogue download, shared so login and the till cannot start two
+ * overlapping snapshots of the same store. Login navigates immediately; the
+ * till then shows the same in-flight work rather than a second pull.
+ */
+let catalogueBootstrap: { storeId: string; promise: Promise<{ products: number; customers: number }> } | null = null;
+
+export function ensureCatalogue(storeId: string): Promise<{ products: number; customers: number }> {
+  if (catalogueBootstrap?.storeId === storeId) return catalogueBootstrap.promise;
+
+  const promise = bootstrapStore(storeId).finally(() => {
+    if (catalogueBootstrap?.promise === promise) catalogueBootstrap = null;
+  });
+  catalogueBootstrap = { storeId, promise };
+  return promise;
 }
 
 export async function lastSyncedAt(): Promise<string | null> {

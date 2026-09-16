@@ -16,12 +16,29 @@ import {
   processReturn,
   validateReturnSelections,
 } from "@/src/features/returns/service";
-import type { OrderForReturn } from "@/src/features/returns/types";
+import {
+  defaultRefundMethod,
+  matchRefundMethod,
+  REFUND_METHODS,
+} from "@/src/features/returns/refundMethod";
+import type { OrderForReturn, RefundMethod } from "@/src/features/returns/types";
 import { supabase } from "@/src/services/supabase";
 import { useAuthStore } from "@/src/store/authStore";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
 import { usingLaravel } from "@/src/core/api/config";
+
+/**
+ * How each refund method is shown. The words match the checkout picker on this
+ * device so a cashier reads the same four either way; the order comes from
+ * REFUND_METHODS, which the web till shares.
+ */
+const REFUND_METHOD_UI: Record<RefundMethod, { label: string; icon: string }> = {
+  cash: { label: "Cash", icon: "cash-outline" },
+  card: { label: "Card", icon: "card-outline" },
+  transfer: { label: "Transfer", icon: "send-outline" },
+  momo: { label: "MoMo", icon: "phone-portrait-outline" },
+};
 
 function money(value: number, currency: string) {
   const symbol = currency === "USD" ? "$" : currency === "NGN" ? "₦" : "₵";
@@ -39,6 +56,7 @@ export default function AddReturnScreen() {
   const [showScanner, setShowScanner] = useState(false);
   const [reason, setReason] = useState("");
   const [order, setOrder] = useState<OrderForReturn | null>(null);
+  const [refundMethod, setRefundMethod] = useState<RefundMethod>("cash");
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loadingOrder, setLoadingOrder] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -53,6 +71,9 @@ export default function AddReturnScreen() {
   }, [counts, order]);
 
   const refundTotal = useMemo(() => calculateRefundAmount(selectedLines), [selectedLines]);
+  // Null when the sale was a split tender, was settled on account, or recorded
+  // no method: there is then nothing to say the refund agrees or disagrees with.
+  const salePaidBy = order ? matchRefundMethod(order.paymentMethod) : null;
   const totalItems = useMemo(
     () => Object.values(counts).reduce((sum, next) => sum + next, 0),
     [counts],
@@ -87,6 +108,10 @@ export default function AddReturnScreen() {
 
       setOrder(found);
       setCounts(Object.fromEntries(found.items.map((item) => [item.id, 0])));
+      // Money goes back the way it came in. Refunding a mobile money sale as
+      // cash takes the amount out of the drawer's expected cash without any
+      // cash having moved, leaving the till over by exactly the refund.
+      setRefundMethod(defaultRefundMethod(found.paymentMethod));
     } catch (error) {
       setOrder(null);
       setCounts({});
@@ -128,6 +153,7 @@ export default function AddReturnScreen() {
         reason: reason.trim() || "Customer return",
         lines,
         processedByUserId,
+        refundMethod,
       });
 
       Alert.alert("Return Processed", `Refund of ${money(calculateRefundAmount(lines), currency)} recorded successfully.`);
@@ -271,6 +297,41 @@ export default function AddReturnScreen() {
               );
             })}
           </View>
+
+          {/* Refund Method */}
+          <Text style={styles.sectionSubtitle}>Refund Method</Text>
+          <View style={styles.methodGrid}>
+            {REFUND_METHODS.map((key) => {
+              const { label, icon } = REFUND_METHOD_UI[key];
+              const active = refundMethod === key;
+
+              return (
+                <Pressable
+                  key={key}
+                  style={({ pressed }) => [
+                    styles.methodCard,
+                    active && styles.methodCardActive,
+                    pressed && { opacity: 0.8 },
+                  ]}
+                  onPress={() => setRefundMethod(key)}
+                >
+                  <Ionicons
+                    name={icon as any}
+                    size={18}
+                    color={active ? Colors.white : Colors.primaryBlue}
+                  />
+                  <Text style={[styles.methodLabel, active && styles.methodLabelActive]}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.methodHint}>
+            {salePaidBy === null
+              ? "This sale did not record a method the till can refund on — check the receipt."
+              : salePaidBy === refundMethod
+                ? "Matches how this sale was paid."
+                : "Different from how this sale was paid — the drawer is reconciled on this choice."}
+          </Text>
 
           {/* Refund Calculation Box */}
           <View style={styles.refundTotalBox}>
@@ -433,6 +494,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "800",
     color: Colors.textPrimary,
+  },
+  methodGrid: {
+    flexDirection: "row",
+    gap: Spacing.xs,
+  },
+  methodCard: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.input,
+    paddingVertical: Spacing.sm,
+    borderWidth: 1.5,
+    borderColor: "#e2e8f0",
+  },
+  methodCardActive: {
+    backgroundColor: Colors.primaryBlue,
+    borderColor: Colors.primaryBlue,
+  },
+  methodLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+  },
+  methodLabelActive: {
+    color: Colors.white,
+  },
+  methodHint: {
+    marginTop: 6,
+    fontSize: 11,
+    color: Colors.textMuted,
   },
   refundTotalBox: {
     marginTop: Spacing.md,

@@ -18,6 +18,7 @@ type EligibilityResponse = {
     customer_name: string | null;
     status: string;
     total: string;
+    payment_method: string | null;
   };
   lines: Array<{
     order_item_id: string;
@@ -60,6 +61,9 @@ export async function lookupOrderForReturn(_storeId: string, ref: string): Promi
     orderNumber: eligibility.order.order_number,
     createdAt: eligibility.order.client_created_at ?? "",
     customerName: eligibility.order.customer_name ?? null,
+    // The server spells this 'mobile_money' where the till says 'momo'; the
+    // refund picker reconciles the two.
+    paymentMethod: eligibility.order.payment_method ?? null,
     // Lines with nothing left to return are dropped rather than shown at zero:
     // a cashier should not be offered a row they cannot act on.
     items: eligibility.lines

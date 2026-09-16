@@ -59,30 +59,47 @@ function report(summary: SyncSummary): SyncSummary {
   return summary;
 }
 
+let inFlightSync: Promise<SyncSummary> | null = null;
+
 export async function synchronise(storeIdHint?: string | null): Promise<SyncSummary> {
-  if (usingLaravel) {
-    const result = await runLaravelSync(storeIdHint);
-    return report({
-      ok: result.ok,
-      pushed: result.pushed,
-      failed: 0,
-      conflicts: result.conflicts,
-      pulled: result.pulled,
-      reason: result.reason,
-      lastError: result.ok ? undefined : result.reason,
-    });
+  if (inFlightSync) {
+    return inFlightSync;
   }
 
-  const result = await runSyncCycle(storeIdHint);
-  return {
-    ok: result.ok,
-    pushed: result.pushed,
-    failed: result.failed,
-    conflicts: 0,
-    pulled: 0,
-    reason: (result as { reason?: string }).reason,
-    lastError: (result as { lastError?: string }).lastError ?? (result as { reason?: string }).reason,
-  };
+  inFlightSync = (async () => {
+    try {
+      useSyncStore.getState().setSyncing(true);
+
+      if (usingLaravel) {
+        const result = await runLaravelSync(storeIdHint);
+        return report({
+          ok: result.ok,
+          pushed: result.pushed,
+          failed: 0,
+          conflicts: result.conflicts,
+          pulled: result.pulled,
+          reason: result.reason,
+          lastError: result.ok ? undefined : result.reason,
+        });
+      }
+
+      const result = await runSyncCycle(storeIdHint);
+      return report({
+        ok: result.ok,
+        pushed: result.pushed,
+        failed: result.failed,
+        conflicts: 0,
+        pulled: 0,
+        reason: (result as { reason?: string }).reason,
+        lastError: (result as { lastError?: string }).lastError ?? (result as { reason?: string }).reason,
+      });
+    } finally {
+      useSyncStore.getState().setSyncing(false);
+      inFlightSync = null;
+    }
+  })();
+
+  return inFlightSync;
 }
 
 export { usingLaravel };

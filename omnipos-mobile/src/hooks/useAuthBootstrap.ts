@@ -9,7 +9,7 @@ import { useStoreSlice } from "@/src/store/storeSlice";
 import { usingLaravel } from "@/src/core/api/config";
 import { restoreSession } from "@/src/features/auth/laravelAuth";
 
-const AUTH_CACHE_KEY = "omnipos:cached_auth_session";
+const AUTH_CACHE_KEY = SYNC_STORAGE.authCacheSession;
 
 type CachedAuthSession = {
   userId: string;

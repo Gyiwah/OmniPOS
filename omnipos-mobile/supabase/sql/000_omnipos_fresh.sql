@@ -149,6 +149,10 @@ create table if not exists public.returns (
   processed_by_user_id uuid not null references public.profiles(id) on delete restrict,
   reason text not null default '',
   amount numeric(12,2) not null check (amount >= 0),
+  -- How the money went back. Only a cash refund comes out of the drawer, so a
+  -- return that assumed cash left every non-cash refund reconciling short.
+  refund_method text not null default 'cash'
+    check (refund_method in ('cash', 'card', 'transfer', 'mobile_money', 'momo', 'store_credit', 'loyalty', 'other')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

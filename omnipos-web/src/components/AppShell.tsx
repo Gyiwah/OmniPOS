@@ -150,7 +150,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <ThemeIcon size={16} aria-hidden="true" />
             </button>
-            <button type="button" className="icon-button" onClick={() => void logout()}>
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => void logout()}
+              aria-label="Sign out"
+            >
               <LogOut size={16} aria-hidden="true" />
               Sign out
             </button>
