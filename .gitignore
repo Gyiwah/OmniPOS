@@ -52,3 +52,4 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 *.log
+.neon
