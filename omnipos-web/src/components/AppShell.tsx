@@ -20,6 +20,8 @@ import {
   Sun,
   Users,
 } from "lucide-react";
+import { UserCog } from "lucide-react";
+import { Network } from "lucide-react";
 
 import { useSession } from "@/state/session";
 import { useSync } from "@/state/sync";
@@ -41,6 +43,36 @@ const NAV = [
   { to: "/platform", label: "Platform", icon: ShieldCheck, superAdminOnly: true },
 ];
 
+const PLATFORM_GROUPS = [
+  {
+    label: "Overview",
+    items: [{ to: "/platform", label: "Dashboard", icon: LayoutDashboard, end: true }],
+  },
+  {
+    label: "Platform Management",
+    items: [
+      { to: "/platform/stores", label: "Stores & Branches", icon: Store },
+      { to: "/platform/people", label: "People", icon: UserCog },
+    ],
+  },
+  {
+    label: "Platform Services",
+    items: [
+      { to: "/platform/resources", label: "System Resources", icon: Package },
+      { to: "/platform/subscriptions", label: "Subscriptions", icon: Receipt },
+      { to: "/platform/synchronization", label: "Synchronization", icon: Network },
+    ],
+  },
+  {
+    label: "Governance",
+    items: [
+      { to: "/platform/reports", label: "Reports", icon: BarChart3 },
+      { to: "/platform/audit-logs", label: "Audit Logs", icon: ShieldCheck },
+      { to: "/platform/settings", label: "Settings", icon: Settings },
+    ],
+  },
+];
+
 const THEME_ICON = { light: Sun, dark: Moon, system: Monitor };
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -51,6 +83,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const selectStore = useSession((s) => s.selectStore);
   const can = useSession((s) => s.can);
   const role = useSession((s) => s.role)();
+  const isSuperAdmin = user?.is_super_admin === true;
   const logout = useSession((s) => s.logout);
 
   const online = useSync((s) => s.online);
@@ -65,7 +98,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="shell">
       <header className="shell-header">
         <div className="brand">
-          <Store size={20} className="brand-mark" aria-hidden="true" />
+          <img src="/android-chrome-192x192.png" alt="OmniPOS" className="brand-image" />
           <strong>OmniPOS</strong>
           {/*
             One store is the normal case and a dropdown for a single option is
@@ -92,7 +125,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="shell-nav">
-          {NAV.filter((item) => {
+          {isSuperAdmin ? PLATFORM_GROUPS.map((group) => (
+            <div className="nav-group" key={group.label}>
+              <span className="nav-group-label">{group.label}</span>
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <NavLink key={item.to} to={item.to} end={"end" in item && item.end} className={({ isActive }) => (isActive ? "active" : "")}>
+                    <Icon size={17} aria-hidden="true" />
+                    <span className="nav-label">{item.label}</span>
+                  </NavLink>
+                );
+              })}
+            </div>
+          )) : NAV.filter((item) => {
             if ("superAdminOnly" in item) return user?.is_super_admin === true;
             return !item.roles || can(item.roles);
           }).map((item) => {

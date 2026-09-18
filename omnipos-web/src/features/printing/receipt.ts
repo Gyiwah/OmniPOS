@@ -52,12 +52,12 @@ export function buildReceipt(order: LocalOrder, context: ReceiptContext): Uint8A
   if (context.openDrawer && !context.reprint) p.openDrawer();
 
   // ---- who and when ----
-  p.align("center").size(2, 2).bold(true).line(context.storeName).size(1, 1).bold(false);
+  p.align("center").bold(true).line("OFFICIAL RECEIPT").size(2, 2).line(context.storeName).size(1, 1).bold(false);
 
   if (context.storeEmail) p.line(context.storeEmail);
 
   p.feed(1)
-    .line(order.order_number)
+    .bold(true).line(`Order #${order.order_number}`).bold(false)
     .line(new Date(order.client_created_at).toLocaleString());
 
   if (context.cashierName) p.line(`Served by ${context.cashierName}`);
@@ -69,7 +69,7 @@ export function buildReceipt(order: LocalOrder, context: ReceiptContext): Uint8A
    */
   if (context.reprint) p.feed(1).bold(true).line("** REPRINT **").bold(false);
 
-  p.align("left").rule();
+  p.align("left").rule().bold(true).line("ITEM & QTY".padEnd(Math.max(0, p.columns - 6)) + "AMOUNT").bold(false);
 
   // ---- what was bought ----
   for (const item of order.items) {
@@ -84,10 +84,13 @@ export function buildReceipt(order: LocalOrder, context: ReceiptContext): Uint8A
   if (toMinor(order.discount) > 0) p.columnsRow("Discount", `-${money(order.discount)}`);
   if (toMinor(order.tax) > 0) p.columnsRow("Tax", money(order.tax));
 
-  p.bold(true).size(1, 2).columnsRow("TOTAL", money(order.total)).size(1, 1).bold(false);
+  p.bold(true).size(1, 2).columnsRow("TOTAL DUE", money(order.total)).size(1, 1).bold(false);
 
   // ---- how it was paid ----
   p.feed(1);
+
+  p.columnsRow("Amount Tendered", money(order.amount_paid));
+  p.columnsRow("Change Returned", money(order.change_due));
 
   for (const payment of order.payments) {
     p.columnsRow(METHOD_LABELS[payment.method] ?? payment.method, money(payment.amount));
@@ -98,8 +101,10 @@ export function buildReceipt(order: LocalOrder, context: ReceiptContext): Uint8A
   const owed = toMinor(order.total) - toMinor(order.amount_paid);
   if (owed > 0) {
     p.feed(1).bold(true).columnsRow("BALANCE ON ACCOUNT", money(owed)).bold(false);
-    if (order.customer_name) p.line(order.customer_name);
+    if (order.customer_name) p.line(`Name: ${order.customer_name}`);
   }
+
+  if (order.customer_phone) p.line(`Phone: ${order.customer_phone}`);
 
   /*
    * Printed on the paper, not only shown on screen. A cashier handing this over
@@ -120,7 +125,16 @@ export function buildReceipt(order: LocalOrder, context: ReceiptContext): Uint8A
   }
 
   // ---- the bit a returns desk scans ----
-  p.feed(1).align("center").barcode(order.order_number).feed(1).line("Thank you").align("left");
+  p.feed(1)
+    .align("center")
+    .barcode(order.order_number)
+    .line(`*${order.order_number}*`)
+    .feed(1)
+    .bold(true)
+    .line("Thank you for your patronage!")
+    .bold(false)
+    .line("Powered by OmniPOS")
+    .align("left");
 
   return p.cut().toBytes();
 }

@@ -18,6 +18,7 @@ class Store extends Model
         'parent_store_id',
         'owner_user_id',
         'name',
+        'platform_status',
         'email',
         'logo_url',
         'tax_profile',
@@ -58,6 +59,16 @@ class Store extends Model
     public function members(): HasMany
     {
         return $this->hasMany(StoreMember::class);
+    }
+
+    public function devices(): HasMany
+    {
+        return $this->hasMany(Device::class);
+    }
+
+    public function subscriptions(): HasMany
+    {
+        return $this->hasMany(Subscription::class);
     }
 
     public function users(): BelongsToMany

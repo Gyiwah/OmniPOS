@@ -170,8 +170,36 @@ Route::middleware('auth:sanctum')->group(function () {
     | explicitly in the controller instead.
     */
     Route::prefix('admin')->group(function () {
+        Route::get('dashboard', [SuperAdminController::class, 'dashboard']);
         Route::get('stores', [SuperAdminController::class, 'stores']);
         Route::post('stores', [SuperAdminController::class, 'provision']);
+        Route::patch('stores/{store}', [SuperAdminController::class, 'updateStore']);
+        Route::delete('stores/{store}', [SuperAdminController::class, 'deleteStore']);
+        Route::get('branches', [SuperAdminController::class, 'branches']);
+        Route::post('branches', [SuperAdminController::class, 'createBranch']);
+        Route::patch('branches/{branch}', [SuperAdminController::class, 'updateBranch']);
+        Route::delete('branches/{branch}', [SuperAdminController::class, 'deleteBranch']);
+        Route::get('stores/{store}/members', [SuperAdminController::class, 'members']);
+        Route::patch('stores/{store}/status', [SuperAdminController::class, 'updateStoreStatus']);
+        Route::get('users', [SuperAdminController::class, 'users']);
+        Route::get('people', [SuperAdminController::class, 'people']);
+        Route::patch('people/{user}/stores/{store}', [SuperAdminController::class, 'updateStoreMembershipRole']);
+        Route::patch('people/{user}/platform-admin', [SuperAdminController::class, 'updatePlatformAdmin']);
+        Route::get('devices', [SuperAdminController::class, 'devices']);
+        Route::get('audit-logs', [SuperAdminController::class, 'auditLogs']);
+        Route::get('sync-monitor', [SuperAdminController::class, 'syncMonitor']);
+        Route::get('plans', [SuperAdminController::class, 'plans']);
+        Route::post('plans', [SuperAdminController::class, 'createPlan']);
+        Route::patch('plans/{plan}', [SuperAdminController::class, 'updatePlan']);
+        Route::delete('plans/{plan}', [SuperAdminController::class, 'deletePlan']);
+        Route::get('subscriptions', [SuperAdminController::class, 'subscriptions']);
+        Route::post('stores/{store}/subscription', [SuperAdminController::class, 'assignSubscription']);
+        Route::get('system-resources', [SuperAdminController::class, 'systemResources']);
+        Route::post('system-resources/categories', [SuperAdminController::class, 'createGlobalCategory']);
+        Route::patch('system-resources/categories/{category}', [SuperAdminController::class, 'updateGlobalCategory']);
+        Route::delete('system-resources/categories/{category}', [SuperAdminController::class, 'deleteGlobalCategory']);
+        Route::patch('system-resources/settings/{key}', [SuperAdminController::class, 'updateSystemSetting']);
+        Route::patch('devices/{device}/status', [SuperAdminController::class, 'updateDeviceStatus']);
     });
 
     // Staff management. Gated at the route so a cashier cannot even enumerate.

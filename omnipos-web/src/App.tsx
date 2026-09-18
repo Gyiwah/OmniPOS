@@ -14,7 +14,16 @@ import { ReceiptPage } from "@/features/receipt/ReceiptPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { ReportsPage } from "@/features/reports/ReportsPage";
 import { StockTakePage } from "@/features/products/StockTakePage";
+import { AuditLogsPage } from "@/features/superAdmin/AuditLogsPage";
+import { BranchesPage } from "@/features/superAdmin/BranchesPage";
+import { PeoplePage } from "@/features/superAdmin/PeoplePage";
+import { PlatformReportsPage } from "@/features/superAdmin/ReportsPage";
+import { PlatformSettingsPage } from "@/features/superAdmin/PlatformSettingsPage";
+import { StoresPage } from "@/features/superAdmin/StoresPage";
+import { SubscriptionsPage } from "@/features/superAdmin/SubscriptionsPage";
 import { SuperAdminPage } from "@/features/superAdmin/SuperAdminPage";
+import { SynchronizationPage } from "@/features/superAdmin/SynchronizationPage";
+import { SystemResourcesPage } from "@/features/superAdmin/SystemResourcesPage";
 import { SyncPage } from "@/features/sync/SyncPage";
 import { useSession } from "@/state/session";
 import { startSyncScheduler } from "@/state/sync";
@@ -54,7 +63,16 @@ export default function App() {
         <Route path="/stock-take" element={<Protected><StockTakePage /></Protected>} />
         <Route path="/reports" element={<Protected><ReportsPage /></Protected>} />
         <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />
-        <Route path="/platform" element={<Protected><SuperAdminPage /></Protected>} />
+        <Route path="/platform/*" element={<Protected><SuperAdminPage /></Protected>} />
+        <Route path="/platform/resources" element={<Protected><SystemResourcesPage /></Protected>} />
+        <Route path="/platform/stores" element={<Protected><StoresPage /></Protected>} />
+        <Route path="/platform/branches" element={<Protected><BranchesPage /></Protected>} />
+        <Route path="/platform/people" element={<Protected><PeoplePage /></Protected>} />
+        <Route path="/platform/subscriptions" element={<Protected><SubscriptionsPage /></Protected>} />
+        <Route path="/platform/synchronization" element={<Protected><SynchronizationPage /></Protected>} />
+        <Route path="/platform/reports" element={<Protected><PlatformReportsPage /></Protected>} />
+        <Route path="/platform/audit-logs" element={<Protected><AuditLogsPage /></Protected>} />
+        <Route path="/platform/settings" element={<Protected><PlatformSettingsPage /></Protected>} />
         <Route path="/sync" element={<Protected><SyncPage /></Protected>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

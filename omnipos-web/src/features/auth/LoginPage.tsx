@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Store } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 
 import { db } from "@/db/schema";
 import { ApiError } from "@/api/client";
@@ -81,7 +81,10 @@ export function LoginPage() {
   return (
     <div className="login">
       <form className="login-card" onSubmit={onSubmit}>
-        <h1><Store size={22} className="brand-mark" aria-hidden="true" /> OmniPOS</h1>
+        <div className="auth-brand">
+          <img src="/android-chrome-192x192.png" alt="OmniPOS" className="auth-brand-image" />
+          <h1>OmniPOS</h1>
+        </div>
         <p className="muted">Sign in to your till</p>
 
         <label htmlFor="email">Email</label>

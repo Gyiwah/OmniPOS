@@ -66,7 +66,11 @@ cd omnipos-mobile && npm start
 ```
 
 Seeded accounts (after `php artisan db:seed`) all use the password `password`:
-`super@`, `admin@`, `manager@`, `cashier@omnipos.test`.
+`super@omnipos.test` is the platform-admin login and can manage every store and
+its members. `admin@`, `manager@`, and `cashier@omnipos.test` are store-scoped
+demo accounts. Configure the platform account with
+`OMNIPOS_PLATFORM_ADMIN_EMAIL` and `OMNIPOS_PLATFORM_ADMIN_PASSWORD` for local
+development; never use the default password outside development.
 
 ---
 

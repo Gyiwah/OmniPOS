@@ -1,9 +1,13 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { useLiveQuery } from "dexie-react-hooks";
+import { AlertTriangle, BarChart3, Box, CheckCircle2, ChevronRight, CircleDollarSign, Clock3, Package, Receipt, ShoppingCart, Store, TrendingUp, Users } from "lucide-react";
 
 import { api, ApiError } from "@/api/client";
+import { db, type LocalBatch, type LocalOrder } from "@/db/schema";
 import { formatMoney, toMinor } from "@/features/pos/cart";
+import { expiryStatus } from "@/features/products/expiry";
 import { useSession } from "@/state/session";
 
 type Dashboard = {
@@ -67,6 +71,16 @@ export function DashboardPage() {
   const can = useSession((s) => s.can);
 
   const [period, setPeriod] = useState(PERIODS[0]);
+  const recentOrders = useLiveQuery(
+    () => storeId ? db.orders.where("store_id").equals(storeId).reverse().sortBy("client_created_at") : Promise.resolve([] as LocalOrder[]),
+    [storeId],
+    [] as LocalOrder[],
+  );
+  const batches = useLiveQuery(
+    () => storeId ? db.batches.where("store_id").equals(storeId).toArray() : Promise.resolve([] as LocalBatch[]),
+    [storeId],
+    [] as LocalBatch[],
+  );
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["dashboard", storeId, period.label],
@@ -101,7 +115,7 @@ export function DashboardPage() {
     return (
       <div className="page">
         {header}
-        <p className="notice notice-warn">
+        <p className="dashboard-toast dashboard-toast-error" role="status">
           {offline
             ? "These figures cover every till in the store, so they need a connection. Selling still works offline."
             : error instanceof Error
@@ -121,11 +135,35 @@ export function DashboardPage() {
     .map(([method, row]) => ({ method, total: toMinor(row.total), count: row.count }))
     .sort((a, b) => b.total - a.total);
 
-  return (
-    <div className="page">
-      {header}
+  const maxPayment = Math.max(...methods.map((method) => method.total), 1);
+  const recent = recentOrders.slice(-4).reverse();
+  const expiredBatches = batches.filter((batch) => Number(batch.quantity) > 0 && expiryStatus(batch.expiry_date).status === "expired").length;
+  const expiringBatches = batches.filter((batch) => Number(batch.quantity) > 0 && expiryStatus(batch.expiry_date).status === "expiring_soon").length;
+  const shortcuts = [
+    { label: "Create Order", subtitle: "POS sale & checkout", icon: ShoppingCart, to: "/" },
+    { label: "Cash Drawer", subtitle: "Shifts & Z-Reports", icon: CircleDollarSign, to: "/shift" },
+    { label: "Inventory", subtitle: "Stock & batch tracking", icon: Box, to: "/products" },
+    { label: "Customers CRM", subtitle: "Accounts & credit", icon: Users, to: "/customers" },
+    { label: "Returns", subtitle: "Refund & restock", icon: TrendingUp, to: "/returns" },
+    { label: "Reports", subtitle: "Sales & revenue charts", icon: BarChart3, to: "/reports" },
+  ];
 
-      <div className="kpi-grid">
+  return (
+    <div className="page dashboard-page">
+      <header className="dashboard-page-header">
+        <div className="dashboard-title"><Store size={20} aria-hidden="true" /><div><h1>{period.label === "Today" ? "Good day" : `Last ${period.label}`}</h1><p>{period.label === "Today" ? "Here is what is happening in your store today." : "Store performance at a glance."}</p></div></div>
+        <div className="dashboard-periods">{PERIODS.map((p) => <button key={p.label} type="button" className={p.label === period.label ? "active" : ""} onClick={() => setPeriod(p)}>{p.label}</button>)}</div>
+      </header>
+
+      <section className="dashboard-hero">
+        <div><span className="dashboard-live"><i /> STORE ONLINE</span><h2>{useSession.getState().store?.name ?? "OmniPOS Store"}</h2><p>{period.label === "Today" ? "Your store performance is being tracked live." : `Reviewing performance for the ${period.label.toLowerCase()}.`}</p></div>
+        <Link to="/" className="dashboard-new-sale"><ShoppingCart size={18} /> New Sale</Link>
+      </section>
+
+      {data.low_stock_count > 0 && <Link to="/products" className="dashboard-alert dashboard-alert-warn"><AlertTriangle size={21} /><span><strong>Low Stock Warning</strong><small>{data.low_stock_count} product{data.low_stock_count === 1 ? " is" : "s are"} at or below reorder level. Tap to restock.</small></span><ChevronRight size={18} /></Link>}
+      {(expiredBatches > 0 || expiringBatches > 0) && <Link to="/products" className="dashboard-alert dashboard-alert-danger"><Clock3 size={21} /><span><strong>Batch Expiry Alert</strong><small>{expiredBatches > 0 ? `${expiredBatches} batch(es) expired.` : ""}{expiredBatches > 0 && expiringBatches > 0 ? " " : ""}{expiringBatches > 0 ? `${expiringBatches} batch(es) expiring soon (<30d).` : ""}</small></span><ChevronRight size={18} /></Link>}
+
+      <div className="dashboard-kpi-grid">
         <Kpi label="Gross sales" value={formatMoney(gross, currency)} hint={`${data.sales.orders} sales`} />
         {/*
           Refunds get their own tile even at zero. Without it a negative net
@@ -174,6 +212,16 @@ export function DashboardPage() {
         />
       </div>
 
+      <section className="dashboard-section">
+        <div className="dashboard-section-heading"><span><TrendingUp size={18} /> 7-Day Revenue Velocity</span><em>Live Chart</em></div>
+        <div className="dashboard-revenue-chart">{methods.length > 0 ? methods.slice(0, 7).map((method) => <div key={method.method} className="dashboard-chart-column"><i style={{ height: `${Math.max(8, (method.total / maxPayment) * 100)}%` }} /><small>{METHOD_LABELS[method.method] ?? method.method}</small></div>) : <p className="muted">No payment activity in this period.</p>}</div>
+      </section>
+
+      <section className="dashboard-section">
+        <div className="dashboard-section-heading"><span><BarChart3 size={18} /> Orders vs Returns Volume</span><em>This period</em></div>
+        <div className="dashboard-volume"><div><strong>{data.sales.orders}</strong><small>Orders</small></div><div><strong>{data.sales.refunds !== "0" ? formatMoney(refunds, currency) : "0"}</strong><small>Returns</small></div><div className="dashboard-volume-track"><i style={{ width: `${Math.min(100, data.sales.orders ? 100 : 0)}%` }} /></div></div>
+      </section>
+
       {methods.length > 0 && (
         <section>
           <h2>How it was paid</h2>
@@ -201,25 +249,22 @@ export function DashboardPage() {
         </section>
       )}
 
-      <section>
-        <h2>Top products</h2>
+      <section className="dashboard-section">
+        <div className="dashboard-section-heading"><span><TrendingUp size={18} /> Top Selling Products</span><Link to="/products">View All</Link></div>
         {data.top_products.length === 0 ? (
           <p className="muted">Nothing sold in this period.</p>
         ) : (
-          <table className="table">
-            <thead><tr><th>Product</th><th>Units</th><th>Revenue</th></tr></thead>
-            <tbody>
+          <div className="dashboard-top-products">
               {data.top_products.map((p) => (
-                <tr key={p.product_id}>
-                  <td>{p.name}</td>
-                  <td>{p.units}</td>
-                  <td>{formatMoney(toMinor(p.revenue), currency)}</td>
-                </tr>
+                <div key={p.product_id}><b>#{data.top_products.indexOf(p) + 1}</b><span><strong>{p.name}</strong><small>{p.units} units sold</small></span><em>{formatMoney(toMinor(p.revenue), currency)}</em></div>
               ))}
-            </tbody>
-          </table>
+          </div>
         )}
       </section>
+
+      {recent.length > 0 && <section className="dashboard-section"><div className="dashboard-section-heading"><span><Receipt size={18} /> Recent Transactions</span><Link to="/orders">All Orders</Link></div><div className="dashboard-transactions">{recent.map((order) => <Link key={order.id} to={`/receipt/${order.id}`}><CheckCircle2 size={20} /><span><strong>#{order.order_number}</strong><small>{order.customer_name ?? "Walk-in Customer"}</small></span><em>{formatMoney(toMinor(order.total), currency)}<small>{toMinor(order.amount_paid) < toMinor(order.total) ? "Partial / Credit" : "Paid"}</small></em><ChevronRight size={14} /></Link>)}</div></section>}
+
+      <section className="dashboard-section"><div className="dashboard-section-heading"><span><Package size={18} /> Management Hub</span><em>{shortcuts.length} tools</em></div><div className="dashboard-shortcuts">{shortcuts.map(({ label, subtitle, icon: Icon, to }) => <Link key={label} to={to}><span><Icon size={20} /></span><b>{label}<small>{subtitle}</small></b><ChevronRight size={14} /></Link>)}</div></section>
     </div>
   );
 }

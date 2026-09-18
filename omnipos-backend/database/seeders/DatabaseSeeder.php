@@ -29,12 +29,23 @@ class DatabaseSeeder extends Seeder
             return;
         }
 
-        $superAdmin = User::create([
-            'name' => 'Platform Operator',
-            'email' => 'super@omnipos.test',
-            'password' => Hash::make('password'),
-            'is_super_admin' => true,
-        ]);
+        $platformAdminEmail = strtolower(trim((string) env('OMNIPOS_PLATFORM_ADMIN_EMAIL', 'super@omnipos.test')));
+        $platformAdminPassword = (string) env('OMNIPOS_PLATFORM_ADMIN_PASSWORD', 'password');
+
+        $superAdmin = User::firstOrCreate(
+            ['email' => $platformAdminEmail],
+            [
+                'name' => env('OMNIPOS_PLATFORM_ADMIN_NAME', 'Platform Operator'),
+                'password' => Hash::make($platformAdminPassword),
+                'is_super_admin' => true,
+            ],
+        );
+
+        // A development seed must repair the role if the account already exists,
+        // but it must never reset an existing administrator's password.
+        if (! $superAdmin->is_super_admin) {
+            $superAdmin->forceFill(['is_super_admin' => true])->save();
+        }
 
         $admin = User::create([
             'name' => 'Store Admin',
@@ -111,8 +122,8 @@ class DatabaseSeeder extends Seeder
             'phone' => '0244000000',
         ]);
 
-        $this->command->info('Seeded. All demo accounts use the password: password');
-        $this->command->info("  super@omnipos.test    super admin");
+        $this->command->info('Seeded. Demo store accounts use the password: password');
+        $this->command->info("  {$platformAdminEmail}    platform admin (all stores and members)");
         $this->command->info("  admin@omnipos.test    store admin");
         $this->command->info("  manager@omnipos.test  manager");
         $this->command->info("  cashier@omnipos.test  cashier");

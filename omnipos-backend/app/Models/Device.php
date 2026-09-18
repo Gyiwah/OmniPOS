@@ -22,6 +22,7 @@ class Device extends Model
         'store_id',
         'user_id',
         'platform',
+        'platform_status',
         'terminal_label',
         'app_version',
         'last_pull_sequence',

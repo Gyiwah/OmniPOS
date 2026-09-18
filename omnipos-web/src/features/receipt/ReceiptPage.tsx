@@ -8,13 +8,12 @@ import { useSession } from "@/state/session";
 import { buildReceipt } from "@/features/printing/receipt";
 import { usePrinter } from "@/features/printing/usePrinter";
 
-const METHOD_LABELS: Record<string, string> = {
-  cash: "Cash",
-  card: "Card",
-  transfer: "Transfer",
-  mobile_money: "Mobile money",
-  split: "Split",
-};
+function barcodePattern(value: string) {
+  return Array.from(value || "0").flatMap((character) => {
+    const bits = character.charCodeAt(0).toString(2).padStart(8, "0");
+    return Array.from(bits, (bit) => Number(bit) + 1);
+  });
+}
 
 /**
  * A printable receipt.
@@ -107,7 +106,6 @@ export function ReceiptPage() {
     );
   }
 
-  const owed = toMinor(order.total) - toMinor(order.amount_paid);
   const change = toMinor(order.change_due);
 
   return (
@@ -124,22 +122,30 @@ export function ReceiptPage() {
         <button type="button" className="secondary-button" onClick={() => navigate("/orders")}>Back to orders</button>
       </div>
 
-      {printError && <p className="notice notice-error no-print" role="status">{printError}</p>}
+      {printError && <p className="receipt-toast receipt-toast-error no-print" role="status">{printError}</p>}
       {reprinted && (
-        <p className="notice notice-ok no-print" role="status">
+        <p className="receipt-toast receipt-toast-ok no-print" role="status">
           Sent. It is marked as a reprint, so it cannot be mistaken for a second sale.
         </p>
       )}
 
       <article className="receipt">
         <header className="receipt-head">
-          <h1>{store?.name ?? "OmniPOS"}</h1>
-          <p className="mono">{order.order_number}</p>
+          <div className="receipt-badge">OFFICIAL RECEIPT</div>
+          <h1>{store?.name ?? "OmniPOS Store"}</h1>
+          <p className="receipt-order">Order #{order.order_number}</p>
           <p>{new Date(order.client_created_at).toLocaleString()}</p>
-          {user && <p className="muted">Served by {user.name}</p>}
         </header>
 
+        <div className="receipt-divider receipt-divider-dashed" />
+
         <table className="receipt-lines">
+          <thead>
+            <tr>
+              <th>Item &amp; Qty</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
           <tbody>
             {order.items.map((item) => (
               <tr key={item.id}>
@@ -155,32 +161,33 @@ export function ReceiptPage() {
           </tbody>
         </table>
 
-        <dl className="receipt-totals">
+        <div className="receipt-divider" />
+
+        <dl className="receipt-summary">
           <div><dt>Subtotal</dt><dd>{formatMoney(toMinor(order.subtotal), currency)}</dd></div>
           {toMinor(order.discount) > 0 && (
-            <div><dt>Discount</dt><dd>−{formatMoney(toMinor(order.discount), currency)}</dd></div>
+            <div className="receipt-discount"><dt>Discount</dt><dd>-{formatMoney(toMinor(order.discount), currency)}</dd></div>
           )}
           {toMinor(order.tax) > 0 && <div><dt>Tax</dt><dd>{formatMoney(toMinor(order.tax), currency)}</dd></div>}
-          <div className="receipt-grand"><dt>Total</dt><dd>{formatMoney(toMinor(order.total), currency)}</dd></div>
         </dl>
 
-        <dl className="receipt-totals">
-          {order.payments.map((p) => (
-            <div key={p.id}>
-              <dt>{METHOD_LABELS[p.method] ?? p.method}</dt>
-              <dd>{formatMoney(toMinor(p.amount), currency)}</dd>
-            </div>
-          ))}
-          {change > 0 && <div><dt>Change</dt><dd>{formatMoney(change, currency)}</dd></div>}
-          {owed > 0 && (
-            <div className="receipt-grand">
-              <dt>Balance on account</dt>
-              <dd>{formatMoney(owed, currency)}</dd>
-            </div>
-          )}
+        <div className="receipt-total">
+          <strong>TOTAL DUE</strong>
+          <strong>{formatMoney(toMinor(order.total), currency)}</strong>
+        </div>
+
+        <dl className="receipt-payment">
+          <div><dt>Amount Tendered</dt><dd>{formatMoney(toMinor(order.amount_paid), currency)}</dd></div>
+          <div><dt>Change Returned</dt><dd className="receipt-change">{formatMoney(change, currency)}</dd></div>
         </dl>
 
-        {order.customer_name && <p className="receipt-customer">Customer: {order.customer_name}</p>}
+        {(order.customer_name || order.customer_phone) && (
+          <div className="receipt-customer">
+            <strong>Customer Details</strong>
+            {order.customer_name && <span>Name: {order.customer_name}</span>}
+            {order.customer_phone && <span>Phone: {order.customer_phone}</span>}
+          </div>
+        )}
 
         {/*
           Printed on the receipt, not just shown on screen. A cashier handing
@@ -195,8 +202,18 @@ export function ReceiptPage() {
           <p className="receipt-flag">This sale was rejected by the server and needs a manager.</p>
         )}
 
+        <div className="receipt-barcode" aria-label={`Barcode for ${order.order_number}`}>
+          <div className="receipt-barcode-bars">
+            {barcodePattern(order.order_number).map((width, index) => (
+              <i key={`${order.order_number}-${index}`} style={{ flexGrow: width }} />
+            ))}
+          </div>
+          <span>*{order.order_number}*</span>
+        </div>
+
         <footer className="receipt-foot">
-          <p>Thank you</p>
+          <strong>Thank you for your patronage!</strong>
+          <span>Powered by OmniPOS</span>
         </footer>
       </article>
     </div>
