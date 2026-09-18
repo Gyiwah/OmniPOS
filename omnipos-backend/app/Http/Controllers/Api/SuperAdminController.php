@@ -363,6 +363,151 @@ class SuperAdminController extends Controller
         return response()->json(['user' => ['id' => $model->id, 'is_super_admin' => (bool) $model->is_super_admin]]);
     }
 
+    /** POST /api/admin/people */
+    public function createPerson(Request $request): JsonResponse
+    {
+        $this->assertSuperAdmin($request);
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'password' => ['required', 'string', 'min:8'],
+            'is_super_admin' => ['sometimes', 'boolean'],
+            'store_id' => ['nullable', 'uuid', Rule::exists('stores', 'id')],
+            'role' => ['required_with:store_id', Rule::in(StoreMember::ROLES)],
+        ]);
+
+        $person = User::create([
+            'name' => $data['name'],
+            'email' => Str::lower(trim($data['email'])),
+            'password' => $data['password'],
+            'is_super_admin' => (bool) ($data['is_super_admin'] ?? false),
+        ]);
+        $person->forceFill(['email_verified_at' => now()])->save();
+
+        if (! empty($data['store_id'])) {
+            StoreMember::create([
+                'store_id' => $data['store_id'],
+                'user_id' => $person->id,
+                'role' => $data['role'],
+                'invited_by' => $request->user()->id,
+            ]);
+        }
+
+        AuditLog::create([
+            'user_id' => $request->user()->id,
+            'action' => 'platform.person_created',
+            'entity_type' => 'user',
+            'entity_id' => $person->id,
+            'after' => ['name' => $person->name, 'email' => $person->email, 'is_super_admin' => $person->is_super_admin, 'store_id' => $data['store_id'] ?? null],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        return response()->json(['person' => $this->personPayload($person->fresh('memberships.store'))], 201);
+    }
+
+    /** PATCH /api/admin/people/{user} */
+    public function updatePerson(Request $request, string $user): JsonResponse
+    {
+        $this->assertSuperAdmin($request);
+        $model = User::findOrFail($user);
+
+        $data = $request->validate([
+            'name' => ['sometimes', 'string', 'max:255'],
+            'email' => ['sometimes', 'email', 'max:255', Rule::unique('users', 'email')->ignore($model->id)],
+            'password' => ['sometimes', 'nullable', 'string', 'min:8'],
+            'is_super_admin' => ['sometimes', 'boolean'],
+            'store_id' => ['nullable', 'uuid', Rule::exists('stores', 'id')],
+            'role' => ['required_with:store_id', Rule::in(StoreMember::ROLES)],
+        ]);
+
+        if (array_key_exists('is_super_admin', $data) && $model->is_super_admin && ! $data['is_super_admin']) {
+            $this->assertNotLastSuperAdmin($model);
+        }
+
+        $before = $model->only(['name', 'email', 'is_super_admin']);
+        if (! empty($data['email'])) {
+            $data['email'] = Str::lower(trim($data['email']));
+        }
+        if (empty($data['password'])) {
+            unset($data['password']);
+        }
+
+        $model->fill(collect($data)->only(['name', 'email', 'password', 'is_super_admin'])->all());
+        $model->save();
+
+        if (! empty($data['store_id'])) {
+            StoreMember::updateOrCreate(
+                ['store_id' => $data['store_id'], 'user_id' => $model->id],
+                ['role' => $data['role'], 'invited_by' => $request->user()->id],
+            );
+        }
+
+        AuditLog::create([
+            'user_id' => $request->user()->id,
+            'action' => 'platform.person_updated',
+            'entity_type' => 'user',
+            'entity_id' => $model->id,
+            'before' => $before,
+            'after' => $model->only(['name', 'email', 'is_super_admin']),
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        return response()->json(['person' => $this->personPayload($model->fresh('memberships.store'))]);
+    }
+
+    /** DELETE /api/admin/people/{user} */
+    public function deletePerson(Request $request, string $user): JsonResponse
+    {
+        $this->assertSuperAdmin($request);
+        $model = User::findOrFail($user);
+
+        abort_if($model->id === $request->user()->id, 422, 'You cannot delete your own account.');
+        $this->assertNotLastSuperAdmin($model);
+
+        $model->delete();
+
+        AuditLog::create([
+            'user_id' => $request->user()->id,
+            'action' => 'platform.person_deleted',
+            'entity_type' => 'user',
+            'entity_id' => $model->id,
+            'before' => ['name' => $model->name, 'email' => $model->email],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        return response()->json(['deleted' => true]);
+    }
+
+    private function assertNotLastSuperAdmin(User $user): void
+    {
+        if (! $user->is_super_admin) {
+            return;
+        }
+
+        $remaining = User::where('is_super_admin', true)->where('id', '!=', $user->id)->count();
+        abort_if($remaining === 0, 422, 'The last platform administrator cannot be removed.');
+    }
+
+    private function personPayload(User $user): array
+    {
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'is_super_admin' => (bool) $user->is_super_admin,
+            'active' => $user->deleted_at === null,
+            'member_stores' => $user->memberships->map(fn (StoreMember $member) => [
+                'store_id' => $member->store_id,
+                'store_name' => $member->store?->name,
+                'role' => $member->role,
+            ]),
+        ];
+    }
+
     /** GET /api/admin/devices */
         public function devices(Request $request): JsonResponse
         {

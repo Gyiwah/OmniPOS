@@ -41,6 +41,13 @@ class AuthController extends Controller
             ]);
         }
 
+        try {
+            $this->assertStoresAreActive($request->user());
+        } catch (ValidationException $exception) {
+            Auth::guard('web')->logout();
+            throw $exception;
+        }
+
         /*
          * A cookie session only exists if Sanctum recognised this request as
          * coming from the SPA, which it decides from the Origin or Referer
@@ -84,6 +91,8 @@ class AuthController extends Controller
                 'email' => __('These credentials do not match our records.'),
             ]);
         }
+
+        $this->assertStoresAreActive($user);
 
         $this->invites->acceptPendingFor($user);
 
@@ -157,5 +166,26 @@ class AuthController extends Controller
                 'role' => $m->role,
             ])->values(),
         ];
+    }
+
+    private function assertStoresAreActive(User $user): void
+    {
+        if ($user->is_super_admin) {
+            return;
+        }
+
+        $user->loadMissing('memberships.store');
+
+        $unavailableStore = $user->memberships->first(fn ($membership) => $membership->store?->platform_status !== 'active');
+
+        if ($unavailableStore) {
+            $message = $unavailableStore->store?->platform_status === 'suspended'
+                ? 'This store is suspended. Contact your store administrator.'
+                : 'This store is inactive. Contact your store administrator.';
+
+            throw ValidationException::withMessages([
+                'email' => __($message),
+            ]);
+        }
     }
 }

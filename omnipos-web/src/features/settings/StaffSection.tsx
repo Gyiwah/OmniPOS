@@ -165,7 +165,7 @@ export function StaffSection() {
         </>
       )}
 
-      <h3 className="settings-subhead">Invite someone</h3>
+      <h3 className="settings-subhead">Add member</h3>
       <form
         className="drawer-movement"
         onSubmit={(e) => {

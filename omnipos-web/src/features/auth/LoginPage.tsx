@@ -21,6 +21,8 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState<string | null>(null);
 
+  const closeError = () => setError(null);
+
   useEffect(() => {
     try {
       const saved = localStorage.getItem(LAST_EMAIL_KEY);
@@ -68,7 +70,10 @@ export function LoginPage() {
       if (err instanceof ApiError && err.isUnreachable) {
         setError("Cannot reach the server. Check the connection and try again.");
       } else if (err instanceof ApiError && err.isValidation) {
-        setError("Those credentials do not match our records.");
+        const body = err.body;
+        const fieldErrors = body && typeof body === "object" && "errors" in body ? (body as { errors?: unknown }).errors : null;
+        const emailErrors = fieldErrors && typeof fieldErrors === "object" && "email" in fieldErrors ? (fieldErrors as { email?: unknown }).email : null;
+        setError(Array.isArray(emailErrors) && typeof emailErrors[0] === "string" ? emailErrors[0] : "Those credentials do not match our records.");
       } else {
         setError(err instanceof Error ? err.message : "Sign in failed.");
       }
@@ -119,13 +124,21 @@ export function LoginPage() {
           </button>
         </div>
 
-        {error && <p className="notice notice-error" role="alert">{error}</p>}
         {stage && <p className="muted" role="status">{stage}</p>}
 
         <button type="submit" disabled={busy} className="pay-button">
           {busy ? "Please wait…" : "Sign in"}
         </button>
       </form>
+      {error && (
+        <div className="auth-error-backdrop" role="presentation" onClick={closeError}>
+          <div className="auth-error-popup" role="alertdialog" aria-modal="true" aria-labelledby="auth-error-title" onClick={(event) => event.stopPropagation()}>
+            <h2 id="auth-error-title">Sign in unavailable</h2>
+            <p>{error}</p>
+            <button type="button" className="pay-button" onClick={closeError}>Close</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

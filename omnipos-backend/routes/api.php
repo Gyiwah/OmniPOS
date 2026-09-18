@@ -183,8 +183,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('stores/{store}/status', [SuperAdminController::class, 'updateStoreStatus']);
         Route::get('users', [SuperAdminController::class, 'users']);
         Route::get('people', [SuperAdminController::class, 'people']);
+        Route::post('people', [SuperAdminController::class, 'createPerson']);
         Route::patch('people/{user}/stores/{store}', [SuperAdminController::class, 'updateStoreMembershipRole']);
         Route::patch('people/{user}/platform-admin', [SuperAdminController::class, 'updatePlatformAdmin']);
+        Route::patch('people/{user}', [SuperAdminController::class, 'updatePerson']);
+        Route::delete('people/{user}', [SuperAdminController::class, 'deletePerson']);
         Route::get('devices', [SuperAdminController::class, 'devices']);
         Route::get('audit-logs', [SuperAdminController::class, 'auditLogs']);
         Route::get('sync-monitor', [SuperAdminController::class, 'syncMonitor']);
@@ -211,5 +214,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('store-invites', [StoreMemberController::class, 'invites']);
         Route::post('store-invites', [StoreMemberController::class, 'invite']);
         Route::delete('store-invites/{invite}', [StoreMemberController::class, 'revokeInvite']);
+    });
+
+    // Branches belong to the active store and are managed by its admins.
+    Route::middleware('store.access:admin')->group(function () {
+        Route::get('store-branches', [StoreMemberController::class, 'branches']);
+        Route::post('store-branches', [StoreMemberController::class, 'createBranch']);
+        Route::patch('store-branches/{branch}', [StoreMemberController::class, 'updateBranch']);
+        Route::delete('store-branches/{branch}', [StoreMemberController::class, 'deleteBranch']);
     });
 });

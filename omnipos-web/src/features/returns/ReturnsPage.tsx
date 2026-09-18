@@ -278,7 +278,7 @@ export function ReturnsPage() {
             <button type="button" className="link" onClick={() => { setLookup(null); setDraft([]); }}>
               Cancel
             </button>
-            <button type="button" className="pay-button" disabled={busy || total <= 0} onClick={onRefund}>
+            <button type="button" className="pay-button pay-button-cta" disabled={busy || total <= 0} onClick={onRefund}>
               {busy ? "Recording…" : `Refund ${formatMoney(total, currency)}`}
             </button>
           </div>

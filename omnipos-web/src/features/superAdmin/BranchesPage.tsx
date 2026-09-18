@@ -1,9 +1,20 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Boxes, CheckCircle2, Plus, ShieldCheck } from "lucide-react";
+import { Boxes, Plus } from "lucide-react";
 
 import { api } from "@/api/client";
-import { useSession } from "@/state/session";
+import {
+  EmptyState,
+  Field,
+  PlatformDenied,
+  PlatformModal,
+  PlatformPage,
+  PlatformToast,
+  SearchField,
+  StatusBadge,
+  usePlatformAccess,
+  useToast,
+} from "./PlatformChrome";
 
 type BranchRecord = {
   id: string;
@@ -16,22 +27,24 @@ type BranchRecord = {
   created_at: string | null;
 };
 
-type StoreOption = { id: string; name: string };
+type StoreOption = { id: string; name: string; parent_store_id?: string | null };
+
+const emptyForm = {
+  name: "",
+  parent_store_id: "",
+  currency: "GHS",
+  timezone: "Africa/Accra",
+  platform_status: "active" as BranchRecord["platform_status"],
+};
 
 export function BranchesPage() {
-  const isSuperAdmin = useSession((s) => s.user?.is_super_admin ?? false);
+  const isSuperAdmin = usePlatformAccess();
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({
-    name: "",
-    parent_store_id: "",
-    owner_user_id: "",
-    currency: "GHS",
-    timezone: "Africa/Accra",
-    platform_status: "active" as BranchRecord["platform_status"],
-  });
+  const { toast, setToast } = useToast();
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState(emptyForm);
 
   const branches = useQuery({
     queryKey: ["admin-branches"],
@@ -43,7 +56,7 @@ export function BranchesPage() {
     queryKey: ["admin-store-options"],
     queryFn: async () => {
       const response = await api.get<{ data: StoreOption[] }>("/api/admin/stores", undefined, { storeless: true });
-      return (response.data ?? []).map((store) => ({ id: store.id, name: store.name }));
+      return (response.data ?? []).filter((store) => !store.parent_store_id);
     },
     enabled: isSuperAdmin,
   });
@@ -53,115 +66,72 @@ export function BranchesPage() {
       const payload = {
         name: form.name.trim(),
         parent_store_id: form.parent_store_id,
-        owner_user_id: form.owner_user_id || undefined,
         currency: form.currency || "GHS",
         timezone: form.timezone || "Africa/Accra",
         platform_status: form.platform_status,
       };
-
-      if (editingId) {
-        return api.patch(`/api/admin/branches/${editingId}`, payload, { storeless: true });
-      }
-
+      if (editingId) return api.patch(`/api/admin/branches/${editingId}`, payload, { storeless: true });
       return api.post("/api/admin/branches", payload, { storeless: true });
     },
     onSuccess: () => {
-      setForm({ name: "", parent_store_id: "", owner_user_id: "", currency: "GHS", timezone: "Africa/Accra", platform_status: "active" });
+      setForm(emptyForm);
       setEditingId(null);
-      setError(null);
+      setOpen(false);
       setToast(editingId ? "Branch updated." : "Branch created.");
       void queryClient.invalidateQueries({ queryKey: ["admin-branches"] });
-      void queryClient.invalidateQueries({ queryKey: ["admin-store-options"] });
     },
-    onError: (cause) => setError(cause instanceof Error ? cause.message : "Could not save the branch."),
+    onError: (cause) => setToast(cause instanceof Error ? cause.message : "Could not save the branch."),
   });
 
   const deleteBranch = useMutation({
     mutationFn: (id: string) => api.delete(`/api/admin/branches/${id}`, { storeless: true }),
     onSuccess: () => {
       setToast("Branch deleted.");
-      setError(null);
       void queryClient.invalidateQueries({ queryKey: ["admin-branches"] });
     },
-    onError: (cause) => setError(cause instanceof Error ? cause.message : "Could not delete the branch."),
+    onError: (cause) => setToast(cause instanceof Error ? cause.message : "Could not delete the branch."),
   });
 
-  const resetForm = () => {
-    setForm({ name: "", parent_store_id: "", owner_user_id: "", currency: "GHS", timezone: "Africa/Accra", platform_status: "active" });
-    setEditingId(null);
-    setError(null);
-  };
-
-  if (!isSuperAdmin) {
-    return (
-      <div className="page">
-        <h1><ShieldCheck size={20} /> Branches</h1>
-        <p className="notice notice-warn">This area is limited to platform administrators.</p>
-      </div>
+  const rows = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return (branches.data ?? []).filter((branch) =>
+      `${branch.name} ${branch.parent_store?.name ?? ""} ${branch.owner?.name ?? ""}`.toLowerCase().includes(needle),
     );
-  }
+  }, [branches.data, query]);
+
+  if (!isSuperAdmin) return <PlatformDenied title="Branches" />;
 
   return (
-    <div className="page platform-page">
-      <header className="page-header">
-        <div>
-          <h1><Boxes size={20} /> Branches</h1>
-          <p className="muted">Platform-level branch visibility and status. Operational branch data stays with the store.</p>
-        </div>
-        <span className="platform-scope-badge"><ShieldCheck size={14} /> Platform only</span>
-      </header>
-
-      {toast && <p className="platform-toast" role="status"><CheckCircle2 size={16} />{toast}</p>}
-      {error && <p className="notice notice-error" role="alert">{error}</p>}
-
+    <PlatformPage
+      icon={Boxes}
+      title="Branches"
+      description="Branches inherit currency and timezone from how you create them, but they always sit under a parent store."
+      actions={
+        <button type="button" className="pay-button" onClick={() => { setEditingId(null); setForm(emptyForm); setOpen(true); }}>
+          <Plus size={16} /> New branch
+        </button>
+      }
+    >
+      <PlatformToast message={toast} />
       <section className="platform-panel">
-        <div className="platform-section-heading">
-          <div><h2>{editingId ? "Edit branch" : "Create branch"}</h2><p>Keep branch records attached to their parent store.</p></div>
+        <div className="platform-toolbar">
+          <SearchField value={query} onChange={setQuery} placeholder="Search branches" />
+          <span className="platform-panel-count">{rows.length}</span>
         </div>
-
-        <form className="platform-resource-form platform-setting-form" onSubmit={(event) => { event.preventDefault(); saveBranch.mutate(); }}>
-          <input placeholder="Branch name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
-          <select value={form.parent_store_id} onChange={(event) => setForm({ ...form, parent_store_id: event.target.value })} required>
-            <option value="">Select parent store</option>
-            {(parentStores.data ?? []).map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
-          </select>
-          <input placeholder="Owner user id" value={form.owner_user_id} onChange={(event) => setForm({ ...form, owner_user_id: event.target.value })} />
-          <div className="platform-two-column" style={{ marginTop: 0 }}>
-            <input placeholder="Currency" value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value })} />
-            <input placeholder="Timezone" value={form.timezone} onChange={(event) => setForm({ ...form, timezone: event.target.value })} />
-          </div>
-          <select value={form.platform_status} onChange={(event) => setForm({ ...form, platform_status: event.target.value as BranchRecord["platform_status"] })}>
-            <option value="active">Active</option>
-            <option value="suspended">Suspended</option>
-            <option value="inactive">Inactive</option>
-          </select>
-          <div className="platform-row-actions">
-            <button type="submit" className="secondary-button" disabled={saveBranch.isPending}><Plus size={15} /> {editingId ? "Save changes" : "Create branch"}</button>
-            {editingId && <button type="button" className="secondary-button secondary-button-muted" onClick={resetForm}>Cancel</button>}
-          </div>
-        </form>
-      </section>
-
-      <section className="platform-panel">
-        <div className="platform-section-heading">
-          <div>
-            <h2>All branches</h2>
-            <p>Track branch ownership, status, and operational usage.</p>
-          </div>
-          <span className="platform-panel-count">{branches.data?.length ?? 0}</span>
-        </div>
-
         <table className="table">
           <thead>
             <tr><th>Branch</th><th>Parent store</th><th>Status</th><th>Owner</th><th>Staff</th><th>Orders</th><th>Actions</th></tr>
           </thead>
           <tbody>
-            {(branches.data ?? []).map((branch) => (
+            {rows.map((branch) => (
               <tr key={branch.id}>
                 <td>{branch.name}</td>
                 <td>{branch.parent_store?.name ?? "—"}</td>
-                <td><span className={`platform-status platform-status-${branch.platform_status}`}>{branch.platform_status}</span></td>
-                <td>{branch.owner?.name ?? "—"}</td>
+                <td><StatusBadge status={branch.platform_status} /></td>
+                <td>
+                  {branch.owner?.name ?? "—"}
+                  {branch.owner && <div className="muted">{branch.owner.email}</div>}
+                </td>
                 <td>{branch.members_count}</td>
                 <td>{branch.orders_count}</td>
                 <td className="platform-row-actions">
@@ -170,22 +140,66 @@ export function BranchesPage() {
                     setForm({
                       name: branch.name,
                       parent_store_id: branch.parent_store?.id ?? "",
-                      owner_user_id: branch.owner?.id ?? "",
                       currency: "GHS",
                       timezone: "Africa/Accra",
                       platform_status: branch.platform_status,
                     });
+                    setOpen(true);
                   }}>Edit</button>
-                  <button type="button" className="icon-button danger" onClick={() => deleteBranch.mutate(branch.id)}>Delete</button>
+                  <button
+                    type="button"
+                    className="icon-button danger-button"
+                    onClick={() => {
+                      if (window.confirm(`Delete ${branch.name}?`)) deleteBranch.mutate(branch.id);
+                    }}
+                  >
+                    Delete
+                  </button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-
         {branches.isLoading && <p className="muted">Loading branches…</p>}
-        {!branches.isLoading && (branches.data ?? []).length === 0 && <p className="muted">No branch records found.</p>}
+        {!branches.isLoading && rows.length === 0 && <EmptyState title="No branches" hint="Create a branch under an existing store." />}
       </section>
-    </div>
+
+      {open && (
+        <PlatformModal title={editingId ? "Edit branch" : "Create branch"} onClose={() => setOpen(false)}>
+          <form className="platform-form" onSubmit={(e) => { e.preventDefault(); saveBranch.mutate(); }}>
+            <Field id="br-name" label="Branch name">
+              <input id="br-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+            </Field>
+            <Field id="br-parent" label="Parent store">
+              <select id="br-parent" value={form.parent_store_id} onChange={(e) => setForm({ ...form, parent_store_id: e.target.value })} required>
+                <option value="">Select parent store</option>
+                {(parentStores.data ?? []).map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+              </select>
+            </Field>
+            <div className="platform-form-grid">
+              <Field id="br-currency" label="Currency">
+                <input id="br-currency" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} />
+              </Field>
+              <Field id="br-tz" label="Timezone">
+                <input id="br-tz" value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} />
+              </Field>
+            </div>
+            <Field id="br-status" label="Status">
+              <select id="br-status" value={form.platform_status} onChange={(e) => setForm({ ...form, platform_status: e.target.value as BranchRecord["platform_status"] })}>
+                <option value="active">Active</option>
+                <option value="suspended">Suspended</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </Field>
+            <div className="platform-modal-actions">
+              <button type="button" className="secondary-button" onClick={() => setOpen(false)}>Cancel</button>
+              <button type="submit" className="pay-button" disabled={saveBranch.isPending}>
+                {editingId ? "Save changes" : "Create branch"}
+              </button>
+            </div>
+          </form>
+        </PlatformModal>
+      )}
+    </PlatformPage>
   );
 }

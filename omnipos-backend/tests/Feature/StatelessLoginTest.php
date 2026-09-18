@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Models\Store;
+use App\Models\StoreMember;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -81,7 +83,8 @@ class StatelessLoginTest extends TestCase
         $this->postJson('/api/auth/login', [
             'email' => $user->email,
             'password' => 'wrong',
-        ])->assertStatus(422);
+        ])->assertStatus(422)
+            ->assertJsonPath('errors.email.0', 'These credentials do not match our records.');
     }
 
     /** The route a device actually uses is unaffected and needs no session. */
@@ -97,5 +100,45 @@ class StatelessLoginTest extends TestCase
 
         $response->assertOk();
         $this->assertNotEmpty($response->json('token'));
+    }
+
+    public function test_members_of_unavailable_stores_cannot_use_either_login_endpoint(): void
+    {
+        $user = $this->user();
+        $store = Store::create([
+            'name' => 'Paused Store',
+            'owner_user_id' => $user->id,
+            'platform_status' => 'inactive',
+        ]);
+        StoreMember::create([
+            'store_id' => $store->id,
+            'user_id' => $user->id,
+            'role' => StoreMember::ROLE_ADMIN,
+        ]);
+
+        $this->postJson('/api/auth/login', [
+            'email' => $user->email,
+            'password' => 'correct-horse',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors('email')
+            ->assertJsonPath('errors.email.0', 'This store is inactive. Contact your store administrator.');
+
+        $this->postJson('/api/auth/token', [
+            'email' => $user->email,
+            'password' => 'correct-horse',
+            'device_name' => 'paused-till',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors('email')
+            ->assertJsonPath('errors.email.0', 'This store is inactive. Contact your store administrator.');
+
+        $store->update(['platform_status' => 'suspended']);
+
+        $this->postJson('/api/auth/token', [
+            'email' => $user->email,
+            'password' => 'correct-horse',
+            'device_name' => 'suspended-till',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors('email')
+            ->assertJsonPath('errors.email.0', 'This store is suspended. Contact your store administrator.');
     }
 }

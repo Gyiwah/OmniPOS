@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\StoreInviteResource;
 use App\Http\Resources\StoreMemberResource;
 use App\Models\AuditLog;
+use App\Models\Order;
 use App\Models\Store;
 use App\Models\StoreInvite;
 use App\Models\StoreMember;
@@ -38,6 +39,79 @@ class StoreMemberController extends Controller
                 ->with('user:id,name,email')
                 ->get()
         );
+    }
+
+    /** GET /api/store-branches */
+    public function branches(Request $request): JsonResponse
+    {
+        $storeId = $this->storeId($request);
+        $branches = Store::where('parent_store_id', $storeId)
+            ->withCount('members')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'data' => $branches->map(fn (Store $branch) => [
+                'id' => $branch->id,
+                'name' => $branch->name,
+                'platform_status' => $branch->platform_status,
+                'members_count' => $branch->members_count,
+                'orders_count' => Order::where('store_id', $branch->id)->count(),
+            ]),
+        ]);
+    }
+
+    /** POST /api/store-branches */
+    public function createBranch(Request $request): JsonResponse
+    {
+        $storeId = $this->storeId($request);
+        $parent = Store::findOrFail($storeId);
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'platform_status' => ['sometimes', Rule::in(['active', 'suspended', 'inactive'])],
+        ]);
+
+        $branch = Store::create([
+            ...$data,
+            'parent_store_id' => $parent->id,
+            'currency' => $parent->currency,
+            'timezone' => $parent->timezone,
+            'platform_status' => $data['platform_status'] ?? 'active',
+        ]);
+
+        $this->audit($request, 'staff.branch_created', $branch, null, $branch->only(['name', 'parent_store_id', 'platform_status']));
+
+        return response()->json(['branch' => $branch], 201);
+    }
+
+    /** PATCH /api/store-branches/{branch} */
+    public function updateBranch(Request $request, string $branch): JsonResponse
+    {
+        $storeId = $this->storeId($request);
+        $model = Store::where('parent_store_id', $storeId)->findOrFail($branch);
+        $data = $request->validate([
+            'name' => ['sometimes', 'string', 'max:255'],
+            'platform_status' => ['sometimes', Rule::in(['active', 'suspended', 'inactive'])],
+        ]);
+        $before = $model->only(['name', 'parent_store_id', 'platform_status']);
+        $model->update($data);
+
+        $this->audit($request, 'staff.branch_updated', $model, $before, $model->only(['name', 'parent_store_id', 'platform_status']));
+
+        return response()->json(['branch' => $model->refresh()]);
+    }
+
+    /** DELETE /api/store-branches/{branch} */
+    public function deleteBranch(Request $request, string $branch): JsonResponse
+    {
+        $storeId = $this->storeId($request);
+        $model = Store::where('parent_store_id', $storeId)->findOrFail($branch);
+        $before = ['name' => $model->name, 'parent_store_id' => $model->parent_store_id];
+        $model->delete();
+
+        $this->audit($request, 'staff.branch_deleted', $model, $before, null);
+
+        return response()->json(['deleted' => true]);
     }
 
     /**
@@ -170,6 +244,21 @@ class StoreMemberController extends Controller
             403,
             'Only an admin can grant the admin role.'
         );
+    }
+
+    private function audit(Request $request, string $action, Store $branch, ?array $before, ?array $after): void
+    {
+        AuditLog::create([
+            'store_id' => $this->storeId($request),
+            'user_id' => $request->user()->id,
+            'action' => $action,
+            'entity_type' => 'store',
+            'entity_id' => $branch->id,
+            'before' => $before,
+            'after' => $after,
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
     }
 
     private function assertNotLastAdmin(string $storeId, StoreMember $member): void

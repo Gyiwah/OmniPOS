@@ -6,6 +6,7 @@ import { api, ApiError } from "@/api/client";
 import { useSession } from "@/state/session";
 import { PrinterSection } from "@/features/printing/PrinterSection";
 import { CategoriesSection } from "./CategoriesSection";
+import { BranchesSection } from "./BranchesSection";
 import { StaffSection } from "./StaffSection";
 
 type StoreSettings = {
@@ -76,6 +77,7 @@ export function SettingsPage() {
       <PrinterSection />
       <CategoriesSection />
       <StaffSection />
+      <BranchesSection />
     </div>
   );
 }

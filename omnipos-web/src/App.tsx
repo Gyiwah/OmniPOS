@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "@/components/AppShell";
 import { LoginPage } from "@/features/auth/LoginPage";
@@ -16,6 +16,7 @@ import { ReportsPage } from "@/features/reports/ReportsPage";
 import { StockTakePage } from "@/features/products/StockTakePage";
 import { AuditLogsPage } from "@/features/superAdmin/AuditLogsPage";
 import { BranchesPage } from "@/features/superAdmin/BranchesPage";
+import { DevicesPage } from "@/features/superAdmin/DevicesPage";
 import { PeoplePage } from "@/features/superAdmin/PeoplePage";
 import { PlatformReportsPage } from "@/features/superAdmin/ReportsPage";
 import { PlatformSettingsPage } from "@/features/superAdmin/PlatformSettingsPage";
@@ -28,14 +29,14 @@ import { SyncPage } from "@/features/sync/SyncPage";
 import { useSession } from "@/state/session";
 import { startSyncScheduler } from "@/state/sync";
 
-function Protected({ children }: { children: React.ReactNode }) {
+function Protected({ children }: { children?: React.ReactNode }) {
   const user = useSession((s) => s.user);
   const booting = useSession((s) => s.booting);
 
   if (booting) return <div className="boot">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
 
-  return <AppShell>{children}</AppShell>;
+  return <AppShell>{children ?? <Outlet />}</AppShell>;
 }
 
 export default function App() {
@@ -63,16 +64,19 @@ export default function App() {
         <Route path="/stock-take" element={<Protected><StockTakePage /></Protected>} />
         <Route path="/reports" element={<Protected><ReportsPage /></Protected>} />
         <Route path="/settings" element={<Protected><SettingsPage /></Protected>} />
-        <Route path="/platform/*" element={<Protected><SuperAdminPage /></Protected>} />
-        <Route path="/platform/resources" element={<Protected><SystemResourcesPage /></Protected>} />
-        <Route path="/platform/stores" element={<Protected><StoresPage /></Protected>} />
-        <Route path="/platform/branches" element={<Protected><BranchesPage /></Protected>} />
-        <Route path="/platform/people" element={<Protected><PeoplePage /></Protected>} />
-        <Route path="/platform/subscriptions" element={<Protected><SubscriptionsPage /></Protected>} />
-        <Route path="/platform/synchronization" element={<Protected><SynchronizationPage /></Protected>} />
-        <Route path="/platform/reports" element={<Protected><PlatformReportsPage /></Protected>} />
-        <Route path="/platform/audit-logs" element={<Protected><AuditLogsPage /></Protected>} />
-        <Route path="/platform/settings" element={<Protected><PlatformSettingsPage /></Protected>} />
+        <Route path="/platform" element={<Protected />}>
+          <Route index element={<SuperAdminPage />} />
+          <Route path="stores" element={<StoresPage />} />
+          <Route path="branches" element={<BranchesPage />} />
+          <Route path="people" element={<PeoplePage />} />
+          <Route path="devices" element={<DevicesPage />} />
+          <Route path="resources" element={<SystemResourcesPage />} />
+          <Route path="subscriptions" element={<SubscriptionsPage />} />
+          <Route path="synchronization" element={<SynchronizationPage />} />
+          <Route path="reports" element={<PlatformReportsPage />} />
+          <Route path="audit-logs" element={<AuditLogsPage />} />
+          <Route path="settings" element={<PlatformSettingsPage />} />
+        </Route>
         <Route path="/sync" element={<Protected><SyncPage /></Protected>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

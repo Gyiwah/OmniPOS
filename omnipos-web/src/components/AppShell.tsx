@@ -16,13 +16,11 @@ import {
   Settings,
   ShieldCheck,
   ShoppingCart,
-  Store,
   Sun,
   Users,
 } from "lucide-react";
-import { UserCog } from "lucide-react";
-import { Network } from "lucide-react";
 
+import { PLATFORM_GROUPS } from "@/features/superAdmin/platformNav";
 import { useSession } from "@/state/session";
 import { useSync } from "@/state/sync";
 import { nextThemeLabel, useTheme } from "@/state/theme";
@@ -41,36 +39,6 @@ const NAV = [
   // Only a platform administrator. `can` grants super_admin everything, so the
   // role is named explicitly rather than relying on that.
   { to: "/platform", label: "Platform", icon: ShieldCheck, superAdminOnly: true },
-];
-
-const PLATFORM_GROUPS = [
-  {
-    label: "Overview",
-    items: [{ to: "/platform", label: "Dashboard", icon: LayoutDashboard, end: true }],
-  },
-  {
-    label: "Platform Management",
-    items: [
-      { to: "/platform/stores", label: "Stores & Branches", icon: Store },
-      { to: "/platform/people", label: "People", icon: UserCog },
-    ],
-  },
-  {
-    label: "Platform Services",
-    items: [
-      { to: "/platform/resources", label: "System Resources", icon: Package },
-      { to: "/platform/subscriptions", label: "Subscriptions", icon: Receipt },
-      { to: "/platform/synchronization", label: "Synchronization", icon: Network },
-    ],
-  },
-  {
-    label: "Governance",
-    items: [
-      { to: "/platform/reports", label: "Reports", icon: BarChart3 },
-      { to: "/platform/audit-logs", label: "Audit Logs", icon: ShieldCheck },
-      { to: "/platform/settings", label: "Settings", icon: Settings },
-    ],
-  },
 ];
 
 const THEME_ICON = { light: Sun, dark: Moon, system: Monitor };
@@ -95,7 +63,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const ThemeIcon = THEME_ICON[themeChoice];
 
   return (
-    <div className="shell">
+    <div className={`shell${isSuperAdmin ? " shell-platform" : ""}`}>
       <header className="shell-header">
         <div className="brand">
           <img src="/android-chrome-192x192.png" alt="OmniPOS" className="brand-image" />
@@ -125,20 +93,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="shell-nav">
-          {isSuperAdmin ? PLATFORM_GROUPS.map((group) => (
-            <div className="nav-group" key={group.label}>
-              <span className="nav-group-label">{group.label}</span>
-              {group.items.map((item) => {
+          {isSuperAdmin ? (
+            <>
+              {PLATFORM_GROUPS.flatMap((group) => group.items).map((item) => {
                 const Icon = item.icon;
                 return (
-                  <NavLink key={item.to} to={item.to} end={"end" in item && item.end} className={({ isActive }) => (isActive ? "active" : "")}>
+                  <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => (isActive ? "active" : "")}>
                     <Icon size={17} aria-hidden="true" />
                     <span className="nav-label">{item.label}</span>
                   </NavLink>
                 );
               })}
-            </div>
-          )) : NAV.filter((item) => {
+              <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>
+                <ShoppingCart size={17} aria-hidden="true" />
+                <span className="nav-label">Till</span>
+              </NavLink>
+            </>
+          ) : NAV.filter((item) => {
             if ("superAdminOnly" in item) return user?.is_super_admin === true;
             return !item.roles || can(item.roles);
           }).map((item) => {

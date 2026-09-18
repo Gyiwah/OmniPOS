@@ -182,6 +182,47 @@ class SuperAdminTest extends TestCase
         $this->assertDatabaseHas('users', ['id' => $owner->id, 'is_super_admin' => true]);
     }
 
+    public function test_platform_admin_can_create_update_and_delete_people(): void
+    {
+        $store = Store::create(['name' => 'Staff Store', 'owner_user_id' => $this->platformAdmin->id]);
+        $email = Str::uuid7().'@test';
+
+        $this->as($this->ordinary)
+            ->postJson('/api/admin/people', ['name' => 'Kofi', 'email' => $email, 'password' => 'password12'])
+            ->assertForbidden();
+
+        $created = $this->as($this->platformAdmin)
+            ->postJson('/api/admin/people', [
+                'name' => 'Kofi Mensah',
+                'email' => $email,
+                'password' => 'password12',
+                'store_id' => $store->id,
+                'role' => StoreMember::ROLE_CASHIER,
+            ])
+            ->assertCreated()
+            ->json('person');
+
+        $this->assertDatabaseHas('users', ['id' => $created['id'], 'name' => 'Kofi Mensah', 'email' => $email]);
+        $this->assertDatabaseHas('store_members', ['store_id' => $store->id, 'user_id' => $created['id'], 'role' => StoreMember::ROLE_CASHIER]);
+
+        $this->as($this->platformAdmin)
+            ->patchJson("/api/admin/people/{$created['id']}", ['name' => 'Kofi Boateng', 'role' => StoreMember::ROLE_MANAGER, 'store_id' => $store->id])
+            ->assertOk()
+            ->assertJsonPath('person.name', 'Kofi Boateng');
+
+        $this->assertDatabaseHas('store_members', ['store_id' => $store->id, 'user_id' => $created['id'], 'role' => StoreMember::ROLE_MANAGER]);
+
+        $this->as($this->platformAdmin)
+            ->deleteJson("/api/admin/people/{$created['id']}")
+            ->assertOk();
+
+        $this->assertSoftDeleted('users', ['id' => $created['id']]);
+
+        $this->as($this->platformAdmin)
+            ->deleteJson("/api/admin/people/{$this->platformAdmin->id}")
+            ->assertStatus(422);
+    }
+
     public function test_platform_admin_can_manage_store_and_branch_crud(): void
     {
         $owner = $this->makeUser();
