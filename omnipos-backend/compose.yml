@@ -1,0 +1,11 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: omnipos-app
+    ports:
+      - "10000:10000"
+    env_file:
+      - .env
+    restart: unless-stopped
