@@ -1,9 +1,7 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "node:path";
-
-const BACKEND = "http://127.0.0.1:8000";
 
 /**
  * Vite's proxy answers 500 when the backend refuses the connection, which is
@@ -20,7 +18,13 @@ function reportBackendDown(proxy: { on: (e: string, cb: (err: unknown, req: unkn
   });
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+  // Proxy target only. The browser still talks to Vite on the same origin;
+  // Sanctum cookies would fail if the SPA called the API host cross-site.
+  const backend = (env.VITE_API_URL || "https://omnipos-9879.onrender.com").replace(/\/+$/, "");
+
+  return {
   define: {
     // Surfaced to the API on device registration, so support can tell which
     // build a till is running.
@@ -69,8 +73,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       // Same-origin in development so the Sanctum session cookie is first-party.
-      "/api": { target: BACKEND, changeOrigin: true, configure: reportBackendDown },
-      "/sanctum": { target: BACKEND, changeOrigin: true, configure: reportBackendDown },
+      "/api": { target: backend, changeOrigin: true, configure: reportBackendDown },
+      "/sanctum": { target: backend, changeOrigin: true, configure: reportBackendDown },
     },
   },
   // `vite preview` does not inherit server.proxy. Without this the production
@@ -79,12 +83,13 @@ export default defineConfig({
   preview: {
     port: 4173,
     proxy: {
-      "/api": { target: BACKEND, changeOrigin: true, configure: reportBackendDown },
-      "/sanctum": { target: BACKEND, changeOrigin: true, configure: reportBackendDown },
+      "/api": { target: backend, changeOrigin: true, configure: reportBackendDown },
+      "/sanctum": { target: backend, changeOrigin: true, configure: reportBackendDown },
     },
   },
   test: {
     environment: "node",
     setupFiles: ["./src/test/setup.ts"],
   },
+  };
 });

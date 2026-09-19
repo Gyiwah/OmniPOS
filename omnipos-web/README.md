@@ -7,25 +7,34 @@ Laravel API in `../omnipos-backend`.
 
 ## Running it
 
-The backend must be up first:
+By default the Vite proxy targets the live API at
+`https://omnipos-9879.onrender.com`. Copy `.env.example` to `.env` (or leave
+the default) and start the web client:
+
+```bash
+cp .env.example .env   # once
+npm install
+npm run dev
+```
+
+Opens on <http://localhost:5173>. Vite proxies `/api` and `/sanctum` to
+`VITE_API_URL` so the Sanctum session cookie stays first-party — without that
+proxy the cookie is cross-site and the session silently fails to stick.
+
+To point at a local backend instead:
+
+```bash
+# in omnipos-web/.env
+VITE_API_URL=http://127.0.0.1:8000
+```
 
 ```bash
 cd ../omnipos-backend
 php artisan serve
 ```
 
-Then:
-
-```bash
-npm install
-npm run dev
-```
-
-Opens on <http://localhost:5173>. Vite proxies `/api` and `/sanctum` to
-`127.0.0.1:8000` so the Sanctum session cookie stays first-party — without that
-proxy the cookie is cross-site and the session silently fails to stick.
-
-Sign in with a seeded account (`php artisan db:seed` in the backend):
+Sign in with a seeded account (`php artisan db:seed` in the backend), or with
+accounts on the deployed database:
 
 ```
 admin@omnipos.test    / password

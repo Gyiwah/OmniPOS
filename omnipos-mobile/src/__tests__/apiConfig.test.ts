@@ -1,4 +1,5 @@
-import { packagerLanHost, resolveApiBaseUrl } from "../core/api/config";
+import { resolveApiBaseUrl } from "../core/api/config";
+import { packagerLanHost } from "../core/api/packagerHost";
 
 describe("API address on a device", () => {
   it("reads the Metro LAN host from the bundler URI", () => {
@@ -39,5 +40,11 @@ describe("API address on a device", () => {
 
   it("fills in Metro's host when no URL was configured at all", () => {
     expect(resolveApiBaseUrl("", "10.227.143.183")).toBe("http://10.227.143.183:8000");
+  });
+
+  it("leaves a deployed https API alone so a phone can reach Render", () => {
+    expect(resolveApiBaseUrl("https://omnipos-9879.onrender.com", "10.227.143.183")).toBe(
+      "https://omnipos-9879.onrender.com",
+    );
   });
 });

@@ -71,4 +71,9 @@ export type PlatformAdapter = {
   secureStorage: PlatformSecureStorage | null;
   /** Absolute URL that reopens this app at `path` (deep link on device, origin URL on web). */
   createDeepLink(path: string): string;
+  /**
+   * IPv4 Metro is serving from, if the host advertised one. Used only to rewrite
+   * loopback Laravel URLs on a physical phone. Null on web and in tests.
+   */
+  packagerHostUri(): string | null;
 };

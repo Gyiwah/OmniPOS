@@ -1,9 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
 import { NativeModules } from "react-native";
+import Constants from "expo-constants";
 import * as Crypto from "expo-crypto";
 import * as Linking from "expo-linking";
 import * as SecureStore from "expo-secure-store";
+
+import { packagerLanHost } from "@/src/core/api/packagerHost";
 
 import type { NetworkState, PlatformAdapter } from "./types";
 
@@ -58,5 +61,12 @@ export function createNativeAdapter(): PlatformAdapter {
         }),
     },
     createDeepLink: (path) => Linking.createURL(path),
+    packagerHostUri() {
+      try {
+        return packagerLanHost(Constants.expoConfig?.hostUri ?? Constants.linkingUri);
+      } catch {
+        return null;
+      }
+    },
   };
 }

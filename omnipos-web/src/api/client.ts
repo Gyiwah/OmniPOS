@@ -79,6 +79,8 @@ let csrfPrimed = false;
  */
 export async function primeCsrf(force = false): Promise<void> {
   if (csrfPrimed && !force && readCookie("XSRF-TOKEN")) return;
+  // Same-origin on purpose. Vite (or the production reverse proxy) forwards
+  // /sanctum to the Laravel host so the session cookie stays first-party.
   await fetch("/sanctum/csrf-cookie", { credentials: "include" });
   csrfPrimed = true;
 }

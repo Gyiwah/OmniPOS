@@ -66,6 +66,7 @@ export function createWebAdapter(): PlatformAdapter {
     // store key material somewhere a page script could read it.
     secureStorage: null,
     createDeepLink: (path) => new URL(path, globalThis.location?.origin ?? "http://localhost").toString(),
+    packagerHostUri: () => null,
     crypto: {
       getRandomValues(bytes) {
         const webCrypto = globalThis.crypto;

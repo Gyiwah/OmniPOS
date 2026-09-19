@@ -1,5 +1,6 @@
 import { setGenerator } from "@nozbe/watermelondb/utils/common/randomId";
 
+import { bindApiBaseUrl } from "@/src/core/api/config";
 import { uuidv7 } from "@/src/core/ids/uuidv7";
 import { setPlatform } from "@/src/core/platform";
 import type { PlatformAdapter } from "@/src/core/platform";
@@ -22,6 +23,7 @@ let done = false;
 export function bootstrapCore(adapter: PlatformAdapter): void {
   if (done) return;
   setPlatform(adapter);
+  bindApiBaseUrl();
   setGenerator(uuidv7);
   done = true;
 }

@@ -35,6 +35,7 @@ export function createMemoryAdapter(): PlatformAdapter {
     },
     secureStorage: null,
     createDeepLink: (path) => `omnipos://${path.replace(/^\//, "")}`,
+    packagerHostUri: () => null,
     crypto: {
       getRandomValues(bytes) {
         const webCrypto = (globalThis as { crypto?: Crypto }).crypto;

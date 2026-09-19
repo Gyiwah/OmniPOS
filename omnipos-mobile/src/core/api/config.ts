@@ -11,7 +11,10 @@
  * already uses.
  */
 
-import Constants from "expo-constants";
+import { getPlatform } from "@/src/core/platform";
+import { packagerLanHost } from "./packagerHost";
+
+export { packagerLanHost };
 
 export type Backend = "supabase" | "laravel";
 
@@ -25,19 +28,6 @@ export const BACKEND: Backend =
 export const usingLaravel = BACKEND === "laravel";
 
 const LOOPBACK = /^https?:\/\/(localhost|127\.0\.0\.1|10\.0\.2\.2|\[::1\])(?::(\d+))?/i;
-
-/**
- * The IPv4 Metro is serving from, if the bundler advertised one.
- *
- * That is the machine the phone already reached to download the JS bundle, so
- * it is also the machine a development Laravel API almost always lives on.
- */
-export function packagerLanHost(hostUri?: string | null): string | null {
-  const match = String(hostUri ?? "").match(/(\d{1,3}(?:\.\d{1,3}){3})/);
-  const host = match?.[1] ?? null;
-  if (!host || host === "127.0.0.1" || host === "10.0.2.2") return null;
-  return host;
-}
 
 /**
  * A URL a physical phone can actually call.
@@ -62,30 +52,26 @@ export function resolveApiBaseUrl(configured: string, packagerHost: string | nul
   return stripped;
 }
 
-function currentPackagerHost(): string | null {
-  try {
-    return packagerLanHost(Constants.expoConfig?.hostUri ?? Constants.linkingUri);
-  } catch {
-    return null;
-  }
+function configuredApiUrl(): string {
+  return process.env.EXPO_PUBLIC_API_URL ?? "";
+}
+
+function packagerHostForRewrite(): string | null {
+  return process.env.EXPO_PUBLIC_ALLOW_LOCALHOST === "1" ? null : getPlatform().packagerHostUri();
 }
 
 /**
  * Absolute, because a native app has no origin to be relative to.
  *
- * On a device, `localhost` is the phone itself — a LAN address or tunnel is
- * required to reach a development machine. Getting this wrong presents as
- * "network request failed" with nothing else to go on, so it is validated at
- * startup rather than at the first request.
+ * Bound again after `setPlatform()` so a physical device can rewrite loopback
+ * URLs onto Metro's LAN host. A deployed https URL is left as-is.
  */
-export const API_BASE_URL = resolveApiBaseUrl(
-  process.env.EXPO_PUBLIC_API_URL ?? "",
-  process.env.EXPO_PUBLIC_ALLOW_LOCALHOST === "1" ? null : currentPackagerHost(),
-);
+export let API_BASE_URL = resolveApiBaseUrl(configuredApiUrl(), packagerHostForRewrite());
 
-if (usingLaravel) {
-  const configured = (process.env.EXPO_PUBLIC_API_URL ?? "").replace(/\/+$/, "");
-  if (configured !== API_BASE_URL) {
+export function bindApiBaseUrl(): void {
+  const configured = configuredApiUrl();
+  API_BASE_URL = resolveApiBaseUrl(configured, packagerHostForRewrite());
+  if (usingLaravel && configured.replace(/\/+$/, "") !== API_BASE_URL) {
     console.log(`[OmniPOS] API ${configured || "(unset)"} → ${API_BASE_URL}`);
   }
 }
