@@ -20,6 +20,7 @@ import { useSettingsStore } from "@/src/store/settingsStore";
 import { useAuthStore } from "@/src/store/authStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
 import { toErrorMessage } from "@/src/utils/errors";
+import { canManageUsers } from "@/src/utils/permissions";
 import { usingLaravel } from "@/src/core/api/config";
 
 const MENU = [
@@ -44,7 +45,9 @@ const CURRENCIES = ["GHS", "USD", "NGN"] as const;
 export default function SettingsScreen() {
   const router = useRouter();
   const activeStoreId = useStoreSlice((s) => s.activeStoreId);
+  const role = useAuthStore((s) => s.role);
   const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin);
+  const mayManageSettings = canManageUsers(isSuperAdmin ? "super_admin" : role);
   const { shopName, shopEmail, shopLogoUri, language, currency, taxRate, vatRate, serviceRate, hydrateFromServer } =
     useSettingsStore();
   const { data: remoteSettings, isLoading, isError, error } = useStoreSettings();
@@ -163,6 +166,31 @@ export default function SettingsScreen() {
         </SectionCard>
         <View style={styles.signOutWrapper}>
           <Pressable style={styles.signOutButton} onPress={() => void handleSignOut()}>
+            <Ionicons name="log-out-outline" size={20} color={Colors.danger} />
+            <Text style={styles.signOutText}>Sign Out of OmniPOS</Text>
+          </Pressable>
+        </View>
+      </AppScrollScreen>
+    );
+  }
+
+  if (!mayManageSettings) {
+    return (
+      <AppScrollScreen showBack title="Store Settings">
+        <SectionCard style={{ alignItems: "center", paddingVertical: Spacing.xl, gap: Spacing.sm }}>
+          <Ionicons name="lock-closed-outline" size={48} color={Colors.danger} />
+          <Text style={{ fontSize: 17, fontWeight: "800", color: Colors.textPrimary }}>
+            Access Restricted
+          </Text>
+          <Text style={{ fontSize: 13, color: Colors.textMuted, textAlign: "center", paddingHorizontal: Spacing.lg }}>
+            Cashiers are not authorized to view or configure store settings.
+          </Text>
+        </SectionCard>
+        <View style={styles.signOutWrapper}>
+          <Pressable
+            style={({ pressed }) => [styles.signOutButton, pressed && styles.signOutButtonPressed]}
+            onPress={() => void handleSignOut()}
+          >
             <Ionicons name="log-out-outline" size={20} color={Colors.danger} />
             <Text style={styles.signOutText}>Sign Out of OmniPOS</Text>
           </Pressable>

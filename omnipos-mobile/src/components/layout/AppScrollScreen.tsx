@@ -15,6 +15,7 @@ type AppScrollScreenProps = {
   right?: ReactNode;
   left?: ReactNode;
   showBack?: boolean;
+  onBack?: () => void;
   fixedHeader?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
@@ -27,6 +28,7 @@ export function AppScrollScreen({
   right,
   left,
   showBack,
+  onBack,
   fixedHeader = true,
   refreshing,
   onRefresh,
@@ -40,7 +42,7 @@ export function AppScrollScreen({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Go back"
-          onPress={() => router.back()}
+          onPress={onBack ?? (() => router.back())}
           style={styles.backBtn}
           hitSlop={10}
         >

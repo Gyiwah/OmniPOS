@@ -32,6 +32,8 @@ export const Colors = {
   secondary: "#042358",
   accent: "#fe7403",
   white: "#ffffff",
+  black: "#000000",
+  surfaceSecondary: "#f1f5f9",
   text: "#042358",
   mutedText: "#94a3b8",
 } as const;

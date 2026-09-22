@@ -237,6 +237,11 @@ class SuperAdminTest extends TestCase
             ->postJson('/api/admin/branches', ['name' => 'Downtown Branch', 'parent_store_id' => $store->id, 'owner_user_id' => $owner->id, 'currency' => 'USD'])
             ->assertCreated();
 
+        $this->as($this->platformAdmin)
+            ->postJson('/api/admin/branches', ['name' => 'North Branch', 'parent_store_id' => $store->id, 'currency' => 'GHS'])
+            ->assertCreated()
+            ->assertJsonPath('branch.owner_user_id', $owner->id);
+
         $branch = Store::where('name', 'Downtown Branch')->firstOrFail();
 
         $this->as($this->platformAdmin)
@@ -259,12 +264,13 @@ class SuperAdminTest extends TestCase
 
     public function test_platform_admin_can_create_a_plan_and_assign_it_to_a_store(): void
     {
+        $slug = 'starter-' . Str::random(6);
         $planResponse = $this->as($this->ordinary)
-            ->postJson('/api/admin/plans', ['name' => 'Starter', 'slug' => 'starter', 'monthly_price' => 49, 'limits' => ['users' => 5]])
+            ->postJson('/api/admin/plans', ['name' => 'Starter', 'slug' => $slug, 'monthly_price' => 49, 'limits' => ['users' => 5]])
             ->assertForbidden();
 
         $planResponse = $this->as($this->platformAdmin)
-            ->postJson('/api/admin/plans', ['name' => 'Starter', 'slug' => 'starter', 'monthly_price' => 49, 'limits' => ['users' => 5]])
+            ->postJson('/api/admin/plans', ['name' => 'Starter', 'slug' => $slug, 'monthly_price' => 49, 'limits' => ['users' => 5]])
             ->assertCreated();
 
         $owner = $this->makeUser();
@@ -282,12 +288,13 @@ class SuperAdminTest extends TestCase
 
     public function test_platform_admin_can_manage_global_resources_but_store_users_cannot(): void
     {
+        $slug = 'beverages-' . Str::random(6);
         $this->as($this->ordinary)
-            ->postJson('/api/admin/system-resources/categories', ['name' => 'Beverages', 'slug' => 'beverages'])
+            ->postJson('/api/admin/system-resources/categories', ['name' => 'Beverages', 'slug' => $slug])
             ->assertForbidden();
 
         $this->as($this->platformAdmin)
-            ->postJson('/api/admin/system-resources/categories', ['name' => 'Beverages', 'slug' => 'beverages'])
+            ->postJson('/api/admin/system-resources/categories', ['name' => 'Beverages', 'slug' => $slug])
             ->assertCreated();
 
         $this->as($this->platformAdmin)
@@ -295,15 +302,17 @@ class SuperAdminTest extends TestCase
             ->assertOk()
             ->assertJsonPath('setting.value.enabled', true);
 
-        $this->assertDatabaseHas('global_categories', ['slug' => 'beverages', 'status' => 'active']);
+        $this->assertDatabaseHas('global_categories', ['slug' => $slug, 'status' => 'active']);
         $this->assertDatabaseHas('audit_logs', ['action' => 'platform.global_category_created']);
         $this->assertDatabaseHas('audit_logs', ['action' => 'platform.system_setting_changed']);
     }
 
     public function test_platform_admin_can_update_and_delete_platform_plan_and_category_entries(): void
     {
-        $plan = Plan::create(['name' => 'Starter', 'slug' => 'starter', 'monthly_price' => 49, 'platform_status' => 'active']);
-        $category = GlobalCategory::create(['name' => 'Beverages', 'slug' => 'beverages', 'status' => 'active', 'position' => 1]);
+        $planSlug = 'starter-' . Str::random(6);
+        $catSlug = 'beverages-' . Str::random(6);
+        $plan = Plan::create(['name' => 'Starter', 'slug' => $planSlug, 'monthly_price' => 49, 'platform_status' => 'active']);
+        $category = GlobalCategory::create(['name' => 'Beverages', 'slug' => $catSlug, 'status' => 'active', 'position' => 1]);
 
         $this->as($this->platformAdmin)
             ->patchJson("/api/admin/plans/{$plan->id}", ['name' => 'Starter Plus', 'monthly_price' => 59])

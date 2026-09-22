@@ -3,6 +3,8 @@ import { supabase } from "@/src/services/supabase";
 import { uploadStoreLogoFromUri, resolveStoreLogoUrl } from "@/src/services/storage";
 
 import type {
+  AddUserInput,
+  AddUserResult,
   PendingInvite,
   SendInviteInput,
   SendInviteResult,
@@ -164,6 +166,10 @@ const supabaseSettingsService = {
       emailSent: Boolean(payload.emailSent),
       warning: payload.warning ?? payload.error,
     };
+  },
+
+  async addUser(_storeId: string, _input: AddUserInput): Promise<AddUserResult> {
+    throw new Error("Direct user creation is only available on the Laravel backend.");
   },
 
   async revokeInvite(storeId: string, inviteId: string): Promise<void> {

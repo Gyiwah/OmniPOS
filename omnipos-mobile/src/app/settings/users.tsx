@@ -9,8 +9,9 @@ import { Colors } from "@/src/constants/colors";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
-import { usePendingInvites, useRevokeInvite, useSendInvite, useStoreTeamMembers } from "@/src/features/settings/hooks";
+import { useAddUser, usePendingInvites, useRevokeInvite, useSendInvite, useStoreTeamMembers } from "@/src/features/settings/hooks";
 import type { InviteRole } from "@/src/features/settings/types";
+import { useAuthStore } from "@/src/store/authStore";
 import { toErrorMessage } from "@/src/utils/errors";
 
 const ROLE_CONFIG: Record<InviteRole, { label: string; desc: string; icon: keyof typeof Ionicons.glyphMap; color: string; bg: string }> = {
@@ -23,10 +24,34 @@ export default function SettingsUsersScreen() {
   const { data: members = [], isLoading, isError, error } = useStoreTeamMembers();
   const { data: invites = [], isLoading: invitesLoading } = usePendingInvites();
   const sendInvite = useSendInvite();
+  const addUser = useAddUser();
   const revokeInvite = useRevokeInvite();
+  const currentRole = useAuthStore((state) => state.role);
 
   const [inviteEmail, setInviteEmail] = useState("");
+  const [userName, setUserName] = useState("");
+  const [userEmail, setUserEmail] = useState("");
+  const [userPassword, setUserPassword] = useState("");
   const [role, setRole] = useState<InviteRole>("cashier");
+
+  async function onAddUser() {
+    const name = userName.trim();
+    const email = userEmail.trim().toLowerCase();
+    if (!name || !email.includes("@") || userPassword.length < 8) {
+      Alert.alert("Incomplete User Details", "Enter a name, valid email, and password of at least 8 characters.");
+      return;
+    }
+
+    try {
+      await addUser.mutateAsync({ name, email, password: userPassword, role });
+      setUserName("");
+      setUserEmail("");
+      setUserPassword("");
+      Alert.alert("User Added", `${name} can sign in to the store immediately.`);
+    } catch (err) {
+      Alert.alert("User Add Failed", toErrorMessage(err, "Could not add user."));
+    }
+  }
 
   async function onSendInvite(resend = false, emailOverride?: string) {
     const email = (emailOverride ?? inviteEmail).trim().toLowerCase();
@@ -120,6 +145,76 @@ export default function SettingsUsersScreen() {
           ) : null}
         </View>
       </SectionCard>
+
+      {currentRole === "admin" ? (
+        <SectionCard>
+          <View style={styles.cardHeader}>
+            <Ionicons name="person-add-outline" size={20} color={Colors.primaryBlue} />
+            <Text style={styles.sectionTitle}>Add User Directly</Text>
+          </View>
+
+          <TextInput
+            label="Full Name"
+            value={userName}
+            onChangeText={setUserName}
+            placeholder="e.g. Alex Johnson"
+            leftIcon={<Ionicons name="person-outline" size={18} color={Colors.textMuted} />}
+          />
+          <TextInput
+            label="Email Address"
+            value={userEmail}
+            onChangeText={setUserEmail}
+            placeholder="e.g. alex@store.com"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            leftIcon={<Ionicons name="mail-outline" size={18} color={Colors.textMuted} />}
+          />
+          <TextInput
+            label="Temporary Password"
+            value={userPassword}
+            onChangeText={setUserPassword}
+            placeholder="At least 8 characters"
+            secureTextEntry
+            leftIcon={<Ionicons name="lock-closed-outline" size={18} color={Colors.textMuted} />}
+          />
+
+          <Text style={styles.roleHeaderLabel}>Assign Store Role</Text>
+          <View style={styles.roleGrid}>
+            {(["cashier", "manager", "admin"] as InviteRole[]).map((r) => {
+              const cfg = ROLE_CONFIG[r];
+              const active = role === r;
+              return (
+                <Pressable
+                  key={r}
+                  style={({ pressed }) => [styles.roleCard, active && styles.roleCardActive, pressed && { opacity: 0.8 }]}
+                  onPress={() => setRole(r)}
+                >
+                  <View style={[styles.roleIconWrap, active && { backgroundColor: Colors.primaryBlue }]}>
+                    <Ionicons name={cfg.icon} size={18} color={active ? Colors.white : Colors.primaryBlue} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.roleTitle, active && styles.roleTitleActive]}>{cfg.label}</Text>
+                    <Text style={styles.roleDesc}>{cfg.desc}</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Pressable
+            style={({ pressed }) => [styles.sendInviteBtn, addUser.isPending && { opacity: 0.6 }, pressed && { opacity: 0.9 }]}
+            disabled={addUser.isPending}
+            onPress={() => void onAddUser()}
+          >
+            {addUser.isPending ? (
+              <ActivityIndicator size="small" color={Colors.white} />
+            ) : (
+              <Ionicons name="person-add-outline" size={18} color={Colors.white} />
+            )}
+            <Text style={styles.sendInviteText}>{addUser.isPending ? "Adding User..." : "Add User"}</Text>
+          </Pressable>
+        </SectionCard>
+      ) : null}
 
       {/* Send Invite Form Card */}
       <SectionCard>

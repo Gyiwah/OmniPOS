@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Models\Store;
 use App\Models\StoreInvite;
 use App\Models\StoreMember;
+use App\Models\User;
 use App\Services\StoreInviteService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,6 +40,52 @@ class StoreMemberController extends Controller
                 ->with('user:id,name,email')
                 ->get()
         );
+    }
+
+    /** POST /api/store-members */
+    public function store(Request $request): JsonResponse
+    {
+        $storeId = $this->storeId($request);
+
+        abort_unless(
+            $request->user()->hasStoreRole($storeId, [StoreMember::ROLE_ADMIN]),
+            403,
+            'Only an admin can add users directly.'
+        );
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'password' => ['required', 'string', 'min:8'],
+            'role' => ['required', Rule::in(StoreMember::ROLES)],
+        ]);
+
+        $user = User::create([
+            'name' => $data['name'],
+            'email' => strtolower(trim($data['email'])),
+            'password' => $data['password'],
+        ]);
+        $user->forceFill(['email_verified_at' => now()])->save();
+
+        $member = StoreMember::create([
+            'store_id' => $storeId,
+            'user_id' => $user->id,
+            'role' => $data['role'],
+            'invited_by' => $request->user()->id,
+        ]);
+
+        AuditLog::create([
+            'store_id' => $storeId,
+            'user_id' => $request->user()->id,
+            'action' => 'staff.user_added',
+            'entity_type' => 'store_member',
+            'entity_id' => $member->id,
+            'after' => ['user_id' => $user->id, 'role' => $member->role],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        return response()->json(['member' => new StoreMemberResource($member->load('user'))], 201);
     }
 
     /** GET /api/store-branches */
@@ -74,6 +121,7 @@ class StoreMemberController extends Controller
         $branch = Store::create([
             ...$data,
             'parent_store_id' => $parent->id,
+            'owner_user_id' => $parent->owner_user_id ?? $request->user()->id,
             'currency' => $parent->currency,
             'timezone' => $parent->timezone,
             'platform_status' => $data['platform_status'] ?? 'active',

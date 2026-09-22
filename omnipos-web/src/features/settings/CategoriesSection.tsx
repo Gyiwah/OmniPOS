@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { db } from "@/db/schema";
 import { useSession } from "@/state/session";
+import { toast } from "@/state/toast";
 
 type Category = {
   id: string;
@@ -12,23 +13,14 @@ type Category = {
   position: number;
 };
 
-/**
- * The groupings behind the POS filter chips.
- *
- * Online-only. Categories are a store-wide vocabulary, and two tills inventing
- * "Drinks" while offline would produce two of them with nothing to say which
- * was meant. They are also not on the critical path: a till with no categories
- * still sells everything, it just shows one long list.
- *
- * Deleting one never deletes stock. The foreign key is nullOnDelete, so the
- * products fall back to uncategorised.
- */
 export function CategoriesSection() {
   const can = useSession((s) => s.can);
   const storeId = useSession((s) => s.storeId);
   const queryClient = useQueryClient();
 
   const [name, setName] = useState("");
+  const [selectedId, setSelectedId] = useState<string>("");
+  const [editName, setEditName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const mayManage = can(["admin", "manager"]);
@@ -39,11 +31,6 @@ export function CategoriesSection() {
     enabled: Boolean(storeId) && mayManage,
   });
 
-  /**
-   * The POS reads categories from IndexedDB so it works offline, and they do not
-   * travel on the changefeed. Without this the chips would keep showing the old
-   * set until the next sign-in.
-   */
   const syncLocal = async (rows: Category[]) => {
     if (!storeId) return;
     await db.transaction("rw", [db.categories], async () => {
@@ -62,13 +49,19 @@ export function CategoriesSection() {
     await syncLocal(res);
   };
 
-  const fail = (e: unknown) => setError(e instanceof Error ? e.message : "That did not work.");
+  const fail = (e: unknown) => {
+    const msg = e instanceof Error ? e.message : "That did not work.";
+    setError(msg);
+    toast.error(msg);
+  };
 
   const create = useMutation({
     mutationFn: () => api.post("/api/categories", { name: name.trim(), position: categories.data?.length ?? 0 }),
     onSuccess: async () => {
+      const addedName = name.trim();
       setName("");
       setError(null);
+      toast.success(`Category "${addedName}" created.`);
       await refresh();
     },
     onError: fail,
@@ -77,47 +70,92 @@ export function CategoriesSection() {
   const rename = useMutation({
     mutationFn: (input: { id: string; name: string }) =>
       api.patch(`/api/categories/${input.id}`, { name: input.name }),
-    onSuccess: refresh,
+    onSuccess: async () => {
+      toast.success("Category updated.");
+      await refresh();
+    },
     onError: fail,
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/api/categories/${id}`),
-    onSuccess: refresh,
+    onSuccess: async () => {
+      setSelectedId("");
+      setEditName("");
+      toast.success("Category removed.");
+      await refresh();
+    },
     onError: fail,
   });
 
   if (!mayManage) return null;
 
+  const categoryList = categories.data ?? [];
+  const selectedCategory = categoryList.find((c) => c.id === selectedId);
+
+  const handleSelectCategory = (id: string) => {
+    setSelectedId(id);
+    const cat = categoryList.find((c) => c.id === id);
+    setEditName(cat ? cat.name : "");
+  };
+
   return (
     <section className="drawer-card">
       <h2>Categories</h2>
       <p className="conflict-hint">
-        These are the filter chips on the till. Removing one leaves its products uncategorised — it never removes
-        stock.
+        Categories group products on the till. Select a category from the drop-down list to edit or remove it.
       </p>
 
       {error && <p className="notice notice-error" role="status">{error}</p>}
 
-      <ul className="tender-list">
-        {(categories.data ?? []).map((c) => (
-          <li key={c.id}>
+      <div className="drawer-movement" style={{ marginBottom: "1rem" }}>
+        <select
+          value={selectedId}
+          onChange={(e) => handleSelectCategory(e.target.value)}
+          aria-label="Select category"
+        >
+          <option value="">-- Select a Category ({categoryList.length}) --</option>
+          {categoryList.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {selectedCategory && (
+        <div className="category-edit-card" style={{ padding: "0.85rem", background: "var(--panel-2)", borderRadius: "var(--radius-sm)", marginBottom: "1.2rem" }}>
+          <label style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--muted)" }}>Edit Category Name</label>
+          <div className="drawer-movement" style={{ marginTop: "0.4rem" }}>
             <input
-              defaultValue={c.name}
-              aria-label={`Name for ${c.name}`}
-              onBlur={(e) => {
-                const next = e.target.value.trim();
-                if (next && next !== c.name) rename.mutate({ id: c.id, name: next });
-              }}
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              aria-label="Category name"
             />
-            <span />
-            <button type="button" className="link danger" onClick={() => remove.mutate(c.id)}>Remove</button>
-          </li>
-        ))}
-      </ul>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={rename.isPending || !editName.trim() || editName.trim() === selectedCategory.name}
+              onClick={() => rename.mutate({ id: selectedCategory.id, name: editName.trim() })}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              className="icon-button danger"
+              onClick={() => {
+                if (window.confirm(`Delete category "${selectedCategory.name}"?`)) {
+                  remove.mutate(selectedCategory.id);
+                }
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      )}
 
-      {(categories.data?.length ?? 0) === 0 && <p className="muted">No categories yet.</p>}
-
+      <h3 className="settings-subhead">Add new category</h3>
       <form
         className="drawer-movement"
         onSubmit={(e) => {
@@ -139,3 +177,4 @@ export function CategoriesSection() {
     </section>
   );
 }
+

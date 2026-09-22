@@ -40,6 +40,8 @@ import { useStoreSlice } from "@/src/store/storeSlice";
 import { isNonNegativeNumber, isPositiveNumber, isRequired } from "@/src/utils/validators";
 import { enqueueChange } from "@/src/sync/enqueue";
 import { synchronise } from "@/src/sync";
+import { useAuthStore } from "@/src/store/authStore";
+import { canEditCatalogue } from "@/src/utils/permissions";
 
 export default function EditProductScreen() {
   const { id } = useLocalSearchParams<{ id?: string | string[] }>();
@@ -48,6 +50,9 @@ export default function EditProductScreen() {
   const activeStoreId = useStoreSlice((s) => s.activeStoreId);
   const currency = useSettingsStore((s) => s.currency);
   const currencySymbol = currency === "USD" ? "$" : currency === "NGN" ? "₦" : "₵";
+  const role = useAuthStore((s) => s.role);
+  const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin);
+  const mayEditCatalogue = canEditCatalogue(isSuperAdmin ? "super_admin" : role);
 
   const [productRef, setProductRef] = useState<Product | null>(null);
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -477,6 +482,22 @@ export default function EditProductScreen() {
     } finally {
       setSaving(false);
     }
+  }
+
+  if (!mayEditCatalogue) {
+    return (
+      <AppScrollScreen showBack title="Edit Product">
+        <SectionCard style={{ alignItems: "center", paddingVertical: Spacing.xl, gap: Spacing.sm }}>
+          <Ionicons name="lock-closed-outline" size={48} color={Colors.danger} />
+          <Text style={{ fontSize: 17, fontWeight: "800", color: Colors.textPrimary }}>
+            Access Restricted
+          </Text>
+          <Text style={{ fontSize: 13, color: Colors.textMuted, textAlign: "center", paddingHorizontal: Spacing.lg }}>
+            Cashiers are not authorized to view or modify products in the catalogue.
+          </Text>
+        </SectionCard>
+      </AppScrollScreen>
+    );
   }
 
   return (

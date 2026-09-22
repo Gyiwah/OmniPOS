@@ -7,6 +7,7 @@ import { useStoreSlice } from "@/src/store/storeSlice";
 export default function IndexScreen() {
   const ready = useBootstrapStore((state) => state.ready);
   const userId = useAuthStore((state) => state.userId);
+  const isSuperAdmin = useAuthStore((state) => state.isSuperAdmin);
   const activeStoreId = useStoreSlice((state) => state.activeStoreId);
 
   if (!ready) {
@@ -22,6 +23,10 @@ export default function IndexScreen() {
   }
 
   if (!activeStoreId) {
+    if (isSuperAdmin) {
+      return <Redirect href="/super-admin" />;
+    }
+
     return <Redirect href="/onboarding/store" />;
   }
 

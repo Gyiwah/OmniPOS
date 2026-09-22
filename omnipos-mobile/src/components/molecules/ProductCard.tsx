@@ -4,6 +4,8 @@ import { Elevation } from "@/src/constants/elevation";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { StockPill } from "@/src/components/atoms/StockPill";
+import { useAuthStore } from "@/src/store/authStore";
+import { canEditCatalogue } from "@/src/utils/permissions";
 
 type ProductCardProps = {
   imageUrl?: string | null;
@@ -34,6 +36,9 @@ export function ProductCard({
   expiryLabel,
   onPress,
 }: ProductCardProps) {
+  const role = useAuthStore((s) => s.role);
+  const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin);
+  const canViewCost = canEditCatalogue(isSuperAdmin ? "super_admin" : role);
   const isExpired = expiryStatus === "expired";
   const isExpiringSoon = expiryStatus === "expiring_soon";
 
@@ -80,7 +85,7 @@ export function ProductCard({
             {currencySymbol} {price.toFixed(2)}
           </Text>
         ) : null}
-        {costPrice != null ? (
+        {costPrice != null && canViewCost ? (
           <Text style={styles.costText}>
             Cost: {currencySymbol} {Number(costPrice).toFixed(2)}
           </Text>

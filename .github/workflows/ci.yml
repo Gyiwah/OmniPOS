@@ -1,0 +1,82 @@
+name: OmniPOS Continuous Integration
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  web-tests:
+    name: Web Till (Typecheck & Unit Tests)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: omnipos-web/package-lock.json
+
+      - name: Install Web Dependencies
+        run: npm ci
+        working-directory: omnipos-web
+
+      - name: Run Web Typecheck
+        run: npm run typecheck
+        working-directory: omnipos-web
+
+      - name: Run Web Unit Tests
+        run: npm run test
+        working-directory: omnipos-web
+
+  mobile-tests:
+    name: Mobile App (Typecheck & Unit Tests)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: omnipos-mobile/package-lock.json
+
+      - name: Install Mobile Dependencies
+        run: npm ci
+        working-directory: omnipos-mobile
+
+      - name: Run Mobile Typecheck
+        run: npx tsc --noEmit
+        working-directory: omnipos-mobile
+
+      - name: Run Mobile Unit Tests
+        run: npm run test
+        working-directory: omnipos-mobile
+
+  backend-tests:
+    name: Backend API (PHPUnit Unit Tests)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo, pdo_pgsql, bcmath, ctype, json
+          coverage: none
+
+      - name: Install Composer Dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+        working-directory: omnipos-backend
+
+      - name: Run Backend Unit Tests
+        run: php artisan test --filter=Unit
+        working-directory: omnipos-backend

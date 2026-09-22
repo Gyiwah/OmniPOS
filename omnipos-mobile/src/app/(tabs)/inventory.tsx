@@ -236,6 +236,22 @@ export default function InventoryScreen() {
 
   const selectedOption = FILTER_OPTIONS.find((f) => f.key === stockFilter) ?? FILTER_OPTIONS[0];
 
+  if (!mayEditCatalogue) {
+    return (
+      <AppScrollScreen title="Inventory" subtitle="Product Catalogue">
+        <SectionCard style={{ alignItems: "center", paddingVertical: Spacing.xl, gap: Spacing.sm }}>
+          <Ionicons name="lock-closed-outline" size={48} color={Colors.danger} />
+          <Text style={{ fontSize: 17, fontWeight: "800", color: Colors.textPrimary }}>
+            Access Restricted
+          </Text>
+          <Text style={{ fontSize: 13, color: Colors.textMuted, textAlign: "center", paddingHorizontal: Spacing.lg }}>
+            Cashiers are not authorized to view or edit the product inventory.
+          </Text>
+        </SectionCard>
+      </AppScrollScreen>
+    );
+  }
+
   return (
     <AppScrollScreen
       title="Inventory"
@@ -245,19 +261,21 @@ export default function InventoryScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Export or Print Inventory"
-            style={({ pressed }) => [styles.headerIconBtn, styles.exportIconBtn, pressed && styles.headerIconBtnPressed]}
+            style={({ pressed }) => [styles.headerActionBtn, styles.exportIconBtn, pressed && styles.headerIconBtnPressed]}
             onPress={() => setExportModalVisible(true)}
           >
-            <Ionicons name="print-outline" size={20} color={Colors.primaryBlue} />
+            <Ionicons name="print-outline" size={16} color={Colors.primaryBlue} />
+            <Text style={styles.exportActionText}>Export/Print</Text>
           </Pressable>
           {mayEditCatalogue ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Add or Import Product"
-              style={({ pressed }) => [styles.headerIconBtn, styles.addIconBtn, pressed && styles.headerIconBtnPressed]}
+              style={({ pressed }) => [styles.headerActionBtn, styles.addIconBtn, pressed && styles.headerIconBtnPressed]}
               onPress={() => setAddMenuVisible(true)}
             >
-              <Ionicons name="add" size={22} color={Colors.white} />
+              <Ionicons name="add" size={18} color={Colors.white} />
+              <Text style={styles.addActionText}>Add Product</Text>
             </Pressable>
           ) : null}
         </View>
@@ -527,12 +545,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  headerIconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: Radius.pill,
+  headerActionBtn: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: Radius.pill,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
@@ -544,8 +563,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e2e8f0",
   },
+  exportActionText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.primaryBlue,
+  },
   addIconBtn: {
     backgroundColor: Colors.primaryBlue,
+  },
+  addActionText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.white,
   },
   headerIconBtnPressed: {
     opacity: 0.8,

@@ -1,7 +1,8 @@
-import { api, setActiveStore, setToken } from "@/src/core/api/client";
+import { api, setToken } from "@/src/core/api/client";
 import { storage } from "@/src/core/platform";
 import { getDeviceId } from "@/src/sync/deviceId";
 import { SYNC_STORAGE } from "@/src/sync/keys";
+import { useStoreSlice } from "@/src/store/storeSlice";
 
 /**
  * Authentication against the Laravel API.
@@ -90,9 +91,13 @@ async function finishSession(user: AuthedUser, memberships: Membership[]): Promi
     memberships[0]?.store_id ??
     null;
 
+  // Update both the UI store selection and the API header source. This also
+  // clears a stale persisted store when a storeless super admin signs in.
+  useStoreSlice.getState().setActiveStore(storeId);
   if (storeId) {
-    setActiveStore(storeId);
     await storage.setItem(SYNC_STORAGE.activeStoreId, storeId);
+  } else {
+    await storage.removeItem(SYNC_STORAGE.activeStoreId);
   }
 
   const role =
@@ -133,7 +138,7 @@ export async function signOut(): Promise<void> {
     // Best effort. The token expires server-side regardless.
   } finally {
     await setToken(null);
-    setActiveStore(null);
+    useStoreSlice.getState().setActiveStore(null);
     await storage.removeItem(SYNC_STORAGE.authCacheSession);
   }
 }

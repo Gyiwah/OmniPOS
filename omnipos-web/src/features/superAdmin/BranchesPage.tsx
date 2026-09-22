@@ -27,7 +27,13 @@ type BranchRecord = {
   created_at: string | null;
 };
 
-type StoreOption = { id: string; name: string; parent_store_id?: string | null };
+type StoreOption = {
+  id: string;
+  name: string;
+  parent_store_id?: string | null;
+  owner_user_id?: string | null;
+  owner?: { id: string; name: string; email: string } | null;
+};
 
 const emptyForm = {
   name: "",
@@ -63,9 +69,13 @@ export function BranchesPage() {
 
   const saveBranch = useMutation({
     mutationFn: () => {
+      const selectedParent = (parentStores.data ?? []).find((s) => s.id === form.parent_store_id);
+      const ownerUserId = selectedParent?.owner_user_id || selectedParent?.owner?.id;
+
       const payload = {
         name: form.name.trim(),
         parent_store_id: form.parent_store_id,
+        owner_user_id: ownerUserId,
         currency: form.currency || "GHS",
         timezone: form.timezone || "Africa/Accra",
         platform_status: form.platform_status,

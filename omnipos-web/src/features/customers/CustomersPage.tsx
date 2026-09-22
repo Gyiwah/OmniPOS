@@ -58,34 +58,79 @@ export function CustomersPage() {
         </div>
       </header>
 
-      {debtOnly && (
-        <p className="muted">Total outstanding: <strong>{formatMoney(totalDebt, currency)}</strong></p>
-      )}
+      {/* Summary Metrics Row */}
+      <div className="grid-3" style={{ marginBottom: "1.25rem", gap: "1rem" }}>
+        <div className="stat-card">
+          <div className="muted" style={{ fontSize: "0.75rem", textTransform: "uppercase", fontWeight: 600 }}>Total Registered</div>
+          <div style={{ fontSize: "1.5rem", fontWeight: 700, marginTop: "0.25rem" }}>{customers.length} clients</div>
+        </div>
+        <div className="stat-card">
+          <div className="muted" style={{ fontSize: "0.75rem", textTransform: "uppercase", fontWeight: 600 }}>Total Outstanding Debt</div>
+          <div style={{ fontSize: "1.5rem", fontWeight: 700, marginTop: "0.25rem", color: "var(--danger, #dc2626)" }}>
+            {formatMoney(totalDebt, currency)}
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="muted" style={{ fontSize: "0.75rem", textTransform: "uppercase", fontWeight: 600 }}>Total Client Spend</div>
+          <div style={{ fontSize: "1.5rem", fontWeight: 700, marginTop: "0.25rem", color: "var(--success, #16a34a)" }}>
+            {formatMoney(customers.reduce((sum, c) => sum + toMinor(c.total_spend), 0), currency)}
+          </div>
+        </div>
+      </div>
 
       <table className="table">
         <thead>
-          <tr><th>Name</th><th>Phone</th><th>Total spend</th><th>Outstanding</th><th /><th /></tr>
+          <tr>
+            <th>Name</th>
+            <th>Phone</th>
+            <th>Total Spend</th>
+            <th>Outstanding</th>
+            <th>Status</th>
+            <th style={{ textAlign: "right" }}>Actions</th>
+          </tr>
         </thead>
         <tbody>
-          {customers.map((c) => (
-            <tr key={c.id}>
-              <td>{c.name}</td>
-              <td className="mono">{c.phone ?? "—"}</td>
-              <td>{formatMoney(toMinor(c.total_spend), currency)}</td>
-              <td className={Number(c.outstanding_balance) > 0 ? "danger-text" : undefined}>
-                {formatMoney(toMinor(c.outstanding_balance), currency)}
-              </td>
-              <td>{c._state === "pending" && <span className="pill pill-pending">Queued</span>}</td>
-              <td className="row-actions">
-                <button type="button" className="link" onClick={() => setStatement(c)}>Statement</button>
-                {/* Only offered where there is something to settle. */}
-                {Number(c.outstanding_balance) > 0 && (
-                  <button type="button" className="link" onClick={() => setSettling(c)}>Take payment</button>
-                )}
-                <button type="button" className="link" onClick={() => setEditing(c)}>Edit</button>
-              </td>
-            </tr>
-          ))}
+          {customers.map((c) => {
+            const hasDebt = Number(c.outstanding_balance) > 0;
+            return (
+              <tr key={c.id}>
+                <td style={{ fontWeight: 600 }}>{c.name}</td>
+                <td className="mono">{c.phone ?? "—"}</td>
+                <td>{formatMoney(toMinor(c.total_spend), currency)}</td>
+                <td className={hasDebt ? "danger-text" : undefined} style={{ fontWeight: hasDebt ? 700 : 400 }}>
+                  {formatMoney(toMinor(c.outstanding_balance), currency)}
+                </td>
+                <td>
+                  {hasDebt ? (
+                    <span className="pill pill-danger" style={{ background: "#fee2e2", color: "#dc2626", fontWeight: 600, padding: "2px 8px", borderRadius: "12px", fontSize: "0.75rem" }}>
+                      Unpaid Debt
+                    </span>
+                  ) : (
+                    <span className="pill pill-success" style={{ background: "#dcfce7", color: "#16a34a", fontWeight: 600, padding: "2px 8px", borderRadius: "12px", fontSize: "0.75rem" }}>
+                      Settled
+                    </span>
+                  )}
+                  {c._state === "pending" && (
+                    <span className="pill pill-pending" style={{ marginLeft: "4px" }}>Queued</span>
+                  )}
+                </td>
+                <td className="row-actions" style={{ textAlign: "right" }}>
+                  <button type="button" className="link" onClick={() => setStatement(c)}>Statement</button>
+                  {hasDebt && (
+                    <button
+                      type="button"
+                      className="button button-sm primary"
+                      style={{ padding: "4px 10px", fontSize: "0.8rem", marginLeft: "6px" }}
+                      onClick={() => setSettling(c)}
+                    >
+                      Settle Debt
+                    </button>
+                  )}
+                  <button type="button" className="link" style={{ marginLeft: "6px" }} onClick={() => setEditing(c)}>Edit</button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 

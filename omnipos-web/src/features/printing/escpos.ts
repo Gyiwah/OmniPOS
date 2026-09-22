@@ -228,6 +228,27 @@ export class EscPos {
     return this.raw(ESC, 0x70, pin, 25, 250);
   }
 
+  /**
+   * Standardized Store Receipt Header
+   */
+  receiptHeader(storeName: string, address?: string, phone?: string): this {
+    this.init().codepage(16);
+    this.align("center").bold(true).size(2, 2).line(storeName).size(1, 1).bold(false);
+    if (address) this.line(address);
+    if (phone) this.line(`Tel: ${phone}`);
+    return this.rule("=");
+  }
+
+  /**
+   * Standardized Receipt Footer
+   */
+  receiptFooter(thankYouMessage = "Thank you for shopping with us!", returnPolicy?: string): this {
+    this.rule("-").align("center");
+    this.line(thankYouMessage);
+    if (returnPolicy) this.line(returnPolicy);
+    return this.feed(2);
+  }
+
   toBytes(): Uint8Array {
     return Uint8Array.from(this.chunks);
   }

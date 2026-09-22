@@ -2,13 +2,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Q } from "@nozbe/watermelondb";
 
 import { Avatar } from "@/src/components/atoms/Avatar";
 import { PrimaryButton } from "@/src/components/atoms/PrimaryButton";
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
 import { KPICard } from "@/src/components/molecules/KPICard";
+import { SyncStatusHeader } from "@/src/components/molecules/SyncStatusHeader";
 import { OrdersBarChart } from "@/src/components/organisms/OrdersBarChart";
 import { SalesLineChart } from "@/src/components/organisms/SalesLineChart";
 import { Colors } from "@/src/constants/colors";
@@ -26,7 +28,9 @@ import type Order from "@/src/database/models/Order";
 import type OrderItem from "@/src/database/models/OrderItem";
 import type Customer from "@/src/database/models/Customer";
 import { formatRelativeSyncTime } from "@/src/utils/date";
-import { canEditCatalogue } from "@/src/utils/permissions";
+import { canEditCatalogue, canManageUsers } from "@/src/utils/permissions";
+import { authService } from "@/src/features/auth/service";
+import { SYNC_STORAGE } from "@/src/sync/keys";
 import { usingLaravel } from "@/src/core/api/config";
 
 const SHORTCUTS: {
@@ -61,6 +65,7 @@ const SHORTCUTS: {
     color: "#059669",
     bg: "#ecfdf5",
     href: "/inventory",
+    catalogueOnly: true,
   },
   {
     label: "Add Product",
@@ -122,10 +127,33 @@ export default function HomeScreen() {
   const role = useAuthStore((s) => s.role);
   const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin);
   const mayEditCatalogue = canEditCatalogue(isSuperAdmin ? "super_admin" : role);
+  const mayManageSettings = canManageUsers(isSuperAdmin ? "super_admin" : role);
   const shortcuts = useMemo(
     () => SHORTCUTS.filter((s) => !s.catalogueOnly || mayEditCatalogue),
     [mayEditCatalogue],
   );
+
+  function handleSignOut() {
+    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await authService.signOut();
+            useAuthStore.getState().clearSession();
+            await AsyncStorage.removeItem(SYNC_STORAGE.activeStoreId);
+            await AsyncStorage.removeItem("omnipos:cached_auth_session");
+            router.replace("/(auth)/sign-in");
+          } catch {
+            Alert.alert("Sign Out Error", "Failed to sign out. Please try again.");
+          }
+        },
+      },
+    ]);
+  }
+
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [kpis, setKpis] = useState<
     { title: string; value: string; period: string; variant: "primary" | "accent" | "success" }[]
@@ -135,6 +163,11 @@ export default function HomeScreen() {
     { title: "Est. Gross Profit", value: "₵ 0.00", period: "Gross profit margin", variant: "success" },
     { title: "Credit Receivables", value: "₵ 0.00", period: "Unpaid customer credit", variant: "accent" },
   ]);
+
+  const visibleKpis = useMemo(
+    () => (role === "cashier" ? kpis.filter((k) => k.title !== "Est. Gross Profit") : kpis),
+    [kpis, role],
+  );
   const [salesChart, setSalesChart] = useState<{ label: string; value: number }[]>([]);
   const [barWeek, setBarWeek] = useState<{ label: string; sales: number; returns: number }[]>([]);
   const [recentTransactions, setRecentTransactions] = useState<RecentTransaction[]>([]);
@@ -393,29 +426,18 @@ export default function HomeScreen() {
           </Pressable>
         }
         right={
-          <Pressable
-            style={[
-              styles.syncPill,
-              syncStatus === "error" && styles.syncPillError,
-              pendingCount > 0 && syncStatus !== "error" && styles.syncPillPending,
-            ]}
-            onPress={() => void triggerSync()}
-            disabled={syncing}
-            accessibilityRole="button"
-            accessibilityLabel={syncPillLabel}
-          >
-            <View style={styles.syncPillInner}>
-              {syncing ? <ActivityIndicator size="small" color={Colors.primaryBlue} /> : null}
-              <Text
-                style={[
-                  styles.syncLabel,
-                  syncStatus === "error" && styles.syncLabelError,
-                ]}
-              >
-                {syncPillLabel}
-              </Text>
-            </View>
-          </Pressable>
+          <View style={styles.headerRightRow}>
+            <SyncStatusHeader />
+            <Pressable
+              style={({ pressed }) => [styles.headerSignOutBtn, pressed && { opacity: 0.7 }]}
+              onPress={handleSignOut}
+              accessibilityRole="button"
+              accessibilityLabel="Sign out"
+              hitSlop={8}
+            >
+              <Ionicons name="log-out-outline" size={18} color={Colors.danger} />
+            </Pressable>
+          </View>
         }
       >
         {/* Welcome Header */}
@@ -444,7 +466,7 @@ export default function HomeScreen() {
         </SectionCard>
 
         {/* Expiry Alert Card */}
-        {expiredBatchCount > 0 || expiringSoonBatchCount > 0 ? (
+        {mayEditCatalogue && (expiredBatchCount > 0 || expiringSoonBatchCount > 0) ? (
           <Pressable onPress={() => router.push("/inventory")}>
             <SectionCard style={styles.expiryAlertCard}>
               <View style={styles.lowStockRow}>
@@ -464,7 +486,7 @@ export default function HomeScreen() {
         ) : null}
 
         {/* Low Stock Reorder Card */}
-        {lowStockCount > 0 ? (
+        {mayEditCatalogue && lowStockCount > 0 ? (
           <Pressable onPress={() => router.push("/inventory")}>
             <SectionCard style={styles.lowStockCard}>
               <View style={styles.lowStockRow}>
@@ -483,7 +505,7 @@ export default function HomeScreen() {
 
         {/* Executive KPI Deck Grid */}
         <View style={styles.kpiGrid}>
-          {kpis.map((k) => (
+          {visibleKpis.map((k) => (
             <View key={k.title} style={styles.kpiGridCell}>
               <KPICard
                 title={k.title}
@@ -527,9 +549,11 @@ export default function HomeScreen() {
                 <Ionicons name="flame" size={18} color={Colors.accentOrange} />
                 <Text style={styles.sectionTitle}>Top Selling Products</Text>
               </View>
-              <Pressable onPress={() => router.push("/inventory")}>
-                <Text style={styles.seeAllLink}>View All</Text>
-              </Pressable>
+              {mayEditCatalogue ? (
+                <Pressable onPress={() => router.push("/inventory")}>
+                  <Text style={styles.seeAllLink}>View All</Text>
+                </Pressable>
+              ) : null}
             </View>
 
             <View style={styles.topProductsList}>
@@ -667,11 +691,19 @@ export default function HomeScreen() {
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Spacing.xl }}>
               {/* Store Avatar & Info Card */}
               <View style={styles.drawerProfileHero}>
-                <Pressable onPress={() => void changeLogo()} style={styles.avatarPickerWrap}>
+                <Pressable
+                  onPress={() => {
+                    if (mayManageSettings) void changeLogo();
+                  }}
+                  style={styles.avatarPickerWrap}
+                  disabled={!mayManageSettings}
+                >
                   <Avatar uri={shopLogoUri} fallbackInitials={shopName} size={64} />
-                  <View style={styles.avatarCameraBadge}>
-                    <Ionicons name="camera" size={13} color={Colors.white} />
-                  </View>
+                  {mayManageSettings ? (
+                    <View style={styles.avatarCameraBadge}>
+                      <Ionicons name="camera" size={13} color={Colors.white} />
+                    </View>
+                  ) : null}
                 </Pressable>
                 <Text style={styles.drawerShopName}>{shopName || UNNAMED_STORE}</Text>
                 {shopEmail ? <Text style={styles.drawerShopEmail}>{shopEmail}</Text> : null}
@@ -682,42 +714,44 @@ export default function HomeScreen() {
               </View>
 
               {/* Quick Settings Section */}
-              <View style={styles.drawerSection}>
-                <Text style={styles.drawerSectionTitle}>CURRENCY & LOCALE</Text>
-                <View style={styles.pickerRow}>
-                  {CURRENCIES.map((c) => {
-                    const selected = currency === c;
-                    return (
-                      <Pressable
-                        key={c}
-                        style={[styles.chipButton, selected && styles.chipButtonSelected]}
-                        onPress={() => setCurrency(c)}
-                      >
-                        <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-                          {c}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
+              {mayManageSettings ? (
+                <View style={styles.drawerSection}>
+                  <Text style={styles.drawerSectionTitle}>CURRENCY & LOCALE</Text>
+                  <View style={styles.pickerRow}>
+                    {CURRENCIES.map((c) => {
+                      const selected = currency === c;
+                      return (
+                        <Pressable
+                          key={c}
+                          style={[styles.chipButton, selected && styles.chipButtonSelected]}
+                          onPress={() => setCurrency(c)}
+                        >
+                          <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+                            {c}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
 
-                <View style={[styles.pickerRow, { marginTop: Spacing.sm }]}>
-                  {LANGUAGES.map((l) => {
-                    const selected = language === l;
-                    return (
-                      <Pressable
-                        key={l}
-                        style={[styles.chipButton, selected && styles.chipButtonSelected]}
-                        onPress={() => setLanguage(l)}
-                      >
-                        <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-                          {l}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+                  <View style={[styles.pickerRow, { marginTop: Spacing.sm }]}>
+                    {LANGUAGES.map((l) => {
+                      const selected = language === l;
+                      return (
+                        <Pressable
+                          key={l}
+                          style={[styles.chipButton, selected && styles.chipButtonSelected]}
+                          onPress={() => setLanguage(l)}
+                        >
+                          <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+                            {l}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                 </View>
-              </View>
+              ) : null}
 
               <View style={styles.drawerSection}>
                 <Text style={styles.drawerSectionTitle}>PREFERENCES</Text>
@@ -738,17 +772,19 @@ export default function HomeScreen() {
               {/* Navigation Links */}
               <View style={styles.drawerSection}>
                 <Text style={styles.drawerSectionTitle}>QUICK NAVIGATION</Text>
-                <Pressable
-                  style={styles.drawerNavLink}
-                  onPress={() => {
-                    setDrawerOpen(false);
-                    router.push("/inventory");
-                  }}
-                >
-                  <Ionicons name="cube-outline" size={18} color={Colors.primaryBlue} />
-                  <Text style={styles.drawerNavLinkText}>Inventory Catalog</Text>
-                  <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} />
-                </Pressable>
+                {mayEditCatalogue ? (
+                  <Pressable
+                    style={styles.drawerNavLink}
+                    onPress={() => {
+                      setDrawerOpen(false);
+                      router.push("/inventory");
+                    }}
+                  >
+                    <Ionicons name="cube-outline" size={18} color={Colors.primaryBlue} />
+                    <Text style={styles.drawerNavLinkText}>Inventory Catalog</Text>
+                    <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} />
+                  </Pressable>
+                ) : null}
                 <Pressable
                   style={styles.drawerNavLink}
                   onPress={() => {
@@ -771,17 +807,19 @@ export default function HomeScreen() {
                   <Text style={styles.drawerNavLinkText}>Detailed Analytics</Text>
                   <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} />
                 </Pressable>
-                <Pressable
-                  style={styles.drawerNavLink}
-                  onPress={() => {
-                    setDrawerOpen(false);
-                    router.push("/settings");
-                  }}
-                >
-                  <Ionicons name="settings-outline" size={18} color={Colors.primaryBlue} />
-                  <Text style={styles.drawerNavLinkText}>Store Settings</Text>
-                  <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} />
-                </Pressable>
+                {mayManageSettings ? (
+                  <Pressable
+                    style={styles.drawerNavLink}
+                    onPress={() => {
+                      setDrawerOpen(false);
+                      router.push("/settings");
+                    }}
+                  >
+                    <Ionicons name="settings-outline" size={18} color={Colors.primaryBlue} />
+                    <Text style={styles.drawerNavLinkText}>Store Settings</Text>
+                    <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} />
+                  </Pressable>
+                ) : null}
               </View>
 
               {/* Switch Store & Sign Out */}
@@ -794,6 +832,16 @@ export default function HomeScreen() {
                     router.push("/onboarding/store");
                   }}
                 />
+                <Pressable
+                  style={({ pressed }) => [styles.drawerSignOutBtn, pressed && styles.drawerSignOutBtnPressed]}
+                  onPress={() => {
+                    setDrawerOpen(false);
+                    handleSignOut();
+                  }}
+                >
+                  <Ionicons name="log-out-outline" size={18} color={Colors.danger} />
+                  <Text style={styles.drawerSignOutText}>Sign Out of OmniPOS</Text>
+                </Pressable>
               </View>
             </ScrollView>
           </View>
@@ -1253,5 +1301,36 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: Colors.textPrimary,
+  },
+  headerRightRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+  },
+  headerSignOutBtn: {
+    padding: 6,
+    borderRadius: Radius.pill,
+    backgroundColor: "#fee2e2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  drawerSignOutBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 13,
+    borderRadius: Radius.md,
+    backgroundColor: "#fee2e2",
+    borderWidth: 1,
+    borderColor: "#fecaca",
+  },
+  drawerSignOutBtnPressed: {
+    opacity: 0.8,
+  },
+  drawerSignOutText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.danger,
   },
 });

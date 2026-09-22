@@ -34,6 +34,17 @@ export function SettingsPage() {
   const storeId = useSession((s) => s.storeId);
   const isAdmin = can(["admin"]);
 
+  if (!can(["admin", "manager"])) {
+    return (
+      <div className="page">
+        <h1><Settings size={20} aria-hidden="true" /> Settings</h1>
+        <p className="notice notice-warn">
+          Access restricted. Store configuration and settings are restricted to managers and administrators.
+        </p>
+      </div>
+    );
+  }
+
   const { data, isLoading, error } = useQuery({
     queryKey: ["store-settings", storeId],
     queryFn: async () => (await api.get<{ data: StoreSettings }>("/api/store")).data,

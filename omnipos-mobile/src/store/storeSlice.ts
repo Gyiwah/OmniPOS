@@ -1,4 +1,5 @@
 import { storage } from "@/src/core/platform";
+import { setActiveStore as setApiActiveStore } from "@/src/core/api/client";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -11,7 +12,10 @@ export const useStoreSlice = create<StoreSlice>()(
   persist(
     (set) => ({
       activeStoreId: null,
-      setActiveStore: (storeId) => set({ activeStoreId: storeId }),
+      setActiveStore: (storeId) => {
+        setApiActiveStore(storeId);
+        set({ activeStoreId: storeId });
+      },
     }),
     {
       name: "omnipos-store-slice-v1",

@@ -3,6 +3,8 @@ import { resolveStoreLogoUrl, uploadStoreLogoFromUri } from "@/src/services/lara
 import type {
   InviteRole,
   InviteStatus,
+  AddUserInput,
+  AddUserResult,
   PendingInvite,
   SendInviteInput,
   SendInviteResult,
@@ -119,6 +121,28 @@ export const laravelSettingsService = {
   async listPendingInvites(_storeId: string): Promise<PendingInvite[]> {
     const res = await api.get<{ data: InviteRow[] }>("/api/store-invites");
     return (res.data ?? []).filter((i) => i.status === "pending").map(mapInvite);
+  },
+
+  async addUser(_storeId: string, input: AddUserInput): Promise<AddUserResult> {
+    const res = await api.post<{ member: { user_id: string; role: string; name?: string | null; created_at?: string | null } }>(
+      "/api/store-members",
+      {
+        name: input.name.trim(),
+        email: input.email.trim().toLowerCase(),
+        password: input.password,
+        role: input.role,
+      },
+    );
+
+    return {
+      member: {
+        userId: res.member.user_id,
+        fullName: res.member.name ?? input.name.trim(),
+        avatarUrl: null,
+        role: res.member.role as StoreMember["role"],
+        joinedAt: res.member.created_at ?? new Date().toISOString(),
+      },
+    };
   },
 
   async sendInvite(_storeId: string, input: SendInviteInput): Promise<SendInviteResult> {

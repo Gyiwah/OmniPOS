@@ -59,3 +59,14 @@ export type SendInviteResult = {
   emailSent: boolean;
   warning?: string;
 };
+
+export type AddUserInput = {
+  name: string;
+  email: string;
+  password: string;
+  role: InviteRole;
+};
+
+export type AddUserResult = {
+  member: StoreMember;
+};

@@ -281,9 +281,11 @@ export default function CustomersScreen() {
                     {sym} {item.totalSpend.toFixed(2)}
                   </Text>
                   {hasDebt ? (
-                    <Text style={styles.cardDebtText}>
-                      Unpaid: {sym} {item.outstandingBalance.toFixed(2)}
-                    </Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
+                      <Text style={styles.cardDebtText}>
+                        Due: {sym} {item.outstandingBalance.toFixed(2)}
+                      </Text>
+                    </View>
                   ) : null}
                 </View>
                 <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />

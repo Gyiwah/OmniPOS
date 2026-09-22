@@ -208,6 +208,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Staff management. Gated at the route so a cashier cannot even enumerate.
     Route::middleware('store.access:admin,manager')->group(function () {
         Route::get('store-members', [StoreMemberController::class, 'index']);
+        Route::post('store-members', [StoreMemberController::class, 'store']);
         Route::patch('store-members/{member}', [StoreMemberController::class, 'update']);
         Route::delete('store-members/{member}', [StoreMemberController::class, 'destroy']);
 

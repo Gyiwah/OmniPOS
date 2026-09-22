@@ -42,9 +42,13 @@ export default function SignInScreen() {
     setError("");
     try {
       const session = await authService.signIn({ email: email.trim(), password });
-      setSession(session.userId, session.role);
+      setSession(session.userId, session.role, session.isSuperAdmin);
       setActiveStore(session.storeId);
-      router.replace("/(tabs)/home");
+      if (session.isSuperAdmin && !session.storeId) {
+        router.push("/super-admin");
+      } else {
+        router.replace("/(tabs)/home");
+      }
     } catch (err) {
       setError(toErrorMessage(err, "Invalid email or password."));
     } finally {

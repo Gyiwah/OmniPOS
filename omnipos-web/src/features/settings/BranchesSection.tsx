@@ -4,6 +4,7 @@ import { GitBranch, Plus } from "lucide-react";
 
 import { api } from "@/api/client";
 import { useSession } from "@/state/session";
+import { toast } from "@/state/toast";
 
 type Branch = {
   id: string;
@@ -22,7 +23,7 @@ export function BranchesSection() {
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const isAdmin = can(["admin"]);
 
   const branches = useQuery({
@@ -43,19 +44,31 @@ export function BranchesSection() {
       setOpen(false);
       setEditingId(null);
       setForm(emptyForm);
-      setNotice(editingId ? "Branch updated." : "Branch added.");
+      const msg = editingId ? "Branch updated successfully." : "Branch added successfully.";
+      setNotice({ kind: "ok", text: msg });
+      toast.success(msg);
       refresh();
     },
-    onError: (error) => setNotice(error instanceof Error ? error.message : "Could not save the branch."),
+    onError: (error) => {
+      const msg = error instanceof Error ? error.message : "Could not save the branch.";
+      setNotice({ kind: "error", text: msg });
+      toast.error(msg);
+    },
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/api/store-branches/${id}`),
     onSuccess: () => {
-      setNotice("Branch deleted.");
+      const msg = "Branch deleted successfully.";
+      setNotice({ kind: "ok", text: msg });
+      toast.success(msg);
       refresh();
     },
-    onError: (error) => setNotice(error instanceof Error ? error.message : "Could not delete the branch."),
+    onError: (error) => {
+      const msg = error instanceof Error ? error.message : "Could not delete the branch.";
+      setNotice({ kind: "error", text: msg });
+      toast.error(msg);
+    },
   });
 
   if (!isAdmin) return null;
@@ -68,7 +81,7 @@ export function BranchesSection() {
           <Plus size={15} aria-hidden="true" /> Add branch
         </button>
       </div>
-      {notice && <p className="notice notice-ok" role="status">{notice}</p>}
+      {notice && <p className={`notice notice-${notice.kind}`} role="status">{notice.text}</p>}
       {open && (
         <form className="drawer-movement" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}>
           <input

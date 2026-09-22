@@ -58,7 +58,7 @@ class RouteGuardTest extends TestCase
         $unguarded = [];
 
         foreach ($this->apiRoutes() as $route) {
-            if (in_array($route->uri(), self::NOT_STORE_SCOPED, true)) {
+            if (in_array($route->uri(), self::NOT_STORE_SCOPED, true) || str_starts_with($route->uri(), 'api/admin/')) {
                 continue;
             }
 

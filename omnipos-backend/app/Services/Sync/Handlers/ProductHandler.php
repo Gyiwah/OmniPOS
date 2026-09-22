@@ -62,10 +62,13 @@ class ProductHandler implements EntityHandler
             'is_active' => $payload['is_active'] ?? null,
         ], fn ($v) => $v !== null);
 
-        // `stock` is intentionally absent. Quantities move only through
-        // stock_movements; accepting an absolute stock value here would let a
-        // late-arriving device overwrite another till's sales.
-        $product = Product::withTrashed()->firstOrNew(['id' => $recordId]);
+        $isNew = ! $product->exists;
+        $initialStock = (int) ($payload['stock'] ?? $payload['initial_stock'] ?? 0);
+
+        if ($isNew && $initialStock > 0) {
+            $attributes['stock'] = $initialStock;
+        }
+
         $product->forceFill(array_merge($attributes, ['id' => $recordId]));
 
         if ($product->trashed()) {
@@ -73,6 +76,16 @@ class ProductHandler implements EntityHandler
         }
 
         $product->save();
+
+        // Ensure stock attribute stays in sync with ledger balance
+        $inventory = app(\App\Services\InventoryService::class);
+        $movementCount = $product->movements()->count();
+
+        if ($movementCount === 0 && (int) $product->stock > 0) {
+            $inventory->recordOpeningBalance($product);
+        } else if ($movementCount > 0) {
+            $product->forceFill(['stock' => (int) round($inventory->ledgerBalance($product->id))])->save();
+        }
 
         return UpsertOutcome::applied($product->fresh()->toArray());
     }

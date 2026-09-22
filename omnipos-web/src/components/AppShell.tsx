@@ -1,11 +1,8 @@
 import { NavLink } from "react-router-dom";
 import {
-  AlertTriangle,
   ArrowLeftRight,
   BarChart3,
   Banknote,
-  Cloud,
-  CloudOff,
   LayoutDashboard,
   LogOut,
   Monitor,
@@ -24,6 +21,9 @@ import { PLATFORM_GROUPS } from "@/features/superAdmin/platformNav";
 import { useSession } from "@/state/session";
 import { useSync } from "@/state/sync";
 import { nextThemeLabel, useTheme } from "@/state/theme";
+import { SyncStatusBadge } from "./SyncStatusBadge";
+
+import { ToastContainer } from "./ToastContainer";
 
 const NAV = [
   { to: "/", label: "Till", icon: ShoppingCart, end: true },
@@ -32,7 +32,7 @@ const NAV = [
   { to: "/orders", label: "Orders", icon: Receipt },
   { to: "/returns", label: "Returns", icon: ArrowLeftRight },
   { to: "/shift", label: "Drawer", icon: Banknote },
-  { to: "/products", label: "Inventory", icon: Package },
+  { to: "/products", label: "Inventory", icon: Package, roles: ["admin", "manager"] },
   { to: "/customers", label: "Customers", icon: Users },
   { to: "/settings", label: "Settings", icon: Settings, roles: ["admin", "manager"] },
   { to: "/sync", label: "Sync", icon: RefreshCw },
@@ -54,8 +54,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isSuperAdmin = user?.is_super_admin === true;
   const logout = useSession((s) => s.logout);
 
-  const online = useSync((s) => s.online);
-  const pending = useSync((s) => s.pending);
   const conflicts = useSync((s) => s.conflicts);
 
   const themeChoice = useTheme((s) => s.choice);
@@ -104,10 +102,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </NavLink>
                 );
               })}
-              <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>
-                <ShoppingCart size={17} aria-hidden="true" />
-                <span className="nav-label">Till</span>
-              </NavLink>
             </>
           ) : NAV.filter((item) => {
             if ("superAdminOnly" in item) return user?.is_super_admin === true;
@@ -132,22 +126,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="shell-status">
-          {/*
-            Connection state is always visible. A cashier needs to know whether
-            a sale has reached the server, and the honest answer is often "not
-            yet" — hiding that is how tills get trusted less, not more.
-          */}
-          <div className="status-row">
-            <span className={online ? "pill pill-online" : "pill pill-offline"}>
-              {online ? <Cloud size={13} aria-hidden="true" /> : <CloudOff size={13} aria-hidden="true" />}
-              {online ? "Online" : "Offline"}
-            </span>
-            {pending > 0 && (
-              <span className="pill pill-pending" title="Sales waiting to reach the server">
-                <AlertTriangle size={13} aria-hidden="true" />
-                {pending} queued
-              </span>
-            )}
+          {/* Connection and sync state */}
+          <div className="status-row" style={{ alignItems: "center" }}>
+            <SyncStatusBadge />
           </div>
 
           <div className="status-row">
@@ -181,6 +162,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </header>
 
       <main className="shell-main">{children}</main>
+      <ToastContainer />
     </div>
   );
 }

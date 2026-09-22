@@ -13,9 +13,14 @@ import { useStoreAnalytics } from "@/src/features/analytics/hooks";
 import type { TimeRange } from "@/src/features/analytics/types";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
+import { useAuthStore } from "@/src/store/authStore";
+import { canEditCatalogue } from "@/src/utils/permissions";
 
 export default function AnalyticsScreen() {
   const activeStoreId = useStoreSlice((s) => s.activeStoreId);
+  const role = useAuthStore((s) => s.role);
+  const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin);
+  const canViewProfits = canEditCatalogue(isSuperAdmin ? "super_admin" : role);
   const currency = useSettingsStore((s) => s.currency);
   const symbol = useMemo(() => (currency === "USD" ? "$" : currency === "NGN" ? "₦" : "₵"), [currency]);
 
@@ -125,7 +130,7 @@ export default function AnalyticsScreen() {
         </View>
 
         {/* Profit Margin & Estimated Profit */}
-        {metrics.cogs && metrics.cogs > 0 ? (
+        {canViewProfits && metrics.cogs && metrics.cogs > 0 ? (
           <View style={[styles.kpiCardFull, { backgroundColor: "#f8fafc", borderColor: "#e2e8f0" }]}>
             <View style={styles.kpiTopRow}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>

@@ -4,7 +4,7 @@ import { useStoreSlice } from "@/src/store/storeSlice";
 import { useSettingsStore } from "@/src/store/settingsStore";
 
 import { settingsService } from "./service";
-import type { SendInviteInput, StoreSettingsInput } from "./types";
+import type { AddUserInput, SendInviteInput, StoreSettingsInput } from "./types";
 
 export function useStoreSettings() {
   const storeId = useStoreSlice((s) => s.activeStoreId);
@@ -82,6 +82,21 @@ export function useSendInvite() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["store-invites", storeId] });
+      void queryClient.invalidateQueries({ queryKey: ["store-members", storeId] });
+    },
+  });
+}
+
+export function useAddUser() {
+  const storeId = useStoreSlice((s) => s.activeStoreId);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: AddUserInput) => {
+      if (!storeId) throw new Error("No active store selected.");
+      return settingsService.addUser(storeId, input);
+    },
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["store-members", storeId] });
     },
   });

@@ -334,6 +334,22 @@ export default function AddProductScreen() {
   const sellNum = Number(sellPrice) || 0;
   const marginPct = sellNum > 0 && costNum > 0 ? Math.round(((sellNum - costNum) / sellNum) * 100) : null;
 
+  if (!mayEditCatalogue) {
+    return (
+      <AppScrollScreen showBack title="Create Product">
+        <SectionCard style={{ alignItems: "center", paddingVertical: Spacing.xl, gap: Spacing.sm }}>
+          <Ionicons name="lock-closed-outline" size={48} color={Colors.danger} />
+          <Text style={{ fontSize: 17, fontWeight: "800", color: Colors.textPrimary }}>
+            Access Restricted
+          </Text>
+          <Text style={{ fontSize: 13, color: Colors.textMuted, textAlign: "center", paddingHorizontal: Spacing.lg }}>
+            Cashiers are not authorized to create or modify products in the catalogue.
+          </Text>
+        </SectionCard>
+      </AppScrollScreen>
+    );
+  }
+
   return (
     <AppScrollScreen
       showBack

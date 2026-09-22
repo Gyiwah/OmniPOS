@@ -58,6 +58,19 @@ export function ProductsPage() {
   const canEdit = can(["admin", "manager"]);
 
   const [query, setQuery] = useState("");
+
+  if (!canEdit) {
+    return (
+      <div className="page">
+        <header className="page-header">
+          <h1><Package size={20} aria-hidden="true" /> Inventory</h1>
+        </header>
+        <p className="notice notice-warn">
+          Access restricted. Cashiers are not authorized to view or edit the product catalogue.
+        </p>
+      </div>
+    );
+  }
   const [scanning, setScanning] = useState(false);
   const [filter, setFilter] = useState<StockFilter>("all");
   const [filterOpen, setFilterOpen] = useState(false);

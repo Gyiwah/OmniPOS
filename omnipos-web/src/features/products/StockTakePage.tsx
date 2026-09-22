@@ -41,6 +41,19 @@ export function StockTakePage() {
 
   const mayCount = can(["admin", "manager"]);
 
+  if (!mayCount) {
+    return (
+      <div className="page">
+        <header className="page-header">
+          <h1>Stock take</h1>
+        </header>
+        <p className="notice notice-warn">
+          Access restricted. Cashiers are not authorized to perform stock takes.
+        </p>
+      </div>
+    );
+  }
+
   const products = useLiveQuery(
     async () => {
       if (!storeId) return [];

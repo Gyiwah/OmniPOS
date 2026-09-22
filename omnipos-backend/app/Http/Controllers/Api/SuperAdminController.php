@@ -189,7 +189,13 @@ class SuperAdminController extends Controller
             'tax_profile' => ['sometimes', 'nullable', 'string', 'max:64'],
         ]);
 
-        $branch = Store::create($data + ['platform_status' => $data['platform_status'] ?? 'active']);
+        $parentStore = Store::find($data['parent_store_id']);
+        $ownerUserId = $data['owner_user_id'] ?? $parentStore?->owner_user_id ?? $request->user()->id;
+
+        $branch = Store::create($data + [
+            'owner_user_id' => $ownerUserId,
+            'platform_status' => $data['platform_status'] ?? 'active',
+        ]);
 
         AuditLog::create([
             'store_id' => $branch->id,

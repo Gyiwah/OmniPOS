@@ -145,6 +145,7 @@ const supabaseAuthService = {
       userId: data.user.id,
       storeId: membership.store_id,
       role: membership.role as "admin" | "manager" | "cashier",
+      isSuperAdmin: false,
     };
   },
 
@@ -184,6 +185,7 @@ const laravelAuthService: typeof supabaseAuthService = {
       userId: result.userId,
       storeId: result.storeId ?? "",
       role: (result.role ?? "cashier") as "admin" | "manager" | "cashier",
+      isSuperAdmin: result.isSuperAdmin,
     };
   },
 
