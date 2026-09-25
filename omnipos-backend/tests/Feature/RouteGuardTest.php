@@ -36,6 +36,9 @@ class RouteGuardTest extends TestCase
         'api/stores',
         // Sanctum's own SPA cookie endpoint.
         'sanctum/csrf-cookie',
+        // Image elements cannot send X-Store-Id; MediaController authorizes
+        // this authenticated read from the store id embedded in the path.
+        'api/media/{path}',
         // Platform operations. A super admin acts across tenants by definition,
         // so store.access cannot apply — it would reject the very calls these
         // routes exist to serve. The privilege is verified explicitly in

@@ -115,7 +115,9 @@ class MediaTest extends TestCase
             'kind' => 'product', 'product_id' => $this->product->id,
         ])->json('path');
 
-        $this->as($this->cashier)->get('/api/media/'.$path)->assertOk();
+        // Browser <img> and native image requests cannot attach X-Store-Id.
+        $this->actingAs($this->cashier)->withHeader('Accept', 'application/json')
+            ->get('/api/media/'.$path)->assertOk();
     }
 
     /**

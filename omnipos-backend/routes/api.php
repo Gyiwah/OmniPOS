@@ -152,7 +152,6 @@ Route::middleware('auth:sanctum')->group(function () {
         */
         Route::post('media', [MediaController::class, 'store']);
         Route::post('media/store-logo', [MediaController::class, 'storeLogo']);
-        Route::get('media/{path}', [MediaController::class, 'show'])->where('path', '.*');
         Route::delete('media/{path}', [MediaController::class, 'destroy'])->where('path', '.*');
 
         // Reports
@@ -163,6 +162,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('reports/customers', [ReportController::class, 'customers']);
         Route::get('reports/cashiers', [ReportController::class, 'cashiers']);
     });
+
+    // Image elements cannot send the X-Store-Id header required by
+    // store.access. MediaController::show performs the equivalent membership
+    // check from the store id embedded in the object path.
+    Route::get('media/{path}', [MediaController::class, 'show'])->where('path', '.*');
 
     /*
     | Platform operations. Deliberately NOT store-scoped: a super admin works
