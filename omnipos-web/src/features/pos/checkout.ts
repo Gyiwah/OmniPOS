@@ -1,4 +1,5 @@
 import { uuidv7 } from "@/core/uuidv7";
+import { api } from "@/api/client";
 import { db, type LocalOrder, type LocalOrderLine, type LocalPaymentSplit } from "@/db/schema";
 import { enqueue } from "@/sync/engine";
 import {
@@ -155,6 +156,15 @@ export async function completeSale(input: CheckoutInput): Promise<LocalOrder> {
  * the customer is holding a paper receipt with the original on it.
  */
 export async function nextOrderNumber(storeId: string): Promise<string> {
+  if (typeof navigator !== "undefined" && navigator.onLine) {
+    try {
+      const response = await api.get<{ order_number: string }>("/api/orders/next-number");
+      if (response.order_number) return response.order_number;
+    } catch {
+      // Offline fallback below keeps checkout available when the API is unreachable.
+    }
+  }
+
   const today = new Date();
   const stamp = [
     today.getFullYear(),

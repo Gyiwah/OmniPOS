@@ -4,6 +4,9 @@ export default defineConfig({
   // Declare your Neon services here
   auth: true,
   dataApi: true,
+  buckets: {
+    "omnipos-assets": {},
+  },
   // Branch policy: per-branch tuning
   branch: (branch) => {
     if (branch.isDefault) {

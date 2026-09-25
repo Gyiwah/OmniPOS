@@ -27,7 +27,7 @@ return [
          * every disk, so moving from local to S3 needs no data rewrite — only
          * this value and the AWS credentials.
          */
-        'disk' => env('OMNIPOS_MEDIA_DISK', 'local'),
+        'disk' => env('OMNIPOS_MEDIA_DISK', env('APP_ENV') === 'production' ? 's3' : 'local'),
     ],
 
     'inventory' => [

@@ -3,16 +3,51 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { db } from "@/db/schema";
-import { formatMoney, toMinor } from "@/features/pos/cart";
+import { toMinor } from "@/features/pos/cart";
 import { useSession } from "@/state/session";
 import { buildReceipt } from "@/features/printing/receipt";
 import { usePrinter } from "@/features/printing/usePrinter";
 
 function barcodePattern(value: string) {
-  return Array.from(value || "0").flatMap((character) => {
-    const bits = character.charCodeAt(0).toString(2).padStart(8, "0");
-    return Array.from(bits, (bit) => Number(bit) + 1);
-  });
+  const patterns: Record<string, number[]> = {
+    "-": [1, 2, 2, 1, 3, 2], O: [3, 3, 1, 1, 2, 1], M: [1, 1, 3, 1, 2, 3],
+    "0": [1, 2, 3, 1, 2, 2], "1": [1, 2, 3, 2, 2, 1], "2": [2, 2, 3, 2, 1, 1],
+    "3": [2, 2, 1, 1, 3, 2], "4": [2, 2, 1, 2, 3, 1], "5": [2, 1, 3, 2, 1, 2],
+    "6": [2, 2, 3, 1, 1, 2], "7": [3, 1, 2, 1, 3, 1], "8": [3, 1, 1, 2, 2, 2],
+    "9": [3, 2, 1, 1, 2, 2],
+  };
+  const text = value.trim() || "000000";
+  const codes = Array.from(text, (character) => character === "O" ? 47 : character === "M" ? 45 : character === "-" ? 13 : 16 + Number(character));
+  const checksum = (104 + codes.reduce((sum, code, index) => sum + (index + 1) * code, 0)) % 103;
+  const segments: number[] = [2, 1, 1, 2, 1, 4];
+  for (const character of text) segments.push(...(patterns[character] ?? patterns["0"]));
+  const checksumPatterns: Record<number, number[]> = {
+    0: [2, 1, 2, 2, 2, 2], 1: [2, 2, 2, 1, 2, 2], 2: [2, 2, 2, 2, 2, 1],
+    3: [1, 2, 1, 2, 2, 3], 4: [1, 2, 1, 3, 2, 2], 5: [1, 3, 1, 2, 2, 2],
+    6: [1, 2, 2, 2, 1, 3], 7: [1, 2, 2, 3, 1, 2], 8: [1, 3, 2, 2, 1, 2],
+    9: [2, 2, 1, 2, 1, 3], 10: [2, 2, 1, 3, 1, 2], 11: [2, 3, 1, 2, 1, 2],
+    12: [1, 1, 2, 2, 3, 2], 13: [1, 2, 2, 1, 3, 2], 14: [1, 2, 2, 2, 3, 1],
+    15: [1, 1, 3, 2, 2, 2], 16: [1, 2, 3, 1, 2, 2], 17: [1, 2, 3, 2, 2, 1],
+    18: [2, 2, 3, 2, 1, 1], 19: [2, 2, 1, 1, 3, 2], 20: [2, 2, 1, 2, 3, 1],
+    21: [2, 1, 3, 2, 1, 2], 22: [2, 2, 3, 1, 1, 2], 23: [3, 1, 2, 1, 3, 1],
+    24: [3, 1, 1, 2, 2, 2], 25: [3, 2, 1, 1, 2, 2], 45: [1, 1, 3, 1, 2, 3],
+    47: [3, 3, 1, 1, 2, 1],
+  };
+  segments.push(...(checksumPatterns[checksum] ?? patterns["0"]));
+  segments.push(2, 3, 3, 1, 1, 1, 2);
+  return segments;
+}
+
+function receiptSymbol(currency: string): string {
+  if (currency === "USD") return "$";
+  if (currency === "NGN") return "₦";
+  return "₵";
+}
+
+function receiptMoney(minor: number, currency: string): string {
+  const absolute = Math.abs(Math.round(minor));
+  const value = `${Math.floor(absolute / 100)}.${String(absolute % 100).padStart(2, "0")}`;
+  return `${receiptSymbol(currency)}${minor < 0 ? "-" : ""}${value}`;
 }
 
 /**
@@ -131,19 +166,26 @@ export function ReceiptPage() {
 
       <article className="receipt">
         <header className="receipt-head">
-          <div className="receipt-badge">OFFICIAL RECEIPT</div>
           <h1>{store?.name ?? "OmniPOS Store"}</h1>
-          <p className="receipt-order">Order #{order.order_number}</p>
-          <p>{new Date(order.client_created_at).toLocaleString()}</p>
+          <div className="receipt-badge">SALES RECEIPT</div>
         </header>
 
-        <div className="receipt-divider receipt-divider-dashed" />
+        <div className="receipt-meta">
+          <div>
+            <span>Order No: <strong>#{order.order_number}</strong></span>
+            <span>Date: {new Date(order.client_created_at).toLocaleString()}</span>
+          </div>
+          <div>
+            <span>Status: <strong className="receipt-status">Completed</strong></span>
+            <span>Currency: <strong>{currency}</strong></span>
+          </div>
+        </div>
 
         <table className="receipt-lines">
           <thead>
             <tr>
-              <th>Item &amp; Qty</th>
-              <th>Amount</th>
+              <th>Item</th>
+              <th>Total</th>
             </tr>
           </thead>
           <tbody>
@@ -152,10 +194,10 @@ export function ReceiptPage() {
                 <td>
                   {item.product_name}
                   <span className="receipt-qty">
-                    {item.quantity} × {formatMoney(toMinor(item.unit_price), currency)}
+                    {item.quantity} × {receiptMoney(toMinor(item.unit_price), currency)}
                   </span>
                 </td>
-                <td className="receipt-amount">{formatMoney(toMinor(item.line_total), currency)}</td>
+                <td className="receipt-amount">{receiptMoney(toMinor(item.line_total), currency)}</td>
               </tr>
             ))}
           </tbody>
@@ -164,28 +206,28 @@ export function ReceiptPage() {
         <div className="receipt-divider" />
 
         <dl className="receipt-summary">
-          <div><dt>Subtotal</dt><dd>{formatMoney(toMinor(order.subtotal), currency)}</dd></div>
+          <div><dt>Subtotal</dt><dd>{receiptMoney(toMinor(order.subtotal), currency)}</dd></div>
           {toMinor(order.discount) > 0 && (
-            <div className="receipt-discount"><dt>Discount</dt><dd>-{formatMoney(toMinor(order.discount), currency)}</dd></div>
+            <div className="receipt-discount"><dt>Discount</dt><dd>-{receiptMoney(toMinor(order.discount), currency)}</dd></div>
           )}
-          {toMinor(order.tax) > 0 && <div><dt>Tax</dt><dd>{formatMoney(toMinor(order.tax), currency)}</dd></div>}
+          {toMinor(order.tax) > 0 && <div><dt>Tax</dt><dd>{receiptMoney(toMinor(order.tax), currency)}</dd></div>}
         </dl>
 
         <div className="receipt-total">
-          <strong>TOTAL DUE</strong>
-          <strong>{formatMoney(toMinor(order.total), currency)}</strong>
+          <strong>Grand Total</strong>
+          <strong>{receiptMoney(toMinor(order.total), currency)}</strong>
         </div>
 
         <dl className="receipt-payment">
-          <div><dt>Amount Tendered</dt><dd>{formatMoney(toMinor(order.amount_paid), currency)}</dd></div>
-          <div><dt>Change Returned</dt><dd className="receipt-change">{formatMoney(change, currency)}</dd></div>
+          <div><dt>Amount Paid</dt><dd>{receiptMoney(toMinor(order.amount_paid), currency)}</dd></div>
+          <div><dt>Change Due</dt><dd className="receipt-change">{receiptMoney(change, currency)}</dd></div>
         </dl>
 
         {(order.customer_name || order.customer_phone) && (
           <div className="receipt-customer">
-            <strong>Customer Details</strong>
-            {order.customer_name && <span>Name: {order.customer_name}</span>}
-            {order.customer_phone && <span>Phone: {order.customer_phone}</span>}
+            <strong>Customer Information</strong>
+            {order.customer_name && <span><b>Name:</b> {order.customer_name}</span>}
+            {order.customer_phone && <span><b>Phone:</b> {order.customer_phone}</span>}
           </div>
         )}
 
@@ -212,8 +254,8 @@ export function ReceiptPage() {
         </div>
 
         <footer className="receipt-foot">
-          <strong>Thank you for your patronage!</strong>
-          <span>Powered by OmniPOS</span>
+          <strong>Thank you for your business!</strong>
+          <span>Powered by OmniPOS Point of Sale</span>
         </footer>
       </article>
     </div>

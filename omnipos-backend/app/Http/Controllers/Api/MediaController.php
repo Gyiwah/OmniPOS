@@ -85,7 +85,15 @@ class MediaController extends Controller
             $path = "{$storeId}/branding/logo.{$extension}";
         }
 
-        Storage::disk($this->disk())->put($path, file_get_contents($file->getRealPath()));
+        $disk = Storage::disk($this->disk());
+        $contents = file_get_contents($file->getRealPath());
+
+        if ($contents === false || ! $disk->put($path, $contents) || ! $disk->exists($path)) {
+            // Do not persist a URL for an object that was not actually stored.
+            // This matters on Render, where a local disk is ephemeral and an
+            // S3 adapter can otherwise return false silently.
+            abort(503, 'Image storage is unavailable. Configure the media bucket and try again.');
+        }
 
         if ($data['kind'] === 'product') {
             // Keep the catalogue pointing at the object. The upload is shared
@@ -166,7 +174,7 @@ class MediaController extends Controller
      */
     private function disk(): string
     {
-        return config('omnipos.media.disk', 'local');
+        return config('omnipos.media.disk', app()->environment('production') ? 's3' : 'local');
     }
 
     private function urlFor(string $path): string
