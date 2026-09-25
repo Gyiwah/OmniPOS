@@ -33,7 +33,17 @@ const FILTERS: Array<{ key: StockFilter; label: string; color?: string }> = [
 ];
 
 function productImageUrl(imageRef: string): string {
-  if (/^https?:\/\//i.test(imageRef) || imageRef.startsWith("/api/media/")) return imageRef;
+  if (imageRef.startsWith("/api/media/")) return imageRef;
+
+  if (/^https?:\/\//i.test(imageRef)) {
+    try {
+      const parsed = new URL(imageRef);
+      if (parsed.pathname.startsWith("/api/media/")) return parsed.pathname;
+    } catch {
+      // Fall through to the object-path form for malformed legacy values.
+    }
+  }
+
   return `/api/media/${imageRef.replace(/^\/+/, "")}`;
 }
 

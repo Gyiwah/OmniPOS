@@ -60,13 +60,17 @@ export async function uploadProductImage(input: {
     throw new Error(message);
   }
 
-  const url = String((payload as { url?: unknown })?.url ?? "");
+  // Store the object key, not the backend origin. The SPA may be served through
+  // a Vite or reverse-proxy origin, while media access relies on that origin's
+  // Sanctum session cookie.
+  const path = String((payload as { path?: unknown })?.path ?? "");
+  if (!path) throw new Error("Image upload did not return an object path.");
 
   // Written straight to the local catalogue: the image is not part of the
   // product's sync payload, so nothing else would bring it back to this device.
-  await db.products.update(input.productId, { image_url: url });
+  await db.products.update(input.productId, { image_url: path });
 
-  return url;
+  return path;
 }
 
 function csrfHeader(): Record<string, string> {
