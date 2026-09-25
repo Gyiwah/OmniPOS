@@ -112,6 +112,7 @@ export async function runSync(storeId: string): Promise<SyncResult> {
   try {
     const pushed = await pushOutbox(storeId);
     const pulled = await pullChanges(storeId);
+    await refreshAuthoritativeStock(storeId);
 
     await setMeta(LAST_SYNC_KEY, new Date().toISOString());
 
@@ -309,6 +310,74 @@ async function pullChanges(storeId: string): Promise<number> {
   }
 
   return total;
+}
+
+/**
+ * Reconcile the cached stock with PostgreSQL after every sync cycle.
+ *
+ * Pull deliberately omits this device's own changes, and each till applies
+ * sales optimistically before they reach the server. A movement-only pull can
+ * therefore leave two connected tills showing different balances. The product
+ * endpoint is the authoritative snapshot; local writes still waiting in the
+ * outbox are left alone until the server accepts them.
+ */
+async function refreshAuthoritativeStock(storeId: string): Promise<void> {
+  const pendingProductIds = await pendingStockProductIds(storeId);
+
+  for (let page = 1; ; page += 1) {
+    const response = await api.get<{ data?: Record<string, unknown>[]; meta?: { last_page?: number } }>(
+      "/api/products",
+      { per_page: 200, page, active: true },
+    );
+
+    if (!Array.isArray(response.data) || response.data.length === 0) break;
+
+    await db.transaction("rw", db.products, async () => {
+      for (const product of response.data ?? []) {
+        const productId = typeof product.id === "string" ? product.id : null;
+        if (!productId || pendingProductIds.has(productId)) continue;
+
+        const local = await db.products.get(productId);
+        if (local) await db.products.update(productId, { stock: Number(product.stock ?? 0) });
+      }
+    });
+
+    if (!response.meta?.last_page || page >= response.meta.last_page) break;
+  }
+}
+
+async function pendingStockProductIds(storeId: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  const operations = await db.outbox.where("store_id").equals(storeId).toArray();
+
+  for (const operation of operations) {
+    if (operation.status !== "pending") continue;
+    const payload = operation.payload as Record<string, unknown> | null;
+
+    if (operation.entity === "stock_movements" && typeof payload?.product_id === "string") {
+      ids.add(payload.product_id);
+    }
+
+    if (operation.entity === "orders") {
+      const lines = Array.isArray(payload?.items) ? payload.items : [];
+      for (const line of lines) {
+        if (line && typeof line === "object" && typeof (line as { product_id?: unknown }).product_id === "string") {
+          ids.add((line as { product_id: string }).product_id);
+        }
+      }
+    }
+
+    if (operation.entity === "returns") {
+      const lines = Array.isArray(payload?.items) ? payload.items : [];
+      for (const line of lines) {
+        if (line && typeof line === "object" && typeof (line as { product_id?: unknown }).product_id === "string") {
+          ids.add((line as { product_id: string }).product_id);
+        }
+      }
+    }
+  }
+
+  return ids;
 }
 
 export async function applyChangesForTest(

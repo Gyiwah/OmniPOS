@@ -78,7 +78,7 @@ export function startSyncScheduler(getStoreId: () => string | null): () => void 
   window.addEventListener("offline", onOffline);
   document.addEventListener("visibilitychange", onVisible);
 
-  const timer = window.setInterval(trigger, 60_000);
+  const timer = window.setInterval(trigger, 15_000);
   trigger();
 
   return () => {
