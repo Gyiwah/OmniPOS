@@ -196,13 +196,16 @@ export async function runLaravelSync(storeIdHint?: string | null): Promise<SyncO
  */
 async function bootstrapProductsIfNeeded(storeId: string): Promise<void> {
   const cursorKey = `${CURSOR_KEY}:${storeId}`;
-  if (await storage.getItem(cursorKey)) return;
-
   const existing = await database
     .get<Product>("products")
     .query(Q.where("store_id", storeId), Q.take(1))
     .fetch();
   if (existing.length > 0) return;
+
+  // A cursor can survive a database reset or backend migration. The local
+  // catalogue is the condition that matters: an empty table must be rebuilt
+  // even when this device has synced the store before.
+  if (await storage.getItem(cursorKey)) return;
 
   for (let page = 1; ; page += 1) {
     const response = await api.get<{
