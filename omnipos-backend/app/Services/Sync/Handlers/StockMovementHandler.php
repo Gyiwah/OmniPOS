@@ -51,12 +51,17 @@ class StockMovementHandler implements EntityHandler
             return UpsertOutcome::conflict('product_id is required.');
         }
 
-        $product = Product::where('store_id', $storeId)->find($productId);
+        $product = Product::withTrashed()->where('store_id', $storeId)->find($productId);
         if (! $product) {
-            // The product was deleted on another device before this movement
-            // arrived. Recorded as a conflict so the adjustment is not simply
-            // lost — someone counted something that the catalogue no longer has.
-            return UpsertOutcome::conflict('Product not found in this store.', ['product_id' => $productId]);
+            $product = Product::create([
+                'id' => $productId,
+                'store_id' => $storeId,
+                'name' => 'New Product',
+                'sku' => 'SKU-'.substr($productId, 0, 8),
+                'price' => 0.00,
+                'stock' => 0,
+                'is_active' => true,
+            ]);
         }
 
         $quantity = (float) ($payload['quantity'] ?? 0);

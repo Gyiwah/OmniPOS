@@ -49,6 +49,31 @@ class SyncService
     {
         $summary = ['applied' => 0, 'duplicates' => 0, 'conflicts' => 0, 'failed' => 0, 'results' => []];
 
+        // Ensure parent entities (products, categories, stores) apply before dependent entities (batches, movements, orders)
+        $priority = [
+            'stores' => 1,
+            'categories' => 1,
+            'users' => 1,
+            'customers' => 1,
+            'products' => 1,
+            'product_batches' => 2,
+            'register_shifts' => 2,
+            'stock_movements' => 3,
+            'orders' => 3,
+            'order_items' => 4,
+            'payments' => 4,
+            'price_history' => 4,
+        ];
+
+        usort($operations, function ($a, $b) use ($priority) {
+            $entityA = $a['entity'] ?? $a['table'] ?? '';
+            $entityB = $b['entity'] ?? $b['table'] ?? '';
+            $pA = $priority[$entityA] ?? 10;
+            $pB = $priority[$entityB] ?? 10;
+
+            return $pA <=> $pB;
+        });
+
         foreach ($operations as $operation) {
             $result = $this->applyOne($storeId, $user, $device, $operation);
             $summary['results'][] = $result;

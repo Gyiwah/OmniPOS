@@ -28,8 +28,17 @@ class ProductBatchHandler implements EntityHandler
             return UpsertOutcome::conflict('product_id is required.');
         }
 
-        if (! Product::where('store_id', $storeId)->whereKey($productId)->exists()) {
-            return UpsertOutcome::conflict('Product not found in this store.', ['product_id' => $productId]);
+        $product = Product::withTrashed()->where('store_id', $storeId)->find($productId);
+        if (! $product) {
+            $product = Product::create([
+                'id' => $productId,
+                'store_id' => $storeId,
+                'name' => 'New Product',
+                'sku' => 'SKU-'.substr($productId, 0, 8),
+                'price' => 0.00,
+                'stock' => 0,
+                'is_active' => true,
+            ]);
         }
 
         $batchNumber = $payload['batch_number'] ?? null;

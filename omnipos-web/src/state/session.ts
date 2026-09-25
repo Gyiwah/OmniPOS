@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import { api, setActiveStore } from "@/api/client";
+import { api, ApiError, setActiveStore } from "@/api/client";
 import { clearLocalData } from "@/db/schema";
 
 export type Membership = { store_id: string; role: string };
@@ -90,11 +90,16 @@ export const useSession = create<SessionState>()(
 
           const storeId = get().storeId ?? res.memberships[0]?.store_id ?? null;
           if (storeId) await get().selectStore(storeId);
-        } catch {
-          // Offline, or the session has expired. Persisted state carries the
-          // shell; anything needing the network will surface its own error.
-          const { storeId } = get();
-          if (storeId) setActiveStore(storeId);
+        } catch (error) {
+          const isUnauthenticated = error instanceof ApiError && error.isUnauthenticated;
+          if (isUnauthenticated) {
+            set({ user: null, memberships: [], storeId: null, store: null });
+            setActiveStore(null);
+          } else {
+            // Offline: Persisted state carries the shell.
+            const { storeId } = get();
+            if (storeId) setActiveStore(storeId);
+          }
         } finally {
           set({ booting: false });
         }

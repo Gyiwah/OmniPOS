@@ -47,6 +47,11 @@ class ProductHandler implements EntityHandler
             );
         }
 
+        $categoryId = ! empty($payload['category_id']) ? $payload['category_id'] : null;
+        if ($categoryId && ! \App\Models\Category::where('store_id', $storeId)->whereKey($categoryId)->exists()) {
+            $categoryId = null;
+        }
+
         $attributes = array_filter([
             'store_id' => $storeId,
             'name' => $payload['name'] ?? null,
@@ -58,15 +63,21 @@ class ProductHandler implements EntityHandler
             'image_url' => $payload['image_url'] ?? null,
             'tags' => $payload['tags'] ?? null,
             'expiry_date' => $payload['expiry_date'] ?? null,
-            'category_id' => $payload['category_id'] ?? null,
+            'category_id' => $categoryId,
             'is_active' => $payload['is_active'] ?? null,
         ], fn ($v) => $v !== null);
 
+        $product = Product::withTrashed()->firstOrNew(['id' => $recordId]);
         $isNew = ! $product->exists;
         $initialStock = (int) ($payload['stock'] ?? $payload['initial_stock'] ?? 0);
 
-        if ($isNew && $initialStock > 0) {
-            $attributes['stock'] = $initialStock;
+        if ($isNew) {
+            if (! isset($attributes['price'])) {
+                $attributes['price'] = 0.00;
+            }
+            if ($initialStock > 0) {
+                $attributes['stock'] = $initialStock;
+            }
         }
 
         $product->forceFill(array_merge($attributes, ['id' => $recordId]));

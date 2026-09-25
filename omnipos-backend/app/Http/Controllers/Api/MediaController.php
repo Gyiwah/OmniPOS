@@ -61,7 +61,23 @@ class MediaController extends Controller
         }
 
         if ($data['kind'] === 'product') {
-            $product = Product::forStore($storeId)->findOrFail($data['product_id']);
+            $existing = Product::withTrashed()->find($data['product_id']);
+            if ($existing && $existing->store_id !== $storeId) {
+                abort(404, 'Product not found.');
+            }
+
+            $product = $existing;
+            if (! $product) {
+                $product = Product::create([
+                    'id' => $data['product_id'],
+                    'store_id' => $storeId,
+                    'name' => 'New Product',
+                    'sku' => 'SKU-'.substr($data['product_id'], 0, 8),
+                    'price' => 0.00,
+                    'stock' => 0,
+                    'is_active' => true,
+                ]);
+            }
             // Deterministic path: re-uploading replaces the image rather than
             // accumulating orphans nothing will ever clean up.
             $path = "{$storeId}/products/{$product->id}.{$extension}";
