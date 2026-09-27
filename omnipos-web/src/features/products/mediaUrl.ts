@@ -1,11 +1,4 @@
-/**
- * Turn a stored product image reference into a same-origin media URL.
- *
- * The catalogue holds an object path (`{store_id}/products/{id}.png`), a legacy
- * `/api/media/...` URL, or (rarely) an already-absolute address. Browser <img>
- * tags cannot attach the Sanctum session the way fetch() can, so callers should
- * load this URL through AuthenticatedMedia rather than as a raw src.
- */
+
 export function mediaObjectUrl(imageRef: string): string {
   const trimmed = imageRef.trim();
   if (!trimmed) return "";

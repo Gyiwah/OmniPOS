@@ -2,17 +2,6 @@ import { primeCsrf } from "@/api/client";
 import { db } from "@/db/schema";
 import { enqueue } from "@/sync/engine";
 
-/**
- * Product images, uploaded from a browser.
- *
- * Not routed through the shared api client because that one serialises every
- * body as JSON. A multipart upload has to hand the browser a FormData and let it
- * set its own Content-Type, boundary included — setting it by hand produces a
- * body the server cannot parse.
- *
- * Everything else the client does still applies: the CSRF cookie is primed
- * first, credentials travel, and the store header identifies the tenant.
- */
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic"];

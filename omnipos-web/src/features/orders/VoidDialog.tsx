@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AlertTriangle, X, RotateCcw, AlertOctagon } from "lucide-react";
 
 import type { LocalOrder } from "@/db/schema";
 import { formatMoney, toMinor } from "@/features/pos/cart";
@@ -18,9 +19,11 @@ export function VoidDialog({ order, currency, onClose, onVoided }: Props) {
   const [busy, setBusy] = useState(false);
 
   const paid = toMinor(order.amount_paid);
+  const total = toMinor(order.total);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!reason.trim()) return;
     setBusy(true);
     setError(null);
 
@@ -35,50 +38,94 @@ export function VoidDialog({ order, currency, onClose, onVoided }: Props) {
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Void this sale">
-      <form className="modal" onSubmit={submit}>
-        <h2>Void {order.order_number}</h2>
-        <p className="muted">
-          {formatMoney(toMinor(order.total), currency)} ·{" "}
-          {new Date(order.client_created_at).toLocaleString()}
-        </p>
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Void this sale" onClick={onClose}>
+      <form className="modal" style={{ width: "min(32rem, 100%)" }} onSubmit={submit} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid var(--line)", paddingBottom: "0.75rem" }}>
+          <div>
+            <h2 style={{ fontSize: "1.15rem", fontWeight: 800, color: "var(--danger)", display: "flex", alignItems: "center", gap: "0.45rem" }}>
+              <AlertOctagon size={20} />
+              <span>Void Sale {order.order_number}</span>
+            </h2>
+            <p className="muted" style={{ margin: "0.2rem 0 0", fontSize: "0.78rem" }}>
+              {formatMoney(total, currency)} · {new Date(order.client_created_at).toLocaleString()}
+            </p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close dialog">
+            <X size={18} />
+          </button>
+        </div>
 
-        {/*
-          The money is the part people forget. Voiding does not open a drawer or
-          send anything back to a card machine — it only corrects the books, and
-          somebody still has to hand the cash over.
-        */}
         {paid > 0 && (
-          <p className="notice notice-warn">
-            {formatMoney(paid, currency)} was taken for this sale. Voiding does not return it — refund the customer
-            separately, or use Returns if they are bringing goods back.
-          </p>
+          <div className="action-alert-banner alert-warn-theme" role="status" style={{ margin: "0.4rem 0" }}>
+            <div className="alert-left-content">
+              <div className="alert-icon-wrap">
+                <AlertTriangle size={18} />
+              </div>
+              <div className="alert-text-stack">
+                <strong>Physical Tender Reversal Notice</strong>
+                <small>
+                  {formatMoney(paid, currency)} was accepted for this sale. Voiding reverses the accounting record and restores shelf stock, but does NOT disburse physical cash from the till drawer or reverse card terminals automatically.
+                </small>
+              </div>
+            </div>
+          </div>
         )}
 
-        <label htmlFor="void-reason">Reason</label>
-        <input
-          id="void-reason"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          placeholder="Rung up twice, wrong customer, test sale…"
-          autoFocus
-          required
-        />
+        <div className="settings-field-group">
+          <label className="settings-label" htmlFor="void-reason">
+            Reason for Voiding <span style={{ color: "var(--danger)" }}>*</span>
+          </label>
+          <input
+            id="void-reason"
+            className="settings-input"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. Rung up twice, wrong customer, till training sale…"
+            autoFocus
+            required
+          />
+          <span className="settings-field-hint">
+            Logged permanently in store audit logs for inventory and tax reconciliations.
+          </span>
+        </div>
 
-        <label className="checkbox">
-          <input type="checkbox" checked={restock} onChange={(e) => setRestock(e.target.checked)} />
-          Put the items back on the shelf
-        </label>
-        <p className="conflict-hint">
-          Leave this off when the goods never came back — a sale entered twice moved stock once, not twice.
-        </p>
+        <div className="switch-toggle-card" style={{ marginTop: "0.2rem" }}>
+          <div className="switch-label-block">
+            <strong>Restock Items to Shelf Catalogue</strong>
+            <small>
+              Increments inventory stock levels back onto active store batches. Leave off if items were damaged or not returned.
+            </small>
+          </div>
+          <input
+            type="checkbox"
+            className="toggle-switch-input"
+            checked={restock}
+            onChange={(e) => setRestock(e.target.checked)}
+            aria-label="Restock items to shelf"
+          />
+        </div>
 
-        {error && <p className="notice notice-error" role="status">{error}</p>}
+        {error && (
+          <div className="action-alert-banner alert-danger-theme" role="status">
+            <div className="alert-left-content">
+              <AlertTriangle size={16} />
+              <span>{error}</span>
+            </div>
+          </div>
+        )}
 
-        <div className="modal-actions">
-          <button type="button" className="link" onClick={onClose}>Cancel</button>
-          <button type="submit" className="pay-button" disabled={busy || !reason.trim()}>
-            {busy ? "Voiding…" : "Void this sale"}
+        <div className="modal-actions" style={{ marginTop: "0.5rem" }}>
+          <button type="button" className="secondary-button" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="pay-button"
+            style={{ background: "var(--danger)", color: "#ffffff", boxShadow: "0 4px 14px rgba(220, 38, 38, 0.3)" }}
+            disabled={busy || !reason.trim()}
+          >
+            <RotateCcw size={15} />
+            <span>{busy ? "Voiding Sale…" : "Confirm Void"}</span>
           </button>
         </div>
       </form>

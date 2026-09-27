@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { db } from "@/db/schema";
+import { api } from "@/api/client";
+import { db, type LocalOrder } from "@/db/schema";
 import { toMinor } from "@/features/pos/cart";
 import { useSession } from "@/state/session";
 import { buildReceipt } from "@/features/printing/receipt";
@@ -51,13 +53,8 @@ function receiptMoney(minor: number, currency: string): string {
 }
 
 /**
- * A printable receipt.
- *
- * Rendered from the local order, never fetched, because the moment a receipt is
- * most needed is immediately after the sale — when the operation may still be
- * sitting in the outbox. Printing through the browser rather than a driver keeps
- * this working on whatever hardware the shop already has; a thermal printer on
- * the network is set up as the default printer and the page size does the rest.
+ * A printable receipt. Use the local record first so a just-completed offline
+ * sale is immediate; fetch server details only when this till has no copy.
  */
 export function ReceiptPage() {
   const { orderId = "" } = useParams();
@@ -68,7 +65,75 @@ export function ReceiptPage() {
   const user = useSession((s) => s.user);
   const currency = store?.currency ?? "GHS";
 
-  const order = useLiveQuery(() => db.orders.get(orderId), [orderId], undefined);
+  const localOrder = useLiveQuery(async () => (await db.orders.get(orderId)) ?? null, [orderId], undefined);
+  const remoteOrder = useQuery({
+    queryKey: ["order-receipt", store?.id, orderId],
+    enabled: Boolean(orderId && localOrder === null),
+    queryFn: async (): Promise<LocalOrder> => {
+      const response = await api.get<{
+        data: {
+          id: string;
+          store_id: string;
+          order_number: string;
+          status: string;
+          customer_id: string | null;
+          customer_name: string | null;
+          customer_phone: string | null;
+          register_shift_id: string | null;
+          subtotal: string;
+          tax: string;
+          discount: string;
+          total: string;
+          amount_paid: string;
+          change_due: string;
+          payment_method: string;
+          client_created_at: string | null;
+          created_at: string | null;
+          items?: Array<{
+            id: string;
+            product_id: string | null;
+            product_name: string;
+            sku: string | null;
+            barcode: string | null;
+            unit_price: string;
+            quantity: number;
+            line_total: string;
+            unit_cost?: string | null;
+          }>;
+          payments?: Array<{
+            id: string;
+            method: string;
+            amount: string;
+            reference: string | null;
+          }>;
+        };
+      }>(`/api/orders/${orderId}`);
+      const record = response.data;
+
+      return {
+        id: record.id,
+        store_id: record.store_id,
+        order_number: record.order_number,
+        status: record.status,
+        customer_id: record.customer_id,
+        customer_name: record.customer_name,
+        customer_phone: record.customer_phone,
+        register_shift_id: record.register_shift_id,
+        subtotal: record.subtotal,
+        tax: record.tax,
+        discount: record.discount,
+        total: record.total,
+        amount_paid: record.amount_paid,
+        change_due: record.change_due,
+        payment_method: record.payment_method,
+        items: (record.items ?? []).map((item) => ({ ...item, unit_cost: item.unit_cost ?? null })),
+        payments: record.payments ?? [],
+        client_created_at: record.client_created_at ?? record.created_at ?? new Date().toISOString(),
+        _state: "clean",
+      };
+    },
+  });
+  const order = localOrder === undefined ? undefined : localOrder ?? remoteOrder.data ?? null;
 
   const connection = usePrinter((s) => s.connection);
   const paperWidth = usePrinter((s) => s.width);
@@ -125,7 +190,7 @@ export function ReceiptPage() {
     }
   }, [order, autoPrint, printNow]);
 
-  if (order === undefined) {
+  if (localOrder === undefined || (localOrder === null && remoteOrder.isLoading)) {
     return <div className="page"><p className="muted">Loading receipt…</p></div>;
   }
 
@@ -134,12 +199,17 @@ export function ReceiptPage() {
       <div className="page">
         <h1>Receipt</h1>
         <p className="notice notice-warn">
-          That sale is not on this till. Receipts are held by the terminal that rang them up.
+          {remoteOrder.isError
+            ? "This receipt could not be loaded. Check the connection and retry."
+            : "That sale is not available on this till."}
         </p>
+        {remoteOrder.isError && <button type="button" className="secondary-button" onClick={() => void remoteOrder.refetch()}>Retry</button>}
         <button type="button" className="secondary-button" onClick={() => navigate("/orders")}>Back to orders</button>
       </div>
     );
   }
+
+  if (order === undefined) return null;
 
   const change = toMinor(order.change_due);
 

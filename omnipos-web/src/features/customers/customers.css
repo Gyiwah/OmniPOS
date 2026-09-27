@@ -1,0 +1,713 @@
+/* ==========================================================================
+   OmniPOS Web - Customers & Account Receivables Stylesheet
+   Executive, Clean, High-Contrast, Bento-Grid & Ledger UI/UX
+   ========================================================================== */
+
+.customers-root {
+  width: 100%;
+  max-width: 96rem;
+  margin: 0 auto;
+  padding: 1.5rem clamp(1rem, 2.5vw, 2.5rem) 3.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  animation: customersFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes customersFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- Topbar & Header --- */
+.customers-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.25rem;
+}
+
+.customers-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.customers-main-title {
+  margin: 0;
+  font-size: clamp(1.4rem, 2.2vw, 1.85rem);
+  font-weight: 800;
+  color: var(--text-strong);
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.customers-subtitle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 550;
+  flex-wrap: wrap;
+}
+
+.customers-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.customers-add-btn {
+  height: 2.5rem;
+  padding: 0 1.25rem;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  font-size: 0.88rem;
+  font-weight: 750;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  box-shadow: 0 4px 14px rgba(7, 103, 222, 0.25);
+  transition: all 0.2s ease;
+}
+
+.customers-add-btn:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.customers-export-btn {
+  height: 2.5rem;
+  padding: 0 1.15rem;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  color: var(--text-strong);
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  transition: all 0.15s ease;
+}
+
+.customers-export-btn:hover {
+  background: var(--panel-2);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* --- KPI Bento Grid (4 Cards) --- */
+.customers-kpi-bento {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.85rem;
+}
+
+.customers-kpi-card {
+  padding: 1.15rem 1.25rem;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  position: relative;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.customers-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--line-strong);
+}
+
+.customers-kpi-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.customers-kpi-label {
+  font-size: 0.76rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.customers-kpi-icon {
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+}
+
+.customers-kpi-val {
+  font-size: 1.55rem;
+  font-weight: 850;
+  color: var(--text-strong);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.customers-kpi-hint {
+  font-size: 0.76rem;
+  color: var(--muted);
+  font-weight: 550;
+}
+
+/* --- Filter & Search Toolbar --- */
+.customers-toolbar-card {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 0.85rem 1.15rem;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.customers-search-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 16rem;
+  display: flex;
+  align-items: center;
+}
+
+.customers-search-wrap svg {
+  position: absolute;
+  left: 0.85rem;
+  color: var(--muted-soft);
+  pointer-events: none;
+}
+
+.customers-search-input {
+  width: 100%;
+  height: 2.45rem;
+  padding: 0 2.2rem 0 2.4rem;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text-strong);
+  font-size: 0.88rem;
+  font-weight: 600;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.customers-search-input:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.customers-clear-btn {
+  position: absolute;
+  right: 0.65rem;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0.2rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.customers-clear-btn:hover {
+  background: var(--line);
+  color: var(--text-strong);
+}
+
+.customers-filter-chips {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.customers-filter-chip {
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.customers-filter-chip:hover {
+  background: var(--panel-2);
+  color: var(--text-strong);
+  border-color: var(--line-strong);
+}
+
+.customers-filter-chip.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(7, 103, 222, 0.25);
+}
+
+.customers-filter-chip.active-danger {
+  background: var(--danger);
+  color: #ffffff;
+  border-color: var(--danger);
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
+}
+
+.customers-chip-badge {
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.25);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+/* --- Customers Data Table Card --- */
+.customers-table-card {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.customers-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.customers-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.86rem;
+}
+
+.customers-table th {
+  background: var(--panel-2);
+  color: var(--muted);
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.customers-table td {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  vertical-align: middle;
+}
+
+.customers-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.customers-table tbody tr:hover {
+  background: rgba(7, 103, 222, 0.02);
+}
+
+.customers-row-debt {
+  background: rgba(220, 38, 38, 0.015);
+}
+
+/* Customer Name & Avatar Cell */
+.customers-user-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.customers-avatar {
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--panel-2) 0%, var(--line-strong) 100%);
+  color: var(--text-strong);
+  font-weight: 800;
+  font-size: 0.84rem;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+}
+
+.customers-avatar.debt {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: rgba(220, 38, 38, 0.25);
+}
+
+.customers-name-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.customers-name-title {
+  font-weight: 800;
+  color: var(--text-strong);
+  font-size: 0.92rem;
+}
+
+.customers-email-sub {
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+/* Status Badges */
+.customers-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.customers-status-pill.settled {
+  background: var(--ok-soft);
+  color: var(--ok);
+  border: 1px solid rgba(22, 163, 74, 0.25);
+}
+
+.customers-status-pill.arrears {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+}
+
+.customers-status-pill.queued {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border: 1px solid rgba(254, 116, 3, 0.25);
+}
+
+/* Row Action Buttons */
+.customers-action-group {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.customers-action-btn {
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--text-strong);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.customers-action-btn:hover {
+  background: var(--panel-2);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.customers-settle-btn {
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.78rem;
+  font-weight: 750;
+  border: none;
+  background: var(--cta);
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  box-shadow: 0 2px 8px rgba(254, 116, 3, 0.3);
+  white-space: nowrap;
+}
+
+.customers-settle-btn:hover {
+  background: var(--cta-hover);
+  transform: translateY(-1px);
+}
+
+/* Empty State */
+.customers-empty-state {
+  padding: 3.5rem 1.5rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--muted);
+}
+
+.customers-empty-icon {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  background: var(--panel-2);
+  display: grid;
+  place-items: center;
+  color: var(--muted-soft);
+}
+
+/* --- Customer Dialog / Modal Enhancements --- */
+.customer-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 35, 88, 0.45);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 100;
+  animation: modalFade 0.2s ease;
+}
+
+@keyframes modalFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.customer-modal-box {
+  width: 100%;
+  max-width: 32rem;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalScale 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.customer-modal-wide {
+  max-width: 44rem;
+}
+
+@keyframes modalScale {
+  from { transform: scale(0.96); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.customer-modal-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--panel-2);
+}
+
+.customer-modal-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-strong);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.customer-modal-body {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.customer-modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--panel-2);
+}
+
+/* Field Group */
+.customer-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.customer-field label {
+  font-size: 0.8rem;
+  font-weight: 750;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.customer-input {
+  width: 100%;
+  padding: 0.7rem 0.95rem;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  color: var(--text-strong);
+  font-size: 0.9rem;
+  font-weight: 600;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.customer-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+/* Payment Settlement Breakdown Cards */
+.payment-summary-bento {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  padding-bottom: 0.25rem;
+}
+
+.payment-summary-cell {
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.payment-summary-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  font-weight: 750;
+  color: var(--muted);
+}
+
+.payment-summary-val {
+  font-size: 1.15rem;
+  font-weight: 850;
+  color: var(--text-strong);
+}
+
+/* Payment Methods Grid */
+.payment-methods-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.55rem;
+}
+
+.payment-method-card {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.75rem 0.95rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.payment-method-card:hover {
+  border-color: var(--accent-light);
+}
+
+.payment-method-card.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  box-shadow: 0 2px 8px rgba(7, 103, 222, 0.15);
+}
+
+/* Statement Chronology Ledger */
+.statement-kpi-bar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+.statement-kpi-card {
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+  .customers-kpi-bento {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .customers-kpi-bento {
+    grid-template-columns: 1fr;
+  }
+  .customers-toolbar-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .customers-search-wrap {
+    min-width: 100%;
+  }
+  .payment-summary-bento {
+    grid-template-columns: 1fr;
+  }
+  .payment-methods-grid {
+    grid-template-columns: 1fr;
+  }
+}
