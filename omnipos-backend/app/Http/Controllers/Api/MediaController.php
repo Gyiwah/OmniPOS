@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Store;
 use App\Models\StoreMember;
+use App\Models\SyncChange;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -96,12 +97,20 @@ class MediaController extends Controller
         }
 
         if ($data['kind'] === 'product') {
-            // Keep the catalogue pointing at the object. The upload is shared
-            // by web and mobile, so neither client should have to persist this
-            // separately after a successful upload.
-            Product::whereKey($data['product_id'])
-                ->where('store_id', $storeId)
-                ->update(['image_url' => $path]);
+            // Save on the in-memory row rather than a query-builder update so
+            // a product created earlier in this request is still targeted, and
+            // so the changefeed carries the path. Without a sync_changes row,
+            // other tills never learn the image exists.
+            $product->forceFill(['image_url' => $path])->save();
+
+            SyncChange::create([
+                'store_id' => $storeId,
+                'entity' => 'products',
+                'record_id' => $product->id,
+                'action' => 'upsert',
+                'payload' => $product->fresh()->toArray(),
+                'origin_device_id' => null,
+            ]);
         }
 
         return response()->json([

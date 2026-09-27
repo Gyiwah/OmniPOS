@@ -67,6 +67,12 @@ class ProductHandler implements EntityHandler
             'is_active' => $payload['is_active'] ?? null,
         ], fn ($v) => $v !== null);
 
+        // A till that saves name/price without echoing the object path must not
+        // wipe a picture MediaController already stored.
+        if (! array_key_exists('image_url', $attributes) && $existing?->image_url) {
+            $attributes['image_url'] = $existing->image_url;
+        }
+
         $product = Product::withTrashed()->firstOrNew(['id' => $recordId]);
         $isNew = ! $product->exists;
         $initialStock = (int) ($payload['stock'] ?? $payload['initial_stock'] ?? 0);

@@ -81,6 +81,16 @@ class MediaTest extends TestCase
         $this->assertSame("{$this->store->id}/products/{$this->product->id}.jpg", $path);
         $this->assertSame($path, $this->product->refresh()->image_url);
         Storage::disk('local')->assertExists($path);
+
+        $this->assertDatabaseHas('sync_changes', [
+            'entity' => 'products',
+            'record_id' => $this->product->id,
+            'action' => 'upsert',
+        ]);
+        $this->assertSame(
+            $path,
+            \App\Models\SyncChange::where('record_id', $this->product->id)->orderByDesc('sequence')->first()?->payload['image_url'] ?? null,
+        );
     }
 
     /** Re-uploading replaces rather than accumulating orphans nothing cleans up. */

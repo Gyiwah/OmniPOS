@@ -95,6 +95,7 @@ export async function saveProduct(
         category_id: product.category_id,
         is_active: product.is_active,
         tags: product.tags,
+        image_url: product.image_url,
       },
     });
   });

@@ -1,5 +1,6 @@
 import { primeCsrf } from "@/api/client";
 import { db } from "@/db/schema";
+import { enqueue } from "@/sync/engine";
 
 /**
  * Product images, uploaded from a browser.
@@ -66,9 +67,34 @@ export async function uploadProductImage(input: {
   const path = String((payload as { path?: unknown })?.path ?? "");
   if (!path) throw new Error("Image upload did not return an object path.");
 
-  // Written straight to the local catalogue: the image is not part of the
-  // product's sync payload, so nothing else would bring it back to this device.
-  await db.products.update(input.productId, { image_url: path });
+  // Keep the local catalogue and the outbox in lockstep. MediaController also
+  // writes products.image_url, but a later product upsert that omitted the path
+  // used to leave the column null on the server while this till still showed a
+  // thumbnail.
+  await db.transaction("rw", [db.products, db.outbox], async () => {
+    await db.products.update(input.productId, { image_url: path });
+    const product = await db.products.get(input.productId);
+    if (!product) return;
+    await enqueue({
+      storeId: input.storeId,
+      entity: "products",
+      action: "upsert",
+      recordId: product.id,
+      payload: {
+        id: product.id,
+        name: product.name,
+        sku: product.sku,
+        barcode: product.barcode,
+        price: product.price,
+        cost_price: product.cost_price,
+        reorder_level: product.reorder_level,
+        category_id: product.category_id,
+        is_active: product.is_active,
+        tags: product.tags,
+        image_url: path,
+      },
+    });
+  });
 
   return path;
 }

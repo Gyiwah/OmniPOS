@@ -3,6 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 
 import { db, type LocalCategory, type LocalProduct } from "@/db/schema";
 import { toMinor } from "@/features/pos/cart";
+import { AuthenticatedMedia } from "./AuthenticatedMedia";
 import { uploadProductImage } from "./imageUpload";
 import { addBatch, adjustStock, recordPriceChange, saveProduct, suggestSku } from "./service";
 
@@ -14,21 +15,6 @@ type Props = {
   onSaved: (product: LocalProduct) => void;
   onStockOut?: () => void;
 };
-
-function productImageUrl(imageRef: string): string {
-  if (imageRef.startsWith("/api/media/")) return imageRef;
-
-  if (/^https?:\/\//i.test(imageRef)) {
-    try {
-      const parsed = new URL(imageRef);
-      if (parsed.pathname.startsWith("/api/media/")) return parsed.pathname;
-    } catch {
-      // Fall through to the object-path form for malformed legacy values.
-    }
-  }
-
-  return `/api/media/${imageRef.replace(/^\/+/, "")}`;
-}
 
 /** Add or edit a product, including an optional ledger-backed opening count. */
 export function ProductForm({ storeId, currency, product, onClose, onSaved, onStockOut }: Props) {
@@ -176,7 +162,13 @@ export function ProductForm({ storeId, currency, product, onClose, onSaved, onSt
         <section className="product-edit-section product-image-section">
           <h3>Product image</h3>
           <div className="product-image-preview">
-            {image ? <span className="product-image-file-name">{image.name}</span> : imageUrl ? <img src={productImageUrl(imageUrl)} alt={name} /> : <span>⌑</span>}
+            {image ? (
+              <span className="product-image-file-name">{image.name}</span>
+            ) : imageUrl ? (
+              <AuthenticatedMedia imageRef={imageUrl} alt={name} fallback={<span>⌑</span>} />
+            ) : (
+              <span>⌑</span>
+            )}
           </div>
           <label className="product-image-picker" htmlFor="p-image">Choose product image</label>
         </section>

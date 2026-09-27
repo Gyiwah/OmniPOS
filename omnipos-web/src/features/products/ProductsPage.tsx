@@ -16,6 +16,7 @@ import {
   type StockFilter,
 } from "./expiry";
 import { exportInventoryCsv } from "./exportCsv";
+import { AuthenticatedMedia } from "./AuthenticatedMedia";
 import { ImportModal } from "./ImportModal";
 import { ProductDetail } from "./ProductDetail";
 import { ProductForm } from "./ProductForm";
@@ -31,21 +32,6 @@ const FILTERS: Array<{ key: StockFilter; label: string; color?: string }> = [
   { key: "expired", label: "Expired", color: "#dc2626" },
   { key: "out", label: "Out of Stock", color: "#dc2626" },
 ];
-
-function productImageUrl(imageRef: string): string {
-  if (imageRef.startsWith("/api/media/")) return imageRef;
-
-  if (/^https?:\/\//i.test(imageRef)) {
-    try {
-      const parsed = new URL(imageRef);
-      if (parsed.pathname.startsWith("/api/media/")) return parsed.pathname;
-    } catch {
-      // Fall through to the object-path form for malformed legacy values.
-    }
-  }
-
-  return `/api/media/${imageRef.replace(/^\/+/, "")}`;
-}
 
 /**
  * Inventory, served from the local catalogue so it works offline.
@@ -300,7 +286,16 @@ export function ProductsPage() {
                 <input className="inventory-card-check" type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelected(p.id)} aria-label={`Select ${p.name}`} />
                 <button type="button" className="inventory-card-main" onClick={() => setEditing(p)}>
                   {p.image_url ? (
-                    <img src={productImageUrl(p.image_url)} alt="" className="product-thumb" loading="lazy" />
+                    <AuthenticatedMedia
+                      imageRef={p.image_url}
+                      alt=""
+                      className="product-thumb"
+                      fallback={
+                        <span className="product-thumb product-thumb-empty" aria-hidden="true">
+                          {p.name.charAt(0).toUpperCase()}
+                        </span>
+                      }
+                    />
                   ) : (
                     // Initial rather than a generic box: at a glance down a long
                     // list it still distinguishes one row from the next.
