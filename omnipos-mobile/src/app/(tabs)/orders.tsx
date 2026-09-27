@@ -8,6 +8,9 @@ import { TextInput } from "@/src/components/atoms/TextInput";
 import { AppScrollScreen, SectionCard } from "@/src/components/layout/AppScrollScreen";
 import { BarcodeScanner } from "@/src/components/organisms/BarcodeScanner";
 import { Colors } from "@/src/constants/colors";
+import { usingLaravel } from "@/src/core/api/config";
+import { api } from "@/src/core/api/client";
+import { supabase } from "@/src/services/supabase";
 import { Radius } from "@/src/constants/radius";
 import { Spacing } from "@/src/constants/spacing";
 import { Typography } from "@/src/constants/typography";
@@ -15,20 +18,23 @@ import { database } from "@/src/database";
 import type Order from "@/src/database/models/Order";
 import type OrderItem from "@/src/database/models/OrderItem";
 import { synchronise } from "@/src/sync";
+import { shareReportPdf } from "@/src/utils/receiptPdf";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
 
-type OrderFilter = "all" | "open" | "part";
+type OrderFilter = "all" | "open" | "part" | "voided";
 type OrderRecord = {
   id: string;
   orderNumber: string;
   customerName: string | null;
   customerPhone: string | null;
   dateLabel: string;
+  sortAt: number;
   itemCount: number;
   total: number;
   amountPaid: number;
   isPartPayment: boolean;
+  isVoided: boolean;
 };
 
 export default function OrdersScreen() {
@@ -51,17 +57,16 @@ export default function OrdersScreen() {
     }
     setLoading(true);
     try {
-      // 1. Fetch Orders from local WatermelonDB
+      // Read the full local history so offline and queued sales are never hidden.
       const orders = await database
         .get<Order>("orders")
         .query(
           Q.where("store_id", activeStoreId),
           Q.sortBy("created_at", Q.desc),
-          Q.take(150),
         )
         .fetch();
 
-      // 2. Fetch Order Items count from local WatermelonDB
+      // Count quantities from local lines for the locally available orders.
       const orderIds = orders.map((o) => o.id);
       const counts = new Map<string, number>();
 
@@ -73,13 +78,11 @@ export default function OrdersScreen() {
 
         items.forEach((item) => {
           const id = item.orderId;
-          const qty = Number(item.quantity ?? 0);
-          counts.set(id, (counts.get(id) ?? 0) + qty);
+          counts.set(id, (counts.get(id) ?? 0) + 1);
         });
       }
 
-      setSourceRows(
-        orders.map((o) => {
+      const localRows = orders.map((o) => {
           const total = Number(o.total ?? 0);
           const paid = Number(o.amountPaid ?? total);
           const isPartPayment = paid + 0.0001 < total;
@@ -94,12 +97,147 @@ export default function OrdersScreen() {
               hour: "2-digit",
               minute: "2-digit",
             }),
+            sortAt: Number(o.createdAt),
             itemCount: counts.get(String(o.id)) ?? 0,
             total,
             amountPaid: paid,
             isPartPayment,
+            isVoided: o.status === "voided",
           };
-        }),
+        });
+
+      let remoteRows: OrderRecord[] = [];
+      if (usingLaravel) {
+        try {
+          const all: Array<{
+            id: string;
+            order_number: string;
+            customer_name: string | null;
+            customer_phone: string | null;
+            client_created_at: string | null;
+            total: string;
+            amount_paid: string;
+            status: string;
+            items_count: number;
+          }> = [];
+          let page = 1;
+          let lastPage = 1;
+          do {
+            const result = await api.get<{
+              data: typeof all;
+              meta?: { last_page?: number };
+            }>("/api/orders", { per_page: 200, page });
+            all.push(...(result.data ?? []));
+            lastPage = result.meta?.last_page ?? page;
+            page += 1;
+          } while (page <= lastPage);
+
+          remoteRows = all.map((order) => {
+            const total = Number(order.total ?? 0);
+            const amountPaid = Number(order.amount_paid ?? total);
+            return {
+              id: order.id,
+              orderNumber: order.order_number,
+              customerName: order.customer_name,
+              customerPhone: order.customer_phone,
+              dateLabel: new Date(order.client_created_at ?? "").toLocaleString([], {
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              sortAt: Date.parse(order.client_created_at ?? "") || 0,
+              itemCount: Number(order.items_count ?? 0),
+              total,
+              amountPaid,
+              isPartPayment: amountPaid + 0.0001 < total,
+              isVoided: order.status === "voided",
+            };
+          });
+        } catch {
+          // A failed request should not hide sales already stored on this device.
+        }
+      } else {
+        try {
+          const all: Array<{
+            id: string;
+            order_number: string;
+            customer_name: string | null;
+            customer_phone: string | null;
+            created_at: string;
+            total: number;
+            amount_paid: number;
+            status: string;
+          }> = [];
+          let offset = 0;
+          const pageSize = 1000;
+          while (true) {
+            const { data, error } = await supabase
+              .from("orders")
+              .select("id, order_number, customer_name, customer_phone, created_at, total, amount_paid, status")
+              .eq("store_id", activeStoreId)
+              .order("created_at", { ascending: false })
+              .range(offset, offset + pageSize - 1)
+              .returns<typeof all>();
+            if (error) throw error;
+            const page = data ?? [];
+            all.push(...page);
+            if (page.length < pageSize) break;
+            offset += pageSize;
+          }
+
+          const itemRows: Array<{ order_id: string }> = [];
+          let itemOffset = 0;
+          while (true) {
+            const { data, error } = await supabase
+              .from("order_items")
+              .select("order_id")
+              .eq("store_id", activeStoreId)
+              .range(itemOffset, itemOffset + pageSize - 1)
+              .returns<typeof itemRows>();
+            if (error) throw error;
+            const page = data ?? [];
+            itemRows.push(...page);
+            if (page.length < pageSize) break;
+            itemOffset += pageSize;
+          }
+          const serverCounts = new Map<string, number>();
+          for (const item of itemRows ?? []) {
+            const orderId = String(item.order_id);
+            serverCounts.set(orderId, (serverCounts.get(orderId) ?? 0) + 1);
+          }
+
+          remoteRows = all.map((order) => {
+            const total = Number(order.total ?? 0);
+            const amountPaid = Number(order.amount_paid ?? total);
+            return {
+              id: order.id,
+              orderNumber: order.order_number,
+              customerName: order.customer_name,
+              customerPhone: order.customer_phone,
+              dateLabel: new Date(order.created_at).toLocaleString([], {
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              sortAt: Date.parse(order.created_at) || 0,
+              itemCount: serverCounts.get(order.id) ?? 0,
+              total,
+              amountPaid,
+              isPartPayment: amountPaid + 0.0001 < total,
+              isVoided: order.status === "voided",
+            };
+          });
+        } catch {
+          // Keep local history usable when Supabase is unreachable.
+        }
+      }
+
+      const merged = new Map(remoteRows.map((order) => [order.id, order]));
+      for (const order of localRows) merged.set(order.id, order);
+      setSourceRows(
+        [...merged.values()].sort((a, b) => b.sortAt - a.sortAt),
       );
     } catch {
       setSourceRows([]);
@@ -132,8 +270,10 @@ export default function OrdersScreen() {
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return sourceRows.filter((order) => {
-      if (statusFilter === "part" && !order.isPartPayment) return false;
-      if (statusFilter === "open" && order.isPartPayment) return false;
+      if (statusFilter === "voided" && !order.isVoided) return false;
+      if (statusFilter === "voided" && !order.isVoided) return false;
+      if (statusFilter === "part" && (!order.isPartPayment || order.isVoided)) return false;
+      if (statusFilter === "open" && (order.isPartPayment || order.isVoided)) return false;
       if (!q) return true;
       return (
         order.orderNumber.toLowerCase().includes(q) ||
@@ -157,6 +297,28 @@ export default function OrdersScreen() {
       refreshing={refreshing}
       onRefresh={() => void handleRefresh()}
       right={
+        <View style={styles.headerActions}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Print or share filtered orders as PDF"
+          style={({ pressed }) => [styles.headerPrintBtn, pressed && { opacity: 0.7 }]}
+          onPress={() => void shareReportPdf({
+            title: "Orders & Sales",
+            fileName: "Orders-and-Sales.pdf",
+            columns: ["Receipt", "When", "Customer", "Items", "Total", "Paid", "Status"],
+            rows: filteredRows.map((order) => [
+              order.orderNumber,
+              order.dateLabel,
+              order.customerName ?? "Walk-in",
+              String(order.itemCount),
+              `${currencySymbol} ${order.total.toFixed(2)}`,
+              `${currencySymbol} ${order.amountPaid.toFixed(2)}`,
+              order.isVoided ? "Voided" : order.isPartPayment ? "Part paid" : "Paid",
+            ]),
+          })}
+        >
+          <Ionicons name="print-outline" size={20} color={Colors.primaryBlue} />
+        </Pressable>
         <Pressable
           style={({ pressed }) => [styles.headerAddBtn, pressed && { opacity: 0.7 }]}
           onPress={() => router.push("/pos/add-order")}
@@ -164,6 +326,7 @@ export default function OrdersScreen() {
           <Ionicons name="add" size={18} color={Colors.white} />
           <Text style={styles.headerAddText}>New Sale</Text>
         </Pressable>
+        </View>
       }
     >
       {/* Top Metrics Row */}
@@ -226,7 +389,7 @@ export default function OrdersScreen() {
             onPress={() => setStatusFilter("open")}
           >
             <Text style={[styles.filterPillText, statusFilter === "open" && styles.filterPillTextActive]}>
-              Completed ({sourceRows.filter((r) => !r.isPartPayment).length})
+              Completed ({sourceRows.filter((r) => !r.isPartPayment && !r.isVoided).length})
             </Text>
           </Pressable>
           <Pressable
@@ -234,7 +397,15 @@ export default function OrdersScreen() {
             onPress={() => setStatusFilter("part")}
           >
             <Text style={[styles.filterPillText, statusFilter === "part" && styles.filterPillTextActive]}>
-              Part Payment ({sourceRows.filter((r) => r.isPartPayment).length})
+              Part Payment ({sourceRows.filter((r) => r.isPartPayment && !r.isVoided).length})
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.filterPill, statusFilter === "voided" && styles.filterPillActive]}
+            onPress={() => setStatusFilter("voided")}
+          >
+            <Text style={[styles.filterPillText, statusFilter === "voided" && styles.filterPillTextActive]}>
+              Voided ({sourceRows.filter((r) => r.isVoided).length})
             </Text>
           </Pressable>
         </View>
@@ -277,7 +448,7 @@ export default function OrdersScreen() {
                   <View style={styles.orderSubRow}>
                     <Text style={styles.orderDateText}>{order.dateLabel}</Text>
                     <Text style={styles.orderUnitCount}>
-                      · {order.itemCount} {order.itemCount === 1 ? "unit" : "units"}
+                      · {order.itemCount} {order.itemCount === 1 ? "item" : "items"}
                     </Text>
                   </View>
                 </View>
@@ -285,9 +456,9 @@ export default function OrdersScreen() {
 
               {/* Right Total, Status Badge & Chevron */}
               <View style={styles.orderRight}>
-                <View style={[styles.statusBadge, order.isPartPayment ? styles.statusBadgePart : styles.statusBadgePaid]}>
-                  <Text style={[styles.statusBadgeText, order.isPartPayment ? styles.statusTextPart : styles.statusTextPaid]}>
-                    {order.isPartPayment ? "Part Paid" : "Paid"}
+                <View style={[styles.statusBadge, order.isVoided ? styles.statusBadgeVoid : order.isPartPayment ? styles.statusBadgePart : styles.statusBadgePaid]}>
+                  <Text style={[styles.statusBadgeText, order.isVoided ? styles.statusTextVoid : order.isPartPayment ? styles.statusTextPart : styles.statusTextPaid]}>
+                    {order.isVoided ? "Voided" : order.isPartPayment ? "Part Paid" : "Paid"}
                   </Text>
                 </View>
                 <Text style={styles.orderTotalText}>
@@ -318,6 +489,19 @@ export default function OrdersScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+  },
+  headerPrintBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.primaryBluePale,
+  },
   headerAddBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -364,6 +548,7 @@ const styles = StyleSheet.create({
   },
   filterPillsRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: Spacing.xs,
     marginTop: Spacing.sm,
   },
@@ -473,6 +658,9 @@ const styles = StyleSheet.create({
   statusBadgePart: {
     backgroundColor: "#ffedd5",
   },
+  statusBadgeVoid: {
+    backgroundColor: "#fee2e2",
+  },
   statusBadgeText: {
     fontSize: 11,
     fontWeight: "800",
@@ -482,6 +670,9 @@ const styles = StyleSheet.create({
   },
   statusTextPart: {
     color: "#c2410c",
+  },
+  statusTextVoid: {
+    color: "#b91c1c",
   },
   orderTotalText: {
     fontSize: 15,

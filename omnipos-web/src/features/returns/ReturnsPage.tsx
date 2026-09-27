@@ -1,12 +1,15 @@
-import { useState } from "react";
+import { Fragment, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeftRight, Banknote, CreditCard, Smartphone, ArrowUpRight } from "lucide-react";
+import { ArrowLeftRight, ArrowUpRight, Banknote, ChevronDown, ChevronRight, CreditCard, Printer, Smartphone } from "lucide-react";
 
+import { api } from "@/api/client";
 import { db, type LocalReturn } from "@/db/schema";
 import { formatMoney, toMinor } from "@/features/pos/cart";
 import { useCurrentShift } from "@/features/shifts/useCurrentShift";
 import { useSession } from "@/state/session";
 import { useSync } from "@/state/sync";
+import { printTableAsPdf } from "@/utils/printTable";
 import { lookupOrder, processReturn, type ReturnLookup } from "./service";
 import { canRefund, maxCashRefund, refundTotal, type ReturnDraftLine } from "./returns";
 import {
@@ -24,6 +27,26 @@ const REFUND_METHOD_ICONS = {
   transfer: ArrowUpRight,
   mobile_money: Smartphone,
 } as const;
+
+type RemoteReturn = {
+  id: string;
+  order_id: string;
+  order_number: string | null;
+  reason: string;
+  amount: string;
+  refund_method: string;
+  client_created_at: string | null;
+  created_at: string | null;
+  items: Array<{
+    id: string;
+    product_name: string;
+    unit_price: string;
+    quantity: number;
+    line_total: string;
+  }>;
+};
+
+type ReturnDetail = Pick<RemoteReturn, "items">;
 
 /**
  * Taking goods back over the counter.
@@ -46,16 +69,86 @@ export function ReturnsPage() {
   const [refundMethod, setRefundMethod] = useState<RefundMethod>("cash");
   const [notice, setNotice] = useState<{ kind: "ok" | "warn" | "error"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyMethod, setHistoryMethod] = useState("all");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [expandedReturnId, setExpandedReturnId] = useState<string | null>(null);
 
-  const recent = useLiveQuery(
+  const localReturns = useLiveQuery(
     async () => {
       if (!storeId) return [];
       const rows = await db.returns.where("store_id").equals(storeId).toArray();
-      return rows.sort((a, b) => b.client_created_at.localeCompare(a.client_created_at)).slice(0, 25);
+      return rows.sort((a, b) => b.client_created_at.localeCompare(a.client_created_at));
     },
     [storeId],
     [] as LocalReturn[],
   );
+
+  const remoteReturns = useQuery({
+    queryKey: ["returns", storeId],
+    enabled: Boolean(storeId),
+    queryFn: async () => {
+      const all: RemoteReturn[] = [];
+      let page = 1;
+      let lastPage = 1;
+      do {
+        const result = await api.get<{
+          data: RemoteReturn[];
+          meta?: { last_page?: number };
+        }>("/api/returns", { per_page: 200, page });
+        all.push(...(result.data ?? []));
+        lastPage = result.meta?.last_page ?? page;
+        page += 1;
+      } while (page <= lastPage);
+      return all;
+    },
+  });
+
+  const localReturnById = useMemo(
+    () => new Map(localReturns.map((record) => [record.id, record])),
+    [localReturns],
+  );
+  const allReturns = useMemo(() => {
+    const merged = new Map<string, RemoteReturn | LocalReturn>();
+    for (const record of remoteReturns.data ?? []) merged.set(record.id, record);
+    for (const record of localReturns) merged.set(record.id, record);
+
+    const needle = historySearch.trim().toLowerCase();
+    const fromDate = from ? new Date(`${from}T00:00:00`).getTime() : null;
+    const toDate = to ? new Date(`${to}T23:59:59.999`).getTime() : null;
+
+    return [...merged.values()]
+      .filter((record) => {
+        const createdAt = "_state" in record
+          ? record.client_created_at
+          : record.client_created_at ?? record.created_at ?? "";
+        const method = "refund_method" in record ? record.refund_method : "";
+        const orderNumber = "order_number" in record ? record.order_number ?? "" : "";
+        const date = Date.parse(createdAt);
+        if (historyMethod !== "all" && method !== historyMethod) return false;
+        if (fromDate !== null && date < fromDate) return false;
+        if (toDate !== null && date > toDate) return false;
+        if (!needle) return true;
+        return [record.id, orderNumber, record.reason, record.amount]
+          .some((value) => String(value).toLowerCase().includes(needle));
+      })
+      .sort((a, b) => {
+        const aDate = ("_state" in a ? a.client_created_at : a.client_created_at ?? a.created_at) ?? "";
+        const bDate = ("_state" in b ? b.client_created_at : b.client_created_at ?? b.created_at) ?? "";
+        return bDate.localeCompare(aDate);
+      });
+  }, [from, historyMethod, historySearch, localReturns, remoteReturns.data, to]);
+
+  const expandedReturn = allReturns.find((record) => record.id === expandedReturnId);
+  const detailQuery = useQuery({
+    queryKey: ["return-detail", storeId, expandedReturnId],
+    enabled: Boolean(expandedReturnId && expandedReturn && !localReturnById.has(expandedReturnId)),
+    queryFn: async () => {
+      const result = await api.get<{ data: ReturnDetail }>(`/api/returns/${expandedReturnId}`);
+      return result.data;
+    },
+  });
 
   const total = lookup ? refundTotal(lookup.lines, draft) : 0;
   const paidCap = lookup ? maxCashRefund(lookup.order) : 0;
@@ -285,33 +378,101 @@ export function ReturnsPage() {
         </section>
       )}
 
-      {recent.length > 0 && (
+      <section>
+        <h2>Return history</h2>
+        <div className="page-actions" role="search">
+          <button type="button" className="secondary-button" onClick={() => printTableAsPdf({
+            title: "Returns & Refunds",
+            columns: ["Receipt", "When", "Items", "Reason", "Refund method", "Refunded", "Status"],
+            rows: allReturns.map((record) => {
+              const date = "_state" in record
+                ? record.client_created_at
+                : record.client_created_at ?? record.created_at ?? "";
+              const lines = "items" in record ? record.items : [];
+              const orderNumber = "order_number" in record ? record.order_number ?? "" : "";
+              const method = "refund_method" in record ? record.refund_method : "cash";
+              const recordStatus = "_state" in record
+                ? record._state === "pending" ? "Queued" : record._state === "conflict" ? "Rejected" : record._state === "discarded" ? "Discarded" : "Synced"
+                : "Synced";
+              return [
+                orderNumber || record.id.slice(0, 8),
+                date ? new Date(date).toLocaleString() : "—",
+                String(lines.reduce((sum, item) => sum + item.quantity, 0)),
+                record.reason,
+                refundMethodLabel(method),
+                formatMoney(toMinor(record.amount), currency),
+                recordStatus,
+              ];
+            }),
+          })}>
+            <Printer size={16} aria-hidden="true" /> Print / Save PDF
+          </button>
+          <input aria-label="Search returns" placeholder="Receipt, reason, refund amount" value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} />
+          <select aria-label="Filter returns by refund method" value={historyMethod} onChange={(event) => setHistoryMethod(event.target.value)}>
+            <option value="all">All refund methods</option>
+            {REFUND_METHODS.map((method) => <option key={method} value={method}>{REFUND_METHOD_LABELS[method]}</option>)}
+          </select>
+          <label className="muted">From <input aria-label="Returns from date" type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
+          <label className="muted">To <input aria-label="Returns to date" type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
+        </div>
+
+        {remoteReturns.isError && <p className="notice notice-warn">Could not reach the server. Showing returns saved on this device.</p>}
+        <div className="table-scroll">
         <section>
-          <h2>Recent returns on this till</h2>
           <table className="table">
             <thead>
-              <tr><th>Receipt</th><th>When</th><th>Items</th><th>Reason</th><th>By</th><th>Refunded</th><th /></tr>
+              <tr><th>Return</th><th>When</th><th>Items</th><th>Reason</th><th>By</th><th>Refunded</th><th>Status</th></tr>
             </thead>
             <tbody>
-              {recent.map((r) => (
-                <tr key={r.id}>
-                  <td className="mono">{r.order_number}</td>
-                  <td>{new Date(r.client_created_at).toLocaleString()}</td>
-                  <td>{r.items.reduce((sum, i) => sum + i.quantity, 0)}</td>
-                  <td>{r.reason}</td>
-                  <td>{refundMethodLabel(r.refund_method)}</td>
-                  <td>{formatMoney(toMinor(r.amount), currency)}</td>
-                  <td>
-                    {r._state === "pending" && <span className="pill pill-pending">Queued</span>}
-                    {r._state === "clean" && <span className="pill pill-online">Synced</span>}
-                    {r._state === "conflict" && <span className="pill pill-offline">Rejected</span>}
-                  </td>
-                </tr>
-              ))}
+              {allReturns.map((record) => {
+                const localRecord = localReturnById.get(record.id);
+                const date = "_state" in record
+                  ? record.client_created_at
+                  : record.client_created_at ?? record.created_at ?? "";
+                const lines = localRecord?.items ?? (expandedReturnId === record.id ? detailQuery.data?.items : undefined);
+                const orderNumber = "order_number" in record ? record.order_number : "";
+                const method = "refund_method" in record ? record.refund_method : "cash";
+                const itemCount = lines?.reduce((sum, item) => sum + item.quantity, 0)
+                  ?? ("items" in record ? record.items.reduce((sum, item) => sum + item.quantity, 0) : 0);
+                return (
+                  <Fragment key={record.id}>
+                    <tr>
+                      <td><button type="button" className="link" aria-expanded={expandedReturnId === record.id} onClick={() => setExpandedReturnId(expandedReturnId === record.id ? null : record.id)}>
+                        {expandedReturnId === record.id ? <ChevronDown size={15} /> : <ChevronRight size={15} />} <span className="mono">{orderNumber || record.id.slice(0, 8)}</span>
+                      </button></td>
+                      <td>{date ? new Date(date).toLocaleString() : "—"}</td>
+                      <td>{itemCount}</td>
+                      <td>{record.reason}</td>
+                      <td>{refundMethodLabel(method)}</td>
+                      <td>{formatMoney(toMinor(record.amount), currency)}</td>
+                      <td>
+                        {"_state" in record && record._state === "pending" && <span className="pill pill-pending">Queued</span>}
+                        {(!("_state" in record) || record._state === "clean") && <span className="pill pill-online">Synced</span>}
+                        {"_state" in record && record._state === "conflict" && <span className="pill pill-offline">Rejected</span>}
+                        {"_state" in record && record._state === "discarded" && <span className="pill pill-discarded">Discarded</span>}
+                      </td>
+                    </tr>
+                    {expandedReturnId === record.id && (
+                      <tr>
+                        <td colSpan={7}>
+                          {detailQuery.isLoading && !localRecord && <span className="muted">Loading returned items…</span>}
+                          {detailQuery.isError && !localRecord && <span className="danger-text">Could not load return details.</span>}
+                          {lines?.length ? <table className="table"><thead><tr><th>Item</th><th>Quantity</th><th>Unit amount</th><th>Refunded</th></tr></thead><tbody>
+                            {lines.map((item) => <tr key={item.id}><td>{item.product_name}</td><td>{item.quantity}</td><td>{formatMoney(toMinor(item.unit_price), currency)}</td><td>{formatMoney(toMinor(item.line_total), currency)}</td></tr>)}
+                          </tbody></table> : null}
+                          {lines && lines.length === 0 && <span className="muted">No item details recorded.</span>}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </section>
-      )}
+        </div>
+        {allReturns.length === 0 && <p className="muted">{remoteReturns.isLoading ? "Loading returns…" : "No returns match these filters."}</p>}
+      </section>
     </div>
   );
 }

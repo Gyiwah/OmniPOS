@@ -1,4 +1,5 @@
 import { api } from "@/src/core/api/client";
+import { storage } from "@/src/core/platform";
 import type { OrderForReturn, ReturnDetail, ReturnListRow } from "./types";
 
 /**
@@ -82,21 +83,44 @@ export async function lookupOrderForReturn(_storeId: string, ref: string): Promi
   };
 }
 
-export async function listReturns(_storeId: string): Promise<ReturnListRow[]> {
-  const res = await api.get<{
-    data: Array<{
-      id: string;
-      order_id: string;
-      order_number: string | null;
-      reason: string;
-      amount: string;
-      created_at: string | null;
-      client_created_at: string | null;
-      items?: Array<{ quantity: number }>;
-    }>;
-  }>("/api/returns", { per_page: 100 });
+async function cachedReturns(storeId: string): Promise<ReturnListRow[]> {
+  try {
+    const cached = await storage.getItem(`omnipos:return_records:${storeId}`);
+    const rows: ReturnListRow[] = cached ? JSON.parse(cached) : [];
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
 
-  return (res.data ?? []).map((r) => ({
+export async function listReturns(storeId: string): Promise<ReturnListRow[]> {
+  const all: Array<{
+    id: string;
+    order_id: string;
+    order_number: string | null;
+    reason: string;
+    amount: string;
+    created_at: string | null;
+    client_created_at: string | null;
+    items?: Array<{ quantity: number }>;
+  }> = [];
+  let page = 1;
+  let lastPage = 1;
+  try {
+    do {
+      const res = await api.get<{
+        data: typeof all;
+        meta?: { last_page?: number };
+      }>("/api/returns", { per_page: 200, page });
+      all.push(...(res.data ?? []));
+      lastPage = res.meta?.last_page ?? page;
+      page += 1;
+    } while (page <= lastPage);
+  } catch {
+    return cachedReturns(storeId);
+  }
+
+  const remote = all.map((r) => ({
     id: r.id,
     orderId: r.order_id,
     orderNumber: r.order_number ?? "",
@@ -105,6 +129,17 @@ export async function listReturns(_storeId: string): Promise<ReturnListRow[]> {
     createdAt: r.client_created_at ?? r.created_at ?? "",
     itemCount: (r.items ?? []).reduce((sum, i) => sum + Number(i.quantity ?? 0), 0),
   }));
+
+  try {
+    const localRows = await cachedReturns(storeId);
+    const merged = new Map(localRows.map((row) => [row.id, row]));
+    for (const row of remote) merged.set(row.id, row);
+    const rows = [...merged.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    await storage.setItem(`omnipos:return_records:${storeId}`, JSON.stringify(rows));
+    return rows;
+  } catch {
+    return remote;
+  }
 }
 
 export async function getReturnDetail(_storeId: string, returnId: string): Promise<ReturnDetail | null> {
@@ -148,6 +183,11 @@ export async function getReturnDetail(_storeId: string, returnId: string): Promi
       })),
     };
   } catch {
-    return null;
+    try {
+      const cached = await storage.getItem(`omnipos:return_detail:${_storeId}:${returnId}`);
+      return cached ? JSON.parse(cached) as ReturnDetail : null;
+    } catch {
+      return null;
+    }
   }
 }

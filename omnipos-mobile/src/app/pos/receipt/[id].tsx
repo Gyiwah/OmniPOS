@@ -9,6 +9,7 @@ import { Colors } from "@/src/constants/colors";
 import { usePrintReceipt } from "@/src/features/printer/hooks";
 import type { PrintableReceipt } from "@/src/core/printing/receipt";
 import { supabase } from "@/src/services/supabase";
+import { api } from "@/src/core/api/client";
 import { useSettingsStore, UNNAMED_STORE } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
 import { toErrorMessage } from "@/src/utils/errors";
@@ -72,6 +73,68 @@ export default function ReceiptScreen() {
       if (!activeStoreId || !ref || ref === "—") return;
       setLoading(true);
       setErrorMessage(null);
+
+      if (usingLaravel) {
+        try {
+          const response = await api.get<{
+            data: {
+              id: string;
+              order_number: string;
+              client_created_at: string | null;
+              created_at: string | null;
+              subtotal: string;
+              tax: string;
+              discount: string;
+              total: string;
+              amount_paid: string;
+              change_due: string;
+              payment_method: string | null;
+              customer_name: string | null;
+              customer_phone: string | null;
+              items?: Array<{
+                id: string;
+                product_name: string;
+                unit_price: string;
+                quantity: number;
+              }>;
+            };
+          }>(`/api/orders/${ref}`);
+          if (!mounted) return;
+          const order = response.data;
+          setOrderNumber(order.order_number);
+          setDateLabel(new Date(order.client_created_at ?? order.created_at ?? "").toLocaleString());
+          setRemoteData({
+            lines: (order.items ?? []).map((item) => ({
+              id: item.id,
+              name: item.product_name,
+              price: Number(item.unit_price),
+              quantity: Number(item.quantity),
+            })),
+            discountMode: "amount",
+            discountValue: Number(order.discount ?? 0),
+            amountPaid: Number(order.amount_paid ?? 0),
+            charged: {
+              subtotal: Number(order.subtotal ?? 0),
+              discount: Number(order.discount ?? 0),
+              tax: Number(order.tax ?? 0),
+              total: Number(order.total ?? 0),
+              changeDue: Number(order.change_due ?? 0),
+            },
+            paymentMethod: order.payment_method,
+            customerName: order.customer_name,
+            customerPhone: order.customer_phone,
+            shippingAddress: null,
+            taxRate: 0,
+            vatRate: 0,
+            serviceRate: 0,
+            currency: settingsCurrency,
+          });
+          setLoading(false);
+          return;
+        } catch {
+          // Use the local receipt if the server is offline or the order is queued.
+        }
+      }
 
       /*
        * Supabase only. Under Laravel this falls through to the local copy

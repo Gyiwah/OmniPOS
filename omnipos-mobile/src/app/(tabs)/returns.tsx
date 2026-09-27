@@ -14,6 +14,7 @@ import { listReturns } from "@/src/features/returns/service";
 import type { ReturnListRow } from "@/src/features/returns/types";
 import { useSettingsStore } from "@/src/store/settingsStore";
 import { useStoreSlice } from "@/src/store/storeSlice";
+import { shareReportPdf } from "@/src/utils/receiptPdf";
 
 type DateFilter = "all" | "today" | "7d" | "30d";
 
@@ -86,6 +87,26 @@ export default function ReturnsScreen() {
       title="Returns & Refunds"
       subtitle="Track customer returns, restocked units, and refunds."
       right={
+        <View style={styles.headerActions}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Print or share filtered returns as PDF"
+          style={({ pressed }) => [styles.headerPrintBtn, pressed && { opacity: 0.7 }]}
+          onPress={() => void shareReportPdf({
+            title: "Returns & Refunds",
+            fileName: "Returns-and-Refunds.pdf",
+            columns: ["Receipt", "When", "Items", "Reason", "Refunded"],
+            rows: filteredRows.map((row) => [
+              row.orderNumber,
+              new Date(row.createdAt).toLocaleString(),
+              String(row.itemCount),
+              row.reason,
+              `${symbol} ${row.amount.toFixed(2)}`,
+            ]),
+          })}
+        >
+          <Ionicons name="print-outline" size={20} color={Colors.danger} />
+        </Pressable>
         <Pressable
           style={({ pressed }) => [styles.headerAddBtn, pressed && { opacity: 0.8 }]}
           onPress={() => router.push("/pos/add-return")}
@@ -93,6 +114,7 @@ export default function ReturnsScreen() {
           <Ionicons name="add" size={18} color={Colors.white} />
           <Text style={styles.headerAddText}>New Return</Text>
         </Pressable>
+        </View>
       }
     >
       {/* Top Metrics Row */}
@@ -225,6 +247,19 @@ export default function ReturnsScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+  },
+  headerPrintBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff1f2",
+  },
   headerAddBtn: {
     flexDirection: "row",
     alignItems: "center",

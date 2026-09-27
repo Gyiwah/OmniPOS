@@ -429,6 +429,16 @@ export async function processReturn(input: {
       itemCount: input.lines.reduce((s, l) => s + l.quantity, 0),
     };
     await storage.setItem(historyKey, JSON.stringify([newRecord, ...prevHist]));
+    await storage.setItem(`omnipos:return_detail:${input.storeId}:${localReturnId}`, JSON.stringify({
+      ...newRecord,
+      items: input.lines.map((line, index) => ({
+        id: `${localReturnId}-${index}`,
+        name: line.name,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        lineTotal: line.unitPrice * line.quantity,
+      })),
+    } satisfies ReturnDetail));
   } catch {
     // ignore local storage error
   }
@@ -599,58 +609,53 @@ export async function processReturn(input: {
 
 async function supabase_listReturns(storeId: string): Promise<ReturnListRow[]> {
   try {
-    const { data: returns, error } = await supabase
-      .from("returns")
-      .select("id, order_id, reason, amount, created_at")
-      .eq("store_id", storeId)
-      .order("created_at", { ascending: false })
-      .limit(120);
-
-    if (!error && returns && returns.length > 0) {
-      const returnIds = returns.map((row) => String(row.id));
-      const orderIds = returns.map((row) => String(row.order_id));
-
-      const itemCounts = new Map<string, number>();
-      const { data: returnItems } = await supabase
-        .from("return_items")
-        .select("return_id, quantity")
+    const pageSize = 1000;
+    const returns: Array<{ id: string; order_id: string; reason: string; amount: number; created_at: string }> = [];
+    let offset = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from("returns")
+        .select("id, order_id, reason, amount, created_at")
         .eq("store_id", storeId)
-        .in("return_id", returnIds);
+        .order("created_at", { ascending: false })
+        .range(offset, offset + pageSize - 1)
+        .returns<typeof returns>();
+      if (error) throw error;
+      const page = data ?? [];
+      returns.push(...page);
+      if (page.length < pageSize) break;
+      offset += pageSize;
+    }
 
-      if (returnItems?.length) {
-        returnItems.forEach((row) => {
-          const key = String(row.return_id);
-          itemCounts.set(key, (itemCounts.get(key) ?? 0) + Number(row.quantity ?? 0));
-        });
-      } else {
-        returns.forEach((row) => {
-          const reasonStr = String(row.reason ?? "");
-          const match = reasonStr.match(/\[ITEMS:(.*?)\]/);
-          if (match && match[1]) {
-            try {
-              const parsed = JSON.parse(match[1]);
-              if (Array.isArray(parsed)) {
-                const count = parsed.reduce((sum: number, l: any) => sum + Number(l.quantity ?? 0), 0);
-                itemCounts.set(String(row.id), count);
-              }
-            } catch {
-              // ignore
-            }
-          }
-        });
+    const itemCounts = new Map<string, number>();
+    const orderNumbers = new Map<string, string>();
+    for (let start = 0; start < returns.length; start += 100) {
+      const batch = returns.slice(start, start + 100);
+      const returnIds = batch.map((row) => String(row.id));
+      const orderIds = [...new Set(batch.map((row) => String(row.order_id)))];
+      const [{ data: returnItems, error: returnItemsError }, { data: orders, error: ordersError }] = await Promise.all([
+        supabase
+          .from("return_items")
+          .select("return_id, quantity")
+          .eq("store_id", storeId)
+          .in("return_id", returnIds),
+        supabase
+          .from("orders")
+          .select("id, order_number")
+          .eq("store_id", storeId)
+          .in("id", orderIds),
+      ]);
+      if (returnItemsError) throw returnItemsError;
+      if (ordersError) throw ordersError;
+
+      for (const row of returnItems ?? []) {
+        const key = String(row.return_id);
+        itemCounts.set(key, (itemCounts.get(key) ?? 0) + Number(row.quantity ?? 0));
       }
+      for (const row of orders ?? []) orderNumbers.set(String(row.id), String(row.order_number));
+    }
 
-      const orderNumbers = new Map<string, string>();
-      const { data: orders } = await supabase
-        .from("orders")
-        .select("id, order_number")
-        .eq("store_id", storeId)
-        .in("id", orderIds);
-      (orders ?? []).forEach((row) => {
-        orderNumbers.set(String(row.id), String(row.order_number));
-      });
-
-      const list = returns.map((row) => ({
+    const list = returns.map((row) => ({
         id: String(row.id),
         orderId: String(row.order_id),
         orderNumber: orderNumbers.get(String(row.order_id)) ?? String(row.order_id).slice(0, 8),
@@ -660,10 +665,13 @@ async function supabase_listReturns(storeId: string): Promise<ReturnListRow[]> {
         itemCount: itemCounts.get(String(row.id)) ?? 1,
       }));
 
-      // Cache locally for offline viewing
-      void storage.setItem(`omnipos:return_records:${storeId}`, JSON.stringify(list));
-      return list;
-    }
+    const rawHist = await storage.getItem(`omnipos:return_records:${storeId}`);
+    const cached: ReturnListRow[] = rawHist ? JSON.parse(rawHist) : [];
+    const merged = new Map(cached.map((row) => [row.id, row]));
+    for (const row of list) merged.set(row.id, row);
+    const mergedRows = [...merged.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    void storage.setItem(`omnipos:return_records:${storeId}`, JSON.stringify(mergedRows));
+    return mergedRows;
   } catch {
     // offline fallback below
   }
@@ -711,10 +719,17 @@ async function supabase_getReturnDetail(storeId: string, returnId: string): Prom
         }));
       }
 
+      const { data: order } = await supabase
+        .from("orders")
+        .select("order_number")
+        .eq("store_id", storeId)
+        .eq("id", row.order_id)
+        .maybeSingle();
+
       return {
         id: String(row.id),
         orderId: String(row.order_id),
-        orderNumber: String(row.order_id).slice(0, 8),
+        orderNumber: order?.order_number ? String(order.order_number) : String(row.order_id).slice(0, 8),
         reason: cleanReturnReason(row.reason),
         amount: Number(row.amount ?? 0),
         createdAt: String(row.created_at),
@@ -724,6 +739,13 @@ async function supabase_getReturnDetail(storeId: string, returnId: string): Prom
     }
   } catch {
     // offline fallback below
+  }
+
+  try {
+    const cachedDetail = await storage.getItem(`omnipos:return_detail:${storeId}:${returnId}`);
+    if (cachedDetail) return JSON.parse(cachedDetail) as ReturnDetail;
+  } catch {
+    // Continue with the summary cache when no full local detail was saved.
   }
 
   // Fallback to local cached list

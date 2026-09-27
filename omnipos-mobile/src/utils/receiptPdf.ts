@@ -1,6 +1,6 @@
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
-import { Alert } from "react-native";
+import { Alert, Platform } from "react-native";
 import type { ReceiptData } from "@/src/components/organisms/ReceiptDocument";
 import { generateBarcodeSvgHtml } from "@/src/utils/barcodeEncoder";
 
@@ -364,5 +364,71 @@ export async function shareReceiptAsPdf(props: ReceiptPdfProps): Promise<void> {
     }
   } catch (error) {
     Alert.alert("PDF Error", error instanceof Error ? error.message : "Failed to generate receipt PDF.");
+  }
+}
+
+type ReportPdfInput = {
+  title: string;
+  fileName: string;
+  columns: string[];
+  rows: string[][];
+};
+
+function escapeReportHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return entities[character];
+  });
+}
+
+function buildReportHtml({ title, columns, rows }: ReportPdfInput): string {
+  const headers = columns.map((column) => `<th>${escapeReportHtml(column)}</th>`).join("");
+  const body = rows
+    .map((row) => `<tr>${row.map((cell) => `<td>${escapeReportHtml(cell)}</td>`).join("")}</tr>`)
+    .join("");
+
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+    @page { size: A4; margin: 14mm; }
+    body { color: #172033; font: 11px/1.45 -apple-system, BlinkMacSystemFont, sans-serif; }
+    h1 { margin: 0 0 5px; font-size: 20px; }
+    p { margin: 0 0 16px; color: #5b6472; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 7px; border-bottom: 1px solid #d9dee7; text-align: left; vertical-align: top; }
+    th { background: #f2f5f9; font-size: 9px; text-transform: uppercase; }
+    tr { break-inside: avoid; }
+    thead { display: table-header-group; }
+  </style></head><body>
+    <h1>${escapeReportHtml(title)}</h1><p>${rows.length} records · ${escapeReportHtml(new Date().toLocaleString())}</p>
+    <table><thead><tr>${headers}</tr></thead><tbody>${body}</tbody></table>
+  </body></html>`;
+}
+
+export async function shareReportPdf(input: ReportPdfInput): Promise<void> {
+  const html = buildReportHtml(input);
+  try {
+    if (Platform.OS === "web") {
+      await Print.printAsync({ html });
+      return;
+    }
+
+    const { uri } = await Print.printToFileAsync({ html, base64: false });
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(uri, {
+        mimeType: "application/pdf",
+        dialogTitle: input.fileName,
+        UTI: "com.adobe.pdf",
+      });
+    } else {
+      await Print.printAsync({ html });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not create the PDF report.";
+    Alert.alert("PDF export failed", message);
   }
 }
