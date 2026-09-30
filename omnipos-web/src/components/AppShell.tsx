@@ -20,12 +20,10 @@ import {
 } from "lucide-react";
 
 import { api } from "@/api/client";
-import { getCurrencySymbol } from "@/features/pos/cart";
 import { PLATFORM_GROUPS } from "@/features/superAdmin/platformNav";
 import { useSession } from "@/state/session";
 import { useSync } from "@/state/sync";
 import { nextThemeLabel, useTheme } from "@/state/theme";
-import { SyncStatusBadge } from "./SyncStatusBadge";
 
 import { ToastContainer } from "./ToastContainer";
 
@@ -125,15 +123,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="brand">
           <div className="brand-identity">
             <img src="/android-chrome-192x192.png" alt="OmniPOS" className="brand-image" />
-            <div className="brand-text-row">
-              <strong>OmniPOS</strong>
-              {store?.currency && (
-                <span className="shell-currency-pill" title={`Store operating currency: ${store.currency}`}>
-                  <span className="pill-sym">{getCurrencySymbol(store.currency)}</span>
-                  <span className="pill-code">{store.currency}</span>
-                </span>
-              )}
-            </div>
+            <strong>OmniPOS</strong>
           </div>
           {/*
             Allow switching between all accessible stores and branches with real names.
@@ -193,37 +183,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="shell-status">
-          {/* Connection and sync state */}
-          <div className="status-row" style={{ alignItems: "center" }}>
-            <SyncStatusBadge />
-          </div>
-
-          <div className="status-row">
-            <span className="muted who">
+          <div className="status-row" style={{ alignItems: "center", justifyContent: "space-between" }}>
+            <span className="muted who" style={{ fontSize: "0.82rem" }}>
               {user?.name}
               {role && ` · ${role}`}
             </span>
-          </div>
-
-          <div className="status-row">
-            <button
-              type="button"
-              className="icon-button"
-              onClick={cycleTheme}
-              title={nextThemeLabel(themeChoice)}
-              aria-label={nextThemeLabel(themeChoice)}
-            >
-              <ThemeIcon size={16} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className="icon-button"
-              onClick={() => void logout()}
-              aria-label="Sign out"
-            >
-              <LogOut size={16} aria-hidden="true" />
-              Sign out
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.2rem", flexShrink: 0 }}>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={cycleTheme}
+                title={nextThemeLabel(themeChoice)}
+                aria-label={nextThemeLabel(themeChoice)}
+              >
+                <ThemeIcon size={16} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => void logout()}
+                aria-label="Sign out"
+                title="Sign out"
+              >
+                <LogOut size={16} aria-hidden="true" />
+              </button>
+            </div>
           </div>
         </div>
       </header>

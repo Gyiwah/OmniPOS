@@ -119,10 +119,6 @@ export function CustomersPage() {
             <span>{store?.name ?? "OmniPOS Store"}</span>
             <span>·</span>
             <span>Customer ledger, store credit & account receivables</span>
-            <span>·</span>
-            <span className="dashboard-currency-tag" title="Store operating currency">
-              Currency: <strong>{currency}</strong>
-            </span>
           </div>
         </div>
 

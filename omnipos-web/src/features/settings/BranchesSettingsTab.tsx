@@ -262,13 +262,7 @@ export function BranchesSettingsTab() {
                   ) : (
                     <button
                       type="button"
-                      className="category-action-btn"
-                      style={{
-                        padding: "0.3rem 0.65rem",
-                        gap: "0.3rem",
-                        color: "var(--accent-text)",
-                        border: "1px solid var(--line-strong)",
-                      }}
+                      className="branch-switch-btn"
                       disabled={isSwitching}
                       onClick={() => handleSwitchStore(st.id, st.name)}
                       title={`Switch active till context to ${st.name}`}
@@ -384,7 +378,6 @@ export function BranchesSettingsTab() {
                           fontSize: "0.74rem",
                           fontWeight: 700,
                           color: "var(--ok)",
-                          marginRight: "auto",
                         }}
                       >
                         <CheckCircle2 size={14} /> Active Store
@@ -392,14 +385,7 @@ export function BranchesSettingsTab() {
                     ) : (
                       <button
                         type="button"
-                        className="category-action-btn"
-                        style={{
-                          padding: "0.35rem 0.75rem",
-                          gap: "0.35rem",
-                          color: "var(--accent-text)",
-                          border: "1px solid var(--line-strong)",
-                          marginRight: "auto",
-                        }}
+                        className="branch-switch-btn"
                         disabled={isSwitching}
                         onClick={() => handleSwitchStore(branch.id, branch.name)}
                         title={`Switch active session to ${branch.name}`}
@@ -409,35 +395,37 @@ export function BranchesSettingsTab() {
                       </button>
                     )}
 
-                    <button
-                      type="button"
-                      className="category-action-btn"
-                      title="Edit Branch"
-                      onClick={() => {
-                        setEditingId(branch.id);
-                        setForm({
-                          name: branch.name,
-                          platform_status: branch.platform_status,
-                          switchAfterCreate: false,
-                        });
-                        setIsModalOpen(true);
-                      }}
-                    >
-                      <Pencil size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="category-action-btn btn-danger"
-                      title="Delete Branch"
-                      disabled={remove.isPending || !isOnline}
-                      onClick={() => {
-                        if (window.confirm(`Delete branch outlet "${branch.name}"?`)) {
-                          remove.mutate(branch.id);
-                        }
-                      }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                      <button
+                        type="button"
+                        className="category-action-btn"
+                        title="Edit Branch"
+                        onClick={() => {
+                          setEditingId(branch.id);
+                          setForm({
+                            name: branch.name,
+                            platform_status: branch.platform_status,
+                            switchAfterCreate: false,
+                          });
+                          setIsModalOpen(true);
+                        }}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className="category-action-btn btn-danger"
+                        title="Delete Branch"
+                        disabled={remove.isPending || !isOnline}
+                        onClick={() => {
+                          if (window.confirm(`Delete branch outlet "${branch.name}"?`)) {
+                            remove.mutate(branch.id);
+                          }
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               );

@@ -19,11 +19,11 @@ import {
   Minus,
   RotateCcw,
   Boxes,
+  Coins,
   DollarSign,
   Layers,
   Sparkles,
   ShieldAlert,
-  Coins,
 } from "lucide-react";
 
 import { api } from "@/api/client";
@@ -318,10 +318,6 @@ export function ReturnsPage() {
             <span>{store?.name ?? "OmniPOS Store"}</span>
             <span>·</span>
             <span>Customer returns, inventory restocking & drawer reconciliation</span>
-            <span>·</span>
-            <span className="dashboard-currency-tag" title="Store operating currency">
-              Currency: <strong>{currency}</strong>
-            </span>
           </div>
         </div>
 
@@ -483,39 +479,6 @@ export function ReturnsPage() {
           <div className={`returns-auth-notice ${notice.kind === "ok" ? "ok" : "warn"}`} role="status">
             {notice.kind === "ok" ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
             <span>{notice.text}</span>
-          </div>
-        )}
-
-        {/* Informative Guidance Card when Idle */}
-        {!lookup && (
-          <div className="returns-idle-guide">
-            <div className="returns-guide-item">
-              <div className="returns-guide-icon">
-                <Receipt size={16} />
-              </div>
-              <div className="returns-guide-text">
-                <strong>Barcode & Receipt Matching</strong>
-                <p>Supports full receipts from any terminal in this store, offline or online.</p>
-              </div>
-            </div>
-            <div className="returns-guide-item">
-              <div className="returns-guide-icon">
-                <Boxes size={16} />
-              </div>
-              <div className="returns-guide-text">
-                <strong>Smart Restock Controls</strong>
-                <p>Return items back to store stock or discard damaged items safely without inflating counts.</p>
-              </div>
-            </div>
-            <div className="returns-guide-item">
-              <div className="returns-guide-icon">
-                <Coins size={16} />
-              </div>
-              <div className="returns-guide-text">
-                <strong>Drawer Reconciliation</strong>
-                <p>Tracks cash drawer balances in real time so your end-of-shift audits stay 100% accurate.</p>
-              </div>
-            </div>
           </div>
         )}
       </section>

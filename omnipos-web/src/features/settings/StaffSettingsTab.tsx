@@ -318,26 +318,49 @@ export function StaffSettingsTab() {
                     </div>
 
                     <div className="staff-role-control">
-                      <select
-                        className="role-select"
-                        value={m.role}
-                        aria-label={`Role for ${m.name ?? m.email ?? "member"}`}
-                        disabled={changeRole.isPending || !isAdmin || isParentAdminInherited}
-                        title={isParentAdminInherited ? "Parent store admins always remain admins in all branches" : undefined}
-                        onChange={(e) => changeRole.mutate({ id: m.id, role: e.target.value })}
-                        style={{
-                          background: roleMeta.bg,
-                          color: roleMeta.text,
-                          borderColor: `color-mix(in srgb, ${roleMeta.text} 30%, transparent)`,
-                          cursor: isParentAdminInherited ? "not-allowed" : "pointer",
-                        }}
-                      >
-                        {ROLES.map((r) => (
-                          <option key={r} value={r} disabled={r === "admin" && !isAdmin}>
-                            {r.toUpperCase()}
-                          </option>
-                        ))}
-                      </select>
+                      {isYou ? (
+                        <span
+                          className="role-badge"
+                          style={{
+                            background: roleMeta.bg,
+                            color: roleMeta.text,
+                            borderColor: `color-mix(in srgb, ${roleMeta.text} 30%, transparent)`,
+                            padding: "0.38rem 0.85rem",
+                            borderRadius: "var(--radius-pill)",
+                            fontSize: "0.82rem",
+                            fontWeight: 700,
+                            letterSpacing: "0.04em",
+                            border: "1px solid",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            cursor: "default",
+                          }}
+                          title="You cannot modify your own role"
+                        >
+                          {m.role.toUpperCase()}
+                        </span>
+                      ) : (
+                        <select
+                          className="role-select"
+                          value={m.role}
+                          aria-label={`Role for ${m.name ?? m.email ?? "member"}`}
+                          disabled={changeRole.isPending || !isAdmin || isParentAdminInherited}
+                          title={isParentAdminInherited ? "Parent store admins always remain admins in all branches" : undefined}
+                          onChange={(e) => changeRole.mutate({ id: m.id, role: e.target.value })}
+                          style={{
+                            background: roleMeta.bg,
+                            color: roleMeta.text,
+                            borderColor: `color-mix(in srgb, ${roleMeta.text} 30%, transparent)`,
+                            cursor: isParentAdminInherited ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          {ROLES.map((r) => (
+                            <option key={r} value={r} disabled={r === "admin" && !isAdmin}>
+                              {r.toUpperCase()}
+                            </option>
+                          ))}
+                        </select>
+                      )}
 
                       {isAdmin && !isYou && (
                         <button

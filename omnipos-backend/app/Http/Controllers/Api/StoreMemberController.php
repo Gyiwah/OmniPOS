@@ -238,6 +238,12 @@ class StoreMemberController extends Controller
 
         $this->assertMayGrant($request, $data['role']);
 
+        abort_if(
+            $model->user_id === $request->user()->id,
+            422,
+            'You cannot modify your own role.'
+        );
+
         $store = Store::find($storeId);
         if ($store?->parent_store_id !== null && $data['role'] !== StoreMember::ROLE_ADMIN) {
             $isParentAdmin = StoreMember::where('store_id', $store->parent_store_id)

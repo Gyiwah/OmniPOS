@@ -22,23 +22,24 @@ export function SyncStatusBadge() {
         type="button"
         className="sync-badge sync-offline"
         onClick={handleSyncClick}
-        title="Offline mode. Changes queued locally."
+        title={`Offline mode. ${pending > 0 ? `${pending} changes queued locally.` : "Changes queued locally."}`}
+        aria-label="Offline mode"
         style={{
           display: "inline-flex",
           alignItems: "center",
-          gap: "0.35rem",
-          padding: "0.25rem 0.6rem",
-          borderRadius: "999px",
+          justifyContent: "center",
+          width: "2.1rem",
+          height: "2.1rem",
+          borderRadius: "50%",
           background: "#fee2e2",
           color: "#991b1b",
-          fontSize: "0.75rem",
-          fontWeight: 600,
           border: "1px solid #fecaca",
           cursor: "pointer",
+          transition: "all 0.15s ease",
+          flexShrink: 0,
         }}
       >
-        <WifiOff size={14} />
-        <span>Offline {pending > 0 ? `(${pending} queued)` : ""}</span>
+        <WifiOff size={15} />
       </button>
     );
   }
@@ -47,21 +48,22 @@ export function SyncStatusBadge() {
     return (
       <div
         className="sync-badge sync-running"
+        title="Syncing with server…"
+        aria-label="Syncing with server"
         style={{
           display: "inline-flex",
           alignItems: "center",
-          gap: "0.35rem",
-          padding: "0.25rem 0.6rem",
-          borderRadius: "999px",
+          justifyContent: "center",
+          width: "2.1rem",
+          height: "2.1rem",
+          borderRadius: "50%",
           background: "#e0f2fe",
           color: "#0369a1",
-          fontSize: "0.75rem",
-          fontWeight: 600,
           border: "1px solid #bae6fd",
+          flexShrink: 0,
         }}
       >
-        <RefreshCw size={14} className="spin" style={{ animation: "spin 1s linear infinite" }} />
-        <span>Syncing...</span>
+        <RefreshCw size={15} className="spin" style={{ animation: "spin 1s linear infinite" }} />
       </div>
     );
   }
@@ -72,23 +74,24 @@ export function SyncStatusBadge() {
         type="button"
         className="sync-badge sync-error"
         onClick={handleSyncClick}
-        title={`Sync error: ${lastError}. Click to retry.`}
+        title={`Sync warning: ${lastError}. ${pending > 0 ? `${pending} queued. ` : ""}Click to retry.`}
+        aria-label="Sync warning"
         style={{
           display: "inline-flex",
           alignItems: "center",
-          gap: "0.35rem",
-          padding: "0.25rem 0.6rem",
-          borderRadius: "999px",
+          justifyContent: "center",
+          width: "2.1rem",
+          height: "2.1rem",
+          borderRadius: "50%",
           background: "#fef3c7",
           color: "#92400e",
-          fontSize: "0.75rem",
-          fontWeight: 600,
           border: "1px solid #fde68a",
           cursor: "pointer",
+          transition: "all 0.15s ease",
+          flexShrink: 0,
         }}
       >
-        <AlertCircle size={14} />
-        <span>Sync Warning ({pending} queued)</span>
+        <AlertCircle size={15} />
       </button>
     );
   }
@@ -98,23 +101,24 @@ export function SyncStatusBadge() {
       type="button"
       className="sync-badge sync-online"
       onClick={handleSyncClick}
-      title={pending > 0 ? `${pending} local changes ready to sync.` : "Synced with cloud database."}
+      title={pending > 0 ? `${pending} local changes ready to sync. Click to sync now.` : "Synced with cloud database. Click to sync."}
+      aria-label={pending > 0 ? `${pending} pending changes` : "Synced with cloud database"}
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: "0.35rem",
-        padding: "0.25rem 0.6rem",
-        borderRadius: "999px",
+        justifyContent: "center",
+        width: "2.1rem",
+        height: "2.1rem",
+        borderRadius: "50%",
         background: pending > 0 ? "#fef9c3" : "#dcfce7",
         color: pending > 0 ? "#854d0e" : "#166534",
-        fontSize: "0.75rem",
-        fontWeight: 600,
         border: pending > 0 ? "1px solid #fef08a" : "1px solid #bbf7d0",
         cursor: "pointer",
+        transition: "all 0.15s ease",
+        flexShrink: 0,
       }}
     >
-      <Wifi size={14} />
-      <span>{pending > 0 ? `${pending} pending` : "Synced"}</span>
+      <Wifi size={15} />
     </button>
   );
 }
