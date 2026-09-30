@@ -318,6 +318,10 @@ export function ReturnsPage() {
             <span>{store?.name ?? "OmniPOS Store"}</span>
             <span>·</span>
             <span>Customer returns, inventory restocking & drawer reconciliation</span>
+            <span>·</span>
+            <span className="dashboard-currency-tag" title="Store operating currency">
+              Currency: <strong>{currency}</strong>
+            </span>
           </div>
         </div>
 

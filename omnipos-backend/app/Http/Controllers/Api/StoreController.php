@@ -28,7 +28,11 @@ class StoreController extends Controller
         $query = Store::with('branches');
 
         if (! $user->is_super_admin) {
-            $query->whereIn('id', $user->memberships()->pluck('store_id'));
+            $memberStoreIds = $user->memberships()->pluck('store_id');
+            $query->where(function ($q) use ($memberStoreIds) {
+                $q->whereIn('id', $memberStoreIds)
+                  ->orWhereIn('parent_store_id', $memberStoreIds);
+            });
         }
 
         return StoreResource::collection($query->orderBy('name')->get());

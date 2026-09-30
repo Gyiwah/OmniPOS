@@ -5,7 +5,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { api } from "@/api/client";
 import { db, type LocalOrder } from "@/db/schema";
-import { toMinor } from "@/features/pos/cart";
+import { getCurrencySymbol, toMinor } from "@/features/pos/cart";
 import { useSession } from "@/state/session";
 import { buildReceipt } from "@/features/printing/receipt";
 import { usePrinter } from "@/features/printing/usePrinter";
@@ -41,15 +41,15 @@ function barcodePattern(value: string) {
 }
 
 function receiptSymbol(currency: string): string {
-  if (currency === "USD") return "$";
-  if (currency === "NGN") return "₦";
-  return "₵";
+  return getCurrencySymbol(currency);
 }
 
 function receiptMoney(minor: number, currency: string): string {
+  const symbol = getCurrencySymbol(currency);
+  const space = symbol.length > 1 ? " " : "";
   const absolute = Math.abs(Math.round(minor));
   const value = `${Math.floor(absolute / 100)}.${String(absolute % 100).padStart(2, "0")}`;
-  return `${receiptSymbol(currency)}${minor < 0 ? "-" : ""}${value}`;
+  return `${symbol}${space}${minor < 0 ? "-" : ""}${value}`;
 }
 
 /**
@@ -247,7 +247,7 @@ export function ReceiptPage() {
           </div>
           <div>
             <span>Status: <strong className="receipt-status">Completed</strong></span>
-            <span>Currency: <strong>{currency}</strong></span>
+            <span>Currency: <strong>{currency} ({receiptSymbol(currency)})</strong></span>
           </div>
         </div>
 
@@ -284,7 +284,7 @@ export function ReceiptPage() {
         </dl>
 
         <div className="receipt-total">
-          <strong>Grand Total</strong>
+          <strong>Grand Total ({currency})</strong>
           <strong>{receiptMoney(toMinor(order.total), currency)}</strong>
         </div>
 

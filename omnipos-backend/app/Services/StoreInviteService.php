@@ -42,6 +42,17 @@ class StoreInviteService
                     ['role' => $invite->role, 'invited_by' => $invite->invited_by],
                 );
 
+                // If this is an admin invite to a parent store, enroll as admin to all existing branches
+                if ($invite->role === StoreMember::ROLE_ADMIN) {
+                    $branches = \App\Models\Store::where('parent_store_id', $invite->store_id)->get();
+                    foreach ($branches as $branch) {
+                        StoreMember::updateOrCreate(
+                            ['store_id' => $branch->id, 'user_id' => $user->id],
+                            ['role' => StoreMember::ROLE_ADMIN, 'invited_by' => $invite->invited_by],
+                        );
+                    }
+                }
+
                 $invite->forceFill([
                     'status' => 'accepted',
                     'accepted_user_id' => $user->id,

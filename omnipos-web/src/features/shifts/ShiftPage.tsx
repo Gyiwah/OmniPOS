@@ -101,6 +101,10 @@ export function ShiftPage() {
             <span>{store?.name ?? "OmniPOS Store"}</span>
             <span>·</span>
             <span>Cash drawer balancing, float reconciliation & shift audit ledger</span>
+            <span>·</span>
+            <span className="dashboard-currency-tag" title="Store operating currency">
+              Currency: <strong>{currency}</strong>
+            </span>
           </div>
         </div>
 

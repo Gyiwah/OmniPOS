@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Store;
+use App\Models\StoreMember;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -46,22 +47,31 @@ class EnsureStoreAccess
         // Load memberships once; User::roleIn and hasStoreRole read the relation.
         $user->loadMissing('memberships');
 
-        if (! $user->is_super_admin && ! $user->isMemberOf($storeId)) {
+        $targetStore = Store::find($storeId);
+        if (! $targetStore) {
+            abort(404, 'Store not found.');
+        }
+
+        // The store admin of the parent store is always an admin of all branches
+        $isParentAdmin = $targetStore->parent_store_id !== null && $user->hasStoreRole($targetStore->parent_store_id, [StoreMember::ROLE_ADMIN]);
+        $isMember = $user->isMemberOf($storeId) || $isParentAdmin;
+
+        if (! $user->is_super_admin && ! $isMember) {
             // 404 rather than 403: confirming that a store exists to a
             // non-member leaks the tenant list.
             abort(404, 'Store not found.');
         }
 
-        if ($roles !== [] && ! $user->hasStoreRole($storeId, $roles)) {
+        $effectiveRole = $user->is_super_admin
+            ? 'super_admin'
+            : ($isParentAdmin ? StoreMember::ROLE_ADMIN : $user->roleIn($storeId));
+
+        if ($roles !== [] && ! $user->is_super_admin && ! in_array($effectiveRole, $roles, true)) {
             abort(403, 'Your role does not permit this action.');
         }
 
-        if (! Store::whereKey($storeId)->exists()) {
-            abort(404, 'Store not found.');
-        }
-
         $request->attributes->set('store_id', $storeId);
-        $request->attributes->set('store_role', $user->is_super_admin ? 'super_admin' : $user->roleIn($storeId));
+        $request->attributes->set('store_role', $effectiveRole);
 
         return $next($request);
     }

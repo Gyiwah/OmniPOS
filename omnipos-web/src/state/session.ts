@@ -20,6 +20,8 @@ export type StoreSummary = {
   tax_rate: string;
   vat_rate: string;
   service_rate: string;
+  parent_store_id?: string | null;
+  is_branch?: boolean;
 };
 
 type SessionState = {
@@ -58,9 +60,31 @@ export const useSession = create<SessionState>()(
       booting: true,
 
       role: () => {
-        const { memberships, storeId, user } = get();
+        const { memberships, storeId, user, store } = get();
         if (user?.is_super_admin) return "super_admin";
-        return memberships.find((m) => m.store_id === storeId)?.role ?? null;
+        const direct = memberships.find((m) => m.store_id === storeId)?.role;
+        if (direct === "admin") return "admin";
+
+        // The store admin of the parent store should always be the admin of all the branches
+        const parentId = store?.parent_store_id;
+        if (parentId) {
+          const parentRole = memberships.find((m) => m.store_id === parentId)?.role;
+          if (parentRole === "admin") return "admin";
+        }
+
+        try {
+          const cached = localStorage.getItem("omnipos_accessible_stores");
+          if (cached) {
+            const stores = JSON.parse(cached) as Array<{ id: string; parent_store_id?: string | null }>;
+            const current = stores.find((s) => s.id === storeId);
+            if (current?.parent_store_id) {
+              const parentRole = memberships.find((m) => m.store_id === current.parent_store_id)?.role;
+              if (parentRole === "admin") return "admin";
+            }
+          }
+        } catch {}
+
+        return direct ?? null;
       },
 
       can: (roles) => {
@@ -120,8 +144,21 @@ export const useSession = create<SessionState>()(
         try {
           const res = await api.get<{ data: StoreSummary }>("/api/store");
           set({ store: res.data });
+          try {
+            localStorage.setItem(`omnipos_store_cache_${storeId}`, JSON.stringify(res.data));
+          } catch {
+            // Ignore storage limits
+          }
         } catch {
-          // Keep the cached store record when offline.
+          // Keep the cached store record when offline, or load from store cache
+          try {
+            const cached = localStorage.getItem(`omnipos_store_cache_${storeId}`);
+            if (cached) {
+              set({ store: JSON.parse(cached) as StoreSummary });
+            }
+          } catch {
+            // Fallback to existing store record
+          }
         }
       },
 

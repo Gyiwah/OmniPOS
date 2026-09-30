@@ -74,11 +74,27 @@ class User extends Authenticatable
      */
     public function roleIn(string $storeId): ?string
     {
+        $directRole = null;
         if ($this->relationLoaded('memberships')) {
-            return $this->memberships->firstWhere('store_id', $storeId)?->role;
+            $directRole = $this->memberships->firstWhere('store_id', $storeId)?->role;
+        } else {
+            $directRole = $this->memberships()->where('store_id', $storeId)->value('role');
         }
 
-        return $this->memberships()->where('store_id', $storeId)->value('role');
+        if ($directRole === StoreMember::ROLE_ADMIN) {
+            return StoreMember::ROLE_ADMIN;
+        }
+
+        // The store admin of the parent store should always be the admin of all the branches
+        $store = Store::find($storeId);
+        if ($store?->parent_store_id !== null) {
+            $parentRole = $this->roleIn($store->parent_store_id);
+            if ($parentRole === StoreMember::ROLE_ADMIN) {
+                return StoreMember::ROLE_ADMIN;
+            }
+        }
+
+        return $directRole;
     }
 
     public function isMemberOf(string $storeId): bool

@@ -8,12 +8,16 @@ import {
   Users,
   Receipt,
   X,
-  CheckCircle,
+  CheckCircle2,
   Building,
+  ArrowRightLeft,
+  Store,
+  WifiOff,
 } from "lucide-react";
 
 import { api } from "@/api/client";
 import { useSession } from "@/state/session";
+import { useSync } from "@/state/sync";
 import { toast } from "@/state/toast";
 
 export type Branch = {
@@ -24,46 +28,115 @@ export type Branch = {
   orders_count: number;
 };
 
+export type StoreItem = {
+  id: string;
+  name: string;
+  is_branch: boolean;
+  parent_store_id: string | null;
+};
+
 const emptyForm = {
   name: "",
   platform_status: "active" as Branch["platform_status"],
+  switchAfterCreate: true,
 };
 
 export function BranchesSettingsTab() {
   const can = useSession((s) => s.can);
   const storeId = useSession((s) => s.storeId);
+  const currentStore = useSession((s) => s.store);
+  const selectStore = useSession((s) => s.selectStore);
+  const isOnline = useSync((s) => s.online);
   const queryClient = useQueryClient();
 
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [switchingId, setSwitchingId] = useState<string | null>(null);
 
   const isAdmin = can(["admin"]);
 
+  // Fetch branches with offline localStorage cache
   const branchesQuery = useQuery({
     queryKey: ["store-branches", storeId],
-    queryFn: async () => (await api.get<{ data: Branch[] }>("/api/store-branches")).data ?? [],
+    queryFn: async () => {
+      try {
+        const res = (await api.get<{ data: Branch[] }>("/api/store-branches")).data ?? [];
+        if (storeId) {
+          localStorage.setItem(`omnipos_branches_${storeId}`, JSON.stringify(res));
+        }
+        return res;
+      } catch (err) {
+        if (storeId) {
+          const cached = localStorage.getItem(`omnipos_branches_${storeId}`);
+          if (cached) return JSON.parse(cached) as Branch[];
+        }
+        throw err;
+      }
+    },
     enabled: Boolean(storeId) && isAdmin,
   });
 
-  const refresh = () => void queryClient.invalidateQueries({ queryKey: ["store-branches"] });
+  // Fetch all stores and branches the user has access to
+  const storesQuery = useQuery({
+    queryKey: ["user-accessible-stores"],
+    queryFn: async () => {
+      try {
+        const res = (await api.get<{ data: StoreItem[] }>("/api/stores")).data ?? [];
+        localStorage.setItem("omnipos_accessible_stores", JSON.stringify(res));
+        return res;
+      } catch (err) {
+        const cached = localStorage.getItem("omnipos_accessible_stores");
+        if (cached) return JSON.parse(cached) as StoreItem[];
+        return [];
+      }
+    },
+    enabled: isAdmin,
+  });
+
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ["store-branches"] });
+    void queryClient.invalidateQueries({ queryKey: ["user-accessible-stores"] });
+  };
+
+  const handleSwitchStore = async (targetId: string, targetName: string) => {
+    if (targetId === storeId) return;
+    setSwitchingId(targetId);
+    try {
+      await selectStore(targetId);
+      toast.success(`Active store switched to "${targetName}".`);
+      await queryClient.invalidateQueries();
+    } catch {
+      toast.error(`Could not switch to store "${targetName}".`);
+    } finally {
+      setSwitchingId(null);
+    }
+  };
 
   const save = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const payload = {
         name: form.name.trim(),
         platform_status: form.platform_status,
       };
-      return editingId
-        ? api.patch(`/api/store-branches/${editingId}`, payload)
-        : api.post("/api/store-branches", payload);
+      if (editingId) {
+        return (await api.patch<{ branch: StoreItem }>(`/api/store-branches/${editingId}`, payload)).branch;
+      }
+      return (await api.post<{ branch: StoreItem }>("/api/store-branches", payload)).branch;
     },
-    onSuccess: () => {
+    onSuccess: async (createdBranch) => {
+      const isNew = !editingId;
+      const shouldSwitch = isNew && form.switchAfterCreate && createdBranch?.id;
+
       setIsModalOpen(false);
       setEditingId(null);
       setForm(emptyForm);
       toast.success(editingId ? "Branch updated successfully." : "New branch added successfully.");
       refresh();
+
+      if (shouldSwitch) {
+        await handleSwitchStore(createdBranch.id, createdBranch.name);
+      }
     },
     onError: (error) => {
       const msg = error instanceof Error ? error.message : "Could not save the branch.";
@@ -86,9 +159,132 @@ export function BranchesSettingsTab() {
   if (!isAdmin) return null;
 
   const branchList = branchesQuery.data ?? [];
+  const allStores = storesQuery.data ?? [];
+  const otherStores = allStores.filter((s) => s.id !== storeId);
 
   return (
     <div className="settings-tab-pane">
+      {!isOnline && (
+        <div
+          className="action-alert-banner alert-warn-theme"
+          role="status"
+          style={{ marginBottom: "1rem" }}
+        >
+          <div className="alert-left-content">
+            <WifiOff size={16} />
+            <span>
+              <strong>Offline Mode:</strong> Branch directory is displayed from local device cache. You can still switch between stores locally.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* --- Store Switcher & Estate Hub Card --- */}
+      {otherStores.length > 0 && (
+        <div className="settings-card" style={{ marginBottom: "1.25rem" }}>
+          <div className="settings-card-header">
+            <div className="settings-title-group">
+              <div className="settings-icon-badge" style={{ background: "rgba(7, 103, 222, 0.12)", color: "#0767de" }}>
+                <Store size={20} aria-hidden="true" />
+              </div>
+              <div>
+                <h2 className="settings-card-heading">Switch Active Store Location</h2>
+                <p className="settings-card-subheading">
+                  Quickly switch active workspace context between organization stores and branch outlets
+                </p>
+              </div>
+            </div>
+
+            <span className="settings-pill-badge badge-admin">
+              Currently: <strong>{currentStore?.name ?? "Active Store"}</strong>
+            </span>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+              gap: "0.75rem",
+              marginTop: "0.5rem",
+            }}
+          >
+            {allStores.map((st) => {
+              const isCurrent = st.id === storeId;
+              const isSwitching = switchingId === st.id;
+
+              return (
+                <div
+                  key={st.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "0.75rem 1rem",
+                    borderRadius: "var(--radius-sm)",
+                    border: isCurrent ? "2px solid var(--accent)" : "1px solid var(--line)",
+                    background: isCurrent ? "var(--accent-soft)" : "var(--panel-2)",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", minWidth: 0 }}>
+                    <Building size={16} color={isCurrent ? "var(--accent-text)" : "var(--muted)"} />
+                    <div style={{ display: "grid", gap: "0.1rem", minWidth: 0 }}>
+                      <strong
+                        style={{
+                          fontSize: "0.85rem",
+                          color: isCurrent ? "var(--accent-text)" : "var(--text-strong)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {st.name}
+                      </strong>
+                      <small style={{ color: "var(--muted)", fontSize: "0.7rem" }}>
+                        {st.is_branch ? "Branch Outlet" : "Primary Organization"}
+                      </small>
+                    </div>
+                  </div>
+
+                  {isCurrent ? (
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.25rem",
+                        fontSize: "0.72rem",
+                        fontWeight: 700,
+                        color: "var(--ok)",
+                      }}
+                    >
+                      <CheckCircle2 size={14} /> Active
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="category-action-btn"
+                      style={{
+                        padding: "0.3rem 0.65rem",
+                        gap: "0.3rem",
+                        color: "var(--accent-text)",
+                        border: "1px solid var(--line-strong)",
+                      }}
+                      disabled={isSwitching}
+                      onClick={() => handleSwitchStore(st.id, st.name)}
+                      title={`Switch active till context to ${st.name}`}
+                    >
+                      <ArrowRightLeft size={13} />
+                      <span>{isSwitching ? "Switching…" : "Switch"}</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* --- Main Multi-Location Branches Card --- */}
       <div className="settings-card">
         <div className="settings-card-header">
           <div className="settings-title-group">
@@ -98,7 +294,7 @@ export function BranchesSettingsTab() {
             <div>
               <h2 className="settings-card-heading">Multi-Location Branches</h2>
               <p className="settings-card-subheading">
-                Configure physical branch outlets, warehouses, and till distribution locations
+                Configure physical branch outlets, warehouses, and till distribution locations attached to this store
               </p>
             </div>
           </div>
@@ -118,7 +314,7 @@ export function BranchesSettingsTab() {
         </div>
 
         {/* Branches Grid */}
-        {branchesQuery.isLoading ? (
+        {branchesQuery.isLoading && !branchesQuery.data ? (
           <p className="muted" style={{ padding: "1rem" }}>
             Loading store branches…
           </p>
@@ -133,6 +329,8 @@ export function BranchesSettingsTab() {
         ) : (
           <div className="branches-grid">
             {branchList.map((branch) => {
+              const isCurrent = branch.id === storeId;
+              const isSwitching = switchingId === branch.id;
               const statusClass =
                 branch.platform_status === "active"
                   ? "status-active"
@@ -141,7 +339,13 @@ export function BranchesSettingsTab() {
                     : "status-inactive";
 
               return (
-                <div key={branch.id} className="branch-card">
+                <div
+                  key={branch.id}
+                  className="branch-card"
+                  style={{
+                    border: isCurrent ? "2px solid var(--accent)" : undefined,
+                  }}
+                >
                   <div className="branch-card-top">
                     <div style={{ display: "flex", alignItems: "center", gap: "0.55rem" }}>
                       <Building size={18} color="var(--accent-text)" />
@@ -171,6 +375,40 @@ export function BranchesSettingsTab() {
                   </div>
 
                   <div className="branch-card-footer">
+                    {isCurrent ? (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.25rem",
+                          fontSize: "0.74rem",
+                          fontWeight: 700,
+                          color: "var(--ok)",
+                          marginRight: "auto",
+                        }}
+                      >
+                        <CheckCircle2 size={14} /> Active Store
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="category-action-btn"
+                        style={{
+                          padding: "0.35rem 0.75rem",
+                          gap: "0.35rem",
+                          color: "var(--accent-text)",
+                          border: "1px solid var(--line-strong)",
+                          marginRight: "auto",
+                        }}
+                        disabled={isSwitching}
+                        onClick={() => handleSwitchStore(branch.id, branch.name)}
+                        title={`Switch active session to ${branch.name}`}
+                      >
+                        <ArrowRightLeft size={13} />
+                        <span>{isSwitching ? "Switching…" : "Switch to Branch"}</span>
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       className="category-action-btn"
@@ -180,6 +418,7 @@ export function BranchesSettingsTab() {
                         setForm({
                           name: branch.name,
                           platform_status: branch.platform_status,
+                          switchAfterCreate: false,
                         });
                         setIsModalOpen(true);
                       }}
@@ -190,7 +429,7 @@ export function BranchesSettingsTab() {
                       type="button"
                       className="category-action-btn btn-danger"
                       title="Delete Branch"
-                      disabled={remove.isPending}
+                      disabled={remove.isPending || !isOnline}
                       onClick={() => {
                         if (window.confirm(`Delete branch outlet "${branch.name}"?`)) {
                           remove.mutate(branch.id);
@@ -273,6 +512,17 @@ export function BranchesSettingsTab() {
                 </select>
               </div>
 
+              {!editingId && (
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.82rem", cursor: "pointer", color: "var(--text-strong)" }}>
+                  <input
+                    type="checkbox"
+                    checked={form.switchAfterCreate}
+                    onChange={(e) => setForm({ ...form, switchAfterCreate: e.target.checked })}
+                  />
+                  <span>Switch to this branch immediately after creation</span>
+                </label>
+              )}
+
               <div className="modal-actions" style={{ marginTop: "0.5rem" }}>
                 <button
                   type="button"
@@ -284,9 +534,9 @@ export function BranchesSettingsTab() {
                 <button
                   type="submit"
                   className="settings-btn-primary"
-                  disabled={save.isPending || !form.name.trim()}
+                  disabled={save.isPending || !form.name.trim() || !isOnline}
                 >
-                  <CheckCircle size={15} />
+                  <CheckCircle2 size={15} />
                   <span>{save.isPending ? "Saving…" : editingId ? "Save Branch" : "Add Branch"}</span>
                 </button>
               </div>

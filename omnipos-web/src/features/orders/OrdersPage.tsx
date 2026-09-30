@@ -296,6 +296,10 @@ export function OrdersPage() {
           </h1>
           <div className="dashboard-clock-row">
             <span>Historical checkout transactions, audit logs, and tender breakdowns</span>
+            <span>·</span>
+            <span className="dashboard-currency-tag" title="Store operating currency">
+              Currency: <strong>{currency}</strong>
+            </span>
           </div>
         </div>
 

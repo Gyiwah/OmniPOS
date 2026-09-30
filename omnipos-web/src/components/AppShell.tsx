@@ -1,4 +1,6 @@
+import { useMemo } from "react";
 import { NavLink } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeftRight,
   BarChart3,
@@ -17,6 +19,8 @@ import {
   Users,
 } from "lucide-react";
 
+import { api } from "@/api/client";
+import { getCurrencySymbol } from "@/features/pos/cart";
 import { PLATFORM_GROUPS } from "@/features/superAdmin/platformNav";
 import { useSession } from "@/state/session";
 import { useSync } from "@/state/sync";
@@ -24,6 +28,13 @@ import { nextThemeLabel, useTheme } from "@/state/theme";
 import { SyncStatusBadge } from "./SyncStatusBadge";
 
 import { ToastContainer } from "./ToastContainer";
+
+type AccessibleStoreItem = {
+  id: string;
+  name: string;
+  is_branch?: boolean;
+  parent_store_id?: string | null;
+};
 
 const NAV = [
   { to: "/", label: "Till", icon: ShoppingCart, end: true },
@@ -60,33 +71,89 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const cycleTheme = useTheme((s) => s.cycle);
   const ThemeIcon = THEME_ICON[themeChoice];
 
+  // Fetch accessible stores (including branch stores) and cache for offline switching
+  const storesQuery = useQuery({
+    queryKey: ["user-accessible-stores"],
+    queryFn: async () => {
+      try {
+        const res = (await api.get<{ data: AccessibleStoreItem[] }>("/api/stores")).data ?? [];
+        localStorage.setItem("omnipos_accessible_stores", JSON.stringify(res));
+        return res;
+      } catch (err) {
+        const cached = localStorage.getItem("omnipos_accessible_stores");
+        if (cached) {
+          try {
+            return JSON.parse(cached) as AccessibleStoreItem[];
+          } catch {}
+        }
+        return [];
+      }
+    },
+    enabled: Boolean(user),
+  });
+
+  const availableStores = useMemo(() => {
+    const list: AccessibleStoreItem[] = [...(storesQuery.data ?? [])];
+    if (list.length === 0) {
+      const cached = localStorage.getItem("omnipos_accessible_stores");
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached) as AccessibleStoreItem[];
+          if (parsed.length > 0) list.push(...parsed);
+        } catch {}
+      }
+    }
+    // Ensure active store is present
+    if (store && !list.some((s) => s.id === store.id)) {
+      list.unshift({ id: store.id, name: store.name, is_branch: false, parent_store_id: null });
+    }
+    // Fallback synthesis from memberships if list is still empty
+    if (list.length === 0 && memberships.length > 0) {
+      return memberships.map((m) => ({
+        id: m.store_id,
+        name: m.store_id === storeId && store ? store.name : `Store #${m.store_id.slice(0, 8)}`,
+        is_branch: false,
+        parent_store_id: null,
+      }));
+    }
+    return list;
+  }, [storesQuery.data, store, storeId, memberships]);
+
   return (
     <div className={`shell${isSuperAdmin ? " shell-platform" : ""}`}>
       <header className="shell-header">
         <div className="brand">
-          <img src="/android-chrome-192x192.png" alt="OmniPOS" className="brand-image" />
-          <strong>OmniPOS</strong>
+          <div className="brand-identity">
+            <img src="/android-chrome-192x192.png" alt="OmniPOS" className="brand-image" />
+            <div className="brand-text-row">
+              <strong>OmniPOS</strong>
+              {store?.currency && (
+                <span className="shell-currency-pill" title={`Store operating currency: ${store.currency}`}>
+                  <span className="pill-sym">{getCurrencySymbol(store.currency)}</span>
+                  <span className="pill-code">{store.currency}</span>
+                </span>
+              )}
+            </div>
+          </div>
           {/*
-            One store is the normal case and a dropdown for a single option is
-            just noise, so the picker only appears for someone who actually
-            belongs to more than one. Switching wipes local data, because a
-            catalogue and a stock figure belong to exactly one shop.
+            Allow switching between all accessible stores and branches with real names.
+            Works smoothly offline via cached store metadata.
           */}
-          {memberships.length > 1 ? (
+          {availableStores.length > 1 ? (
             <select
               className="store-picker"
               aria-label="Active store"
               value={storeId ?? ""}
               onChange={(e) => void selectStore(e.target.value)}
             >
-              {memberships.map((m) => (
-                <option key={m.store_id} value={m.store_id}>
-                  {m.store_id === storeId && store ? store.name : m.store_id.slice(0, 8)}
+              {availableStores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}{s.is_branch ? " (Branch)" : ""}
                 </option>
               ))}
             </select>
           ) : (
-            store && <span className="muted">{store.name}</span>
+            store && <span className="muted brand-store-name">{store.name}</span>
           )}
         </div>
 

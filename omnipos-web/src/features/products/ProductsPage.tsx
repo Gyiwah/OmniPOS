@@ -178,7 +178,7 @@ export function ProductsPage() {
       <header className="inventory-header">
         <div>
           <h1><Package size={20} aria-hidden="true" /> Inventory</h1>
-          <p>Stock catalog, batch tracking &amp; exports</p>
+          <p>Stock catalog, batch tracking &amp; exports · Currency: <strong>{currency}</strong></p>
         </div>
         <div className="inventory-header-actions">
           <button type="button" className="inventory-icon-button" disabled={rows.length === 0} onClick={() => exportInventoryCsv(rows, storeName, currency)} aria-label="Export or print inventory" title="Export inventory">

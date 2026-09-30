@@ -13,6 +13,7 @@ import {
   RefreshCw,
   AlertTriangle,
   Store,
+  WifiOff,
 } from "lucide-react";
 
 import { api, ApiError } from "@/api/client";
@@ -74,7 +75,42 @@ export function SettingsPage() {
 
   const { data, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ["store-settings", storeId],
-    queryFn: async () => (await api.get<{ data: StoreSettings }>("/api/store")).data,
+    queryFn: async () => {
+      try {
+        const res = (await api.get<{ data: StoreSettings }>("/api/store")).data;
+        if (storeId && res) {
+          localStorage.setItem(`omnipos_store_settings_${storeId}`, JSON.stringify(res));
+        }
+        return res;
+      } catch (err) {
+        // Offline resilience: load from localStorage cache
+        if (storeId) {
+          const cached = localStorage.getItem(`omnipos_store_settings_${storeId}`);
+          if (cached) {
+            try {
+              return JSON.parse(cached) as StoreSettings;
+            } catch {
+              // Ignore parse error
+            }
+          }
+        }
+        // Fallback from session store
+        if (store) {
+          return {
+            id: store.id,
+            name: store.name,
+            email: null,
+            currency: store.currency || "GHS",
+            timezone: "Africa/Accra",
+            tax_profile: "standard",
+            tax_rate: store.tax_rate ?? "0",
+            vat_rate: store.vat_rate ?? "0",
+            service_rate: store.service_rate ?? "0",
+          } as StoreSettings;
+        }
+        throw err;
+      }
+    },
     enabled: Boolean(storeId) && hasAccess,
   });
 
@@ -117,8 +153,8 @@ export function SettingsPage() {
     );
   }
 
-  // Server Unreachable or Error State
-  if (error || !data) {
+  // Server Unreachable with zero cache
+  if (error && !data) {
     const offline = error instanceof ApiError && error.isUnreachable;
 
     return (
@@ -177,6 +213,24 @@ export function SettingsPage() {
 
   return (
     <div className="settings-root">
+      {!syncOnline && (
+        <div
+          className="action-alert-banner alert-warn-theme"
+          role="status"
+          style={{ marginBottom: "1rem" }}
+        >
+          <div className="alert-left-content">
+            <WifiOff size={16} />
+            <div className="alert-text-stack">
+              <strong>Offline Mode Active:</strong>
+              <small>
+                Store settings, hardware printer, categories, and branch profiles are loaded from local cache. Configuration changes will sync once connection is restored.
+              </small>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* --- Executive Hero Strip --- */}
       <section className="settings-hero-card">
         <div className="settings-store-identity">
@@ -185,12 +239,12 @@ export function SettingsPage() {
           </div>
           <div className="settings-store-meta">
             <h1 className="settings-store-heading">
-              <span>{data.name || "Store Configuration"}</span>
+              <span>{data?.name || store?.name || "Store Configuration"}</span>
             </h1>
             <div className="settings-store-sub">
               <span className={`settings-pill-badge ${isAdmin ? "badge-admin" : "badge-manager"}`}>
                 <ShieldCheck size={12} />
-                {isAdmin ? "Administrator Clearance" : "Store Manager"}
+                {isAdmin ? "Administrators Clearance" : "Store Manager"}
               </span>
               <span>·</span>
               <span className="live-pulse-badge">
@@ -204,17 +258,13 @@ export function SettingsPage() {
 
         <div className="settings-hero-stats">
           <div className="settings-quick-chip">
-            <strong>{data.currency || "USD"}</strong>
+            <strong>{data?.currency || store?.currency || "GHS"}</strong>
             <span>Active Currency</span>
           </div>
           <div className="settings-quick-chip">
-            <strong>{data.timezone || "UTC"}</strong>
+            <strong>{data?.timezone || "Africa/Accra"}</strong>
             <span>Operating Timezone</span>
           </div>
-          <Link to="/" className="hero-btn-secondary" title="Open POS Till Checkout">
-            <ArrowLeft size={14} />
-            <span>Till Register</span>
-          </Link>
         </div>
       </section>
 
@@ -241,7 +291,7 @@ export function SettingsPage() {
       </nav>
 
       {/* --- Active Tab Panes --- */}
-      {activeTab === "store" && (
+      {activeTab === "store" && data && (
         <StoreSettingsTab settings={data} canEdit={isAdmin} />
       )}
 

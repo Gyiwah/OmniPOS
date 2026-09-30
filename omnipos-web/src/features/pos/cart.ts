@@ -49,6 +49,36 @@ export function toMinor(value: string | number | null | undefined): number {
   return Math.round(Number.parseFloat(cleaned) * 100);
 }
 
+import { useSession } from "@/state/session";
+
+export const CURRENCY_SYMBOLS: Record<string, string> = {
+  GHS: "GH₵",
+  USD: "$",
+  EUR: "€",
+  GBP: "£",
+  NGN: "₦",
+  KES: "KSh",
+  ZAR: "R",
+  CAD: "CA$",
+  AUD: "A$",
+  TZS: "TSh",
+  UGX: "USh",
+  RWF: "FRw",
+  XOF: "CFA",
+  XAF: "FCFA",
+  INR: "₹",
+  CNY: "¥",
+  JPY: "¥",
+  AED: "AED",
+  SAR: "SAR",
+};
+
+export function getCurrencySymbol(currency?: string): string {
+  if (!currency) return "GH₵";
+  const upper = currency.toUpperCase();
+  return CURRENCY_SYMBOLS[upper] ?? upper;
+}
+
 /** 1250 -> "12.50". */
 export function toDecimal(minor: number): string {
   const sign = minor < 0 ? "-" : "";
@@ -56,8 +86,25 @@ export function toDecimal(minor: number): string {
   return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
 }
 
-export function formatMoney(minor: number, currency = "GHS"): string {
-  return `${currency} ${toDecimal(minor)}`;
+export function formatMoney(minor: number, currency?: string): string {
+  const activeCurrency =
+    currency ||
+    (typeof window !== "undefined" ? useSession.getState().store?.currency : undefined) ||
+    "GHS";
+  return `${activeCurrency} ${toDecimal(minor)}`;
+}
+
+export function formatMoneyWithSymbol(minor: number, currency?: string): string {
+  const activeCurrency =
+    currency ||
+    (typeof window !== "undefined" ? useSession.getState().store?.currency : undefined) ||
+    "GHS";
+  const sym = getCurrencySymbol(activeCurrency);
+  const space = sym.length > 1 ? " " : "";
+  const sign = minor < 0 ? "-" : "";
+  const abs = Math.abs(Math.round(minor));
+  const decimal = `${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
+  return `${sym}${space}${sign}${decimal}`;
 }
 
 export function lineTotal(line: CartLine): number {

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Store;
+use App\Models\StoreMember;
 use App\Models\User;
 use App\Services\StoreInviteService;
 use Illuminate\Http\JsonResponse;
@@ -153,6 +155,34 @@ class AuthController extends Controller
     /** @return array<string, mixed> */
     private function profilePayload(User $user): array
     {
+        $user->loadMissing('memberships');
+
+        $membershipsMap = [];
+        foreach ($user->memberships as $m) {
+            $membershipsMap[$m->store_id] = [
+                'store_id' => $m->store_id,
+                'role' => $m->role,
+            ];
+        }
+
+        // The store admin of the parent store should always be the admin of all the branches
+        $adminParentStoreIds = [];
+        foreach ($membershipsMap as $storeId => $data) {
+            if ($data['role'] === StoreMember::ROLE_ADMIN) {
+                $adminParentStoreIds[] = $storeId;
+            }
+        }
+
+        if (! empty($adminParentStoreIds)) {
+            $branches = Store::whereIn('parent_store_id', $adminParentStoreIds)->pluck('id');
+            foreach ($branches as $branchId) {
+                $membershipsMap[$branchId] = [
+                    'store_id' => $branchId,
+                    'role' => StoreMember::ROLE_ADMIN,
+                ];
+            }
+        }
+
         return [
             'user' => [
                 'id' => $user->id,
@@ -161,10 +191,7 @@ class AuthController extends Controller
                 'avatar_url' => $user->avatar_url,
                 'is_super_admin' => $user->is_super_admin,
             ],
-            'memberships' => $user->memberships->map(fn ($m) => [
-                'store_id' => $m->store_id,
-                'role' => $m->role,
-            ])->values(),
+            'memberships' => array_values($membershipsMap),
         ];
     }
 

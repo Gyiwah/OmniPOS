@@ -35,8 +35,31 @@ class StoreMemberController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
+        $storeId = $this->storeId($request);
+        $store = Store::find($storeId);
+
+        // If the current store is a branch, all parent store admins must be admins of this branch
+        if ($store?->parent_store_id !== null) {
+            $parentAdminUserIds = StoreMember::where('store_id', $store->parent_store_id)
+                ->where('role', StoreMember::ROLE_ADMIN)
+                ->pluck('user_id');
+
+            if ($store->owner_user_id) {
+                $parentAdminUserIds->push($store->owner_user_id);
+            }
+
+            foreach ($parentAdminUserIds->unique()->filter() as $adminUserId) {
+                StoreMember::firstOrCreate([
+                    'store_id' => $storeId,
+                    'user_id' => $adminUserId,
+                ], [
+                    'role' => StoreMember::ROLE_ADMIN,
+                ]);
+            }
+        }
+
         return StoreMemberResource::collection(
-            StoreMember::where('store_id', $this->storeId($request))
+            StoreMember::where('store_id', $storeId)
                 ->with('user:id,name,email')
                 ->get()
         );
@@ -73,6 +96,20 @@ class StoreMemberController extends Controller
             'role' => $data['role'],
             'invited_by' => $request->user()->id,
         ]);
+
+        // If granted admin on a parent store, enroll as admin to all existing branches
+        if ($data['role'] === StoreMember::ROLE_ADMIN) {
+            $branches = Store::where('parent_store_id', $storeId)->get();
+            foreach ($branches as $branch) {
+                StoreMember::firstOrCreate([
+                    'store_id' => $branch->id,
+                    'user_id' => $user->id,
+                ], [
+                    'role' => StoreMember::ROLE_ADMIN,
+                    'invited_by' => $request->user()->id,
+                ]);
+            }
+        }
 
         AuditLog::create([
             'store_id' => $storeId,
@@ -118,14 +155,37 @@ class StoreMemberController extends Controller
             'platform_status' => ['sometimes', Rule::in(['active', 'suspended', 'inactive'])],
         ]);
 
-        $branch = Store::create([
-            ...$data,
-            'parent_store_id' => $parent->id,
-            'owner_user_id' => $parent->owner_user_id ?? $request->user()->id,
-            'currency' => $parent->currency,
-            'timezone' => $parent->timezone,
-            'platform_status' => $data['platform_status'] ?? 'active',
-        ]);
+        $branch = \Illuminate\Support\Facades\DB::transaction(function () use ($data, $parent, $request) {
+            $branch = Store::create([
+                ...$data,
+                'parent_store_id' => $parent->id,
+                'owner_user_id' => $parent->owner_user_id ?? $request->user()->id,
+                'currency' => $parent->currency,
+                'timezone' => $parent->timezone,
+                'platform_status' => $data['platform_status'] ?? 'active',
+            ]);
+
+            // All admins of the parent store are always admins of all branches
+            $parentAdminUserIds = StoreMember::where('store_id', $parent->id)
+                ->where('role', StoreMember::ROLE_ADMIN)
+                ->pluck('user_id')
+                ->push($request->user()->id);
+
+            if ($parent->owner_user_id) {
+                $parentAdminUserIds->push($parent->owner_user_id);
+            }
+
+            foreach ($parentAdminUserIds->unique()->filter() as $adminUserId) {
+                StoreMember::firstOrCreate([
+                    'store_id' => $branch->id,
+                    'user_id' => $adminUserId,
+                ], [
+                    'role' => StoreMember::ROLE_ADMIN,
+                ]);
+            }
+
+            return $branch;
+        });
 
         $this->audit($request, 'staff.branch_created', $branch, null, $branch->only(['name', 'parent_store_id', 'platform_status']));
 
@@ -178,12 +238,39 @@ class StoreMemberController extends Controller
 
         $this->assertMayGrant($request, $data['role']);
 
+        $store = Store::find($storeId);
+        if ($store?->parent_store_id !== null && $data['role'] !== StoreMember::ROLE_ADMIN) {
+            $isParentAdmin = StoreMember::where('store_id', $store->parent_store_id)
+                ->where('user_id', $model->user_id)
+                ->where('role', StoreMember::ROLE_ADMIN)
+                ->exists();
+            abort_if(
+                $isParentAdmin,
+                422,
+                'This member is an administrator of the parent store and must remain an administrator of all branches.'
+            );
+        }
+
         if ($model->role === StoreMember::ROLE_ADMIN && $data['role'] !== StoreMember::ROLE_ADMIN) {
             $this->assertNotLastAdmin($storeId, $model);
         }
 
         $before = $model->role;
         $model->update($data);
+
+        // If promoted to admin in a parent store, enroll as admin to all child branches
+        if ($data['role'] === StoreMember::ROLE_ADMIN) {
+            $branches = Store::where('parent_store_id', $storeId)->get();
+            foreach ($branches as $branch) {
+                StoreMember::firstOrCreate([
+                    'store_id' => $branch->id,
+                    'user_id' => $model->user_id,
+                ], [
+                    'role' => StoreMember::ROLE_ADMIN,
+                    'invited_by' => $request->user()->id,
+                ]);
+            }
+        }
 
         AuditLog::create([
             'store_id' => $storeId,
@@ -216,6 +303,19 @@ class StoreMemberController extends Controller
             403,
             'Only an admin can remove staff.'
         );
+
+        $store = Store::find($storeId);
+        if ($store?->parent_store_id !== null) {
+            $isParentAdmin = StoreMember::where('store_id', $store->parent_store_id)
+                ->where('user_id', $model->user_id)
+                ->where('role', StoreMember::ROLE_ADMIN)
+                ->exists();
+            abort_if(
+                $isParentAdmin,
+                422,
+                'This member is an administrator of the parent store and cannot be removed from this branch. Manage their role in the parent store settings.'
+            );
+        }
 
         $this->assertNotLastAdmin($storeId, $model);
 

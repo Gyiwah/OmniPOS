@@ -64,6 +64,10 @@ export function ReportsPage() {
             <span>{store?.name ?? "OmniPOS Store"}</span>
             <span>·</span>
             <span>Multi-terminal store reporting and performance analytics</span>
+            <span>·</span>
+            <span className="dashboard-currency-tag" title="Store operating currency">
+              Currency: <strong>{store?.currency ?? "GHS"}</strong>
+            </span>
           </div>
         </div>
 

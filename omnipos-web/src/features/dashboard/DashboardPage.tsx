@@ -399,6 +399,10 @@ export function DashboardPage() {
             </span>
             <span>·</span>
             <span>{store?.name ?? "OmniPOS Store"}</span>
+            <span>·</span>
+            <span className="dashboard-currency-tag" title="Store operating currency">
+              Currency: <strong>{currency}</strong>
+            </span>
           </div>
         </div>
 
@@ -455,6 +459,9 @@ export function DashboardPage() {
               <span className="live-pulse-badge">
                 <i className="live-pulse-dot" />
                 {syncState.online ? "Store Live & Syncing" : "Offline Mode"}
+              </span>
+              <span className="dashboard-currency-tag" title="Store operating currency">
+                Currency: <strong>{currency}</strong>
               </span>
               {syncState.pending > 0 && (
                 <span className="shift-badge-active" style={{ background: "var(--cta-soft)", color: "var(--cta)" }}>

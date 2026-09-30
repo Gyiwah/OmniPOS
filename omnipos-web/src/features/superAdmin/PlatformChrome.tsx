@@ -3,6 +3,7 @@ import { CheckCircle2, Search, ShieldCheck, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { useSession } from "@/state/session";
+import "./superAdmin.css";
 
 export function usePlatformAccess() {
   return useSession((s) => s.user?.is_super_admin ?? false);

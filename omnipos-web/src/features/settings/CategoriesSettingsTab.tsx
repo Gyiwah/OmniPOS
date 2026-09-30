@@ -10,11 +10,13 @@ import {
   X,
   Layers,
   Sparkles,
+  WifiOff,
 } from "lucide-react";
 
 import { api } from "@/api/client";
 import { db } from "@/db/schema";
 import { useSession } from "@/state/session";
+import { useSync } from "@/state/sync";
 import { toast } from "@/state/toast";
 
 export type Category = {
@@ -38,6 +40,7 @@ const PALETTE = [
 export function CategoriesSettingsTab() {
   const can = useSession((s) => s.can);
   const storeId = useSession((s) => s.storeId);
+  const isOnline = useSync((s) => s.online);
   const queryClient = useQueryClient();
 
   const [newName, setNewName] = useState("");
@@ -46,12 +49,6 @@ export function CategoriesSettingsTab() {
   const [editName, setEditName] = useState("");
 
   const mayManage = can(["admin", "manager"]);
-
-  const categoriesQuery = useQuery({
-    queryKey: ["categories", storeId],
-    queryFn: async () => (await api.get<{ data: Category[] }>("/api/categories")).data ?? [],
-    enabled: Boolean(storeId) && mayManage,
-  });
 
   const syncLocal = async (rows: Category[]) => {
     if (!storeId) return;
@@ -69,12 +66,41 @@ export function CategoriesSettingsTab() {
     });
   };
 
+  const categoriesQuery = useQuery({
+    queryKey: ["categories", storeId],
+    queryFn: async () => {
+      try {
+        const res = (await api.get<{ data: Category[] }>("/api/categories")).data ?? [];
+        await syncLocal(res);
+        return res;
+      } catch (err) {
+        if (storeId) {
+          const cached = await db.categories.where("store_id").equals(storeId).toArray();
+          if (cached.length > 0) {
+            return cached.map((c) => ({
+              id: c.id,
+              name: c.name,
+              color: c.color,
+              position: c.position,
+            }));
+          }
+        }
+        throw err;
+      }
+    },
+    enabled: Boolean(storeId) && mayManage,
+  });
+
   const refresh = async () => {
-    const res = await queryClient.fetchQuery({
-      queryKey: ["categories", storeId],
-      queryFn: async () => (await api.get<{ data: Category[] }>("/api/categories")).data ?? [],
-    });
-    await syncLocal(res);
+    try {
+      const res = await queryClient.fetchQuery({
+        queryKey: ["categories", storeId],
+        queryFn: async () => (await api.get<{ data: Category[] }>("/api/categories")).data ?? [],
+      });
+      await syncLocal(res);
+    } catch {
+      await queryClient.invalidateQueries({ queryKey: ["categories", storeId] });
+    }
   };
 
   const fail = (e: unknown) => {
@@ -143,9 +169,16 @@ export function CategoriesSettingsTab() {
               </p>
             </div>
           </div>
-          <span className="settings-pill-badge">
-            <Layers size={13} /> {rawList.length} Categories Active
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            {!isOnline && (
+              <span className="badge badge-warning" style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", padding: "0.3rem 0.6rem", fontSize: "0.75rem", fontWeight: 600 }}>
+                <WifiOff size={12} /> Offline (Local)
+              </span>
+            )}
+            <span className="settings-pill-badge">
+              <Layers size={13} /> {rawList.length} Categories Active
+            </span>
+          </div>
         </div>
 
         {/* Toolbar & Filter */}

@@ -13,10 +13,12 @@ import {
   User,
   X,
   CheckCircle,
+  WifiOff,
 } from "lucide-react";
 
 import { api } from "@/api/client";
 import { useSession } from "@/state/session";
+import { useSync } from "@/state/sync";
 import { toast } from "@/state/toast";
 
 export type Member = {
@@ -59,7 +61,11 @@ export function StaffSettingsTab() {
   const can = useSession((s) => s.can);
   const currentUserId = useSession((s) => s.user?.id);
   const storeId = useSession((s) => s.storeId);
+  const store = useSession((s) => s.store);
+  const isOnline = useSync((s) => s.online);
   const queryClient = useQueryClient();
+
+  const isBranch = Boolean(store?.is_branch || store?.parent_store_id);
 
   const [activeSubTab, setActiveSubTab] = useState<"members" | "invites">("members");
   const [showAddModal, setShowAddModal] = useState(false);
@@ -77,13 +83,49 @@ export function StaffSettingsTab() {
 
   const membersQuery = useQuery({
     queryKey: ["store-members", storeId],
-    queryFn: async () => (await api.get<{ data: Member[] }>("/api/store-members")).data ?? [],
+    queryFn: async () => {
+      try {
+        const res = (await api.get<{ data: Member[] }>("/api/store-members")).data ?? [];
+        if (storeId) {
+          localStorage.setItem(`omnipos_store_members_${storeId}`, JSON.stringify(res));
+        }
+        return res;
+      } catch (err) {
+        if (storeId) {
+          const cached = localStorage.getItem(`omnipos_store_members_${storeId}`);
+          if (cached) {
+            try {
+              return JSON.parse(cached) as Member[];
+            } catch {}
+          }
+        }
+        throw err;
+      }
+    },
     enabled: Boolean(storeId) && mayManage,
   });
 
   const invitesQuery = useQuery({
     queryKey: ["store-invites", storeId],
-    queryFn: async () => (await api.get<{ data: Invite[] }>("/api/store-invites")).data ?? [],
+    queryFn: async () => {
+      try {
+        const res = (await api.get<{ data: Invite[] }>("/api/store-invites")).data ?? [];
+        if (storeId) {
+          localStorage.setItem(`omnipos_store_invites_${storeId}`, JSON.stringify(res));
+        }
+        return res;
+      } catch (err) {
+        if (storeId) {
+          const cached = localStorage.getItem(`omnipos_store_invites_${storeId}`);
+          if (cached) {
+            try {
+              return JSON.parse(cached) as Invite[];
+            } catch {}
+          }
+        }
+        return [];
+      }
+    },
     enabled: Boolean(storeId) && mayManage,
   });
 
@@ -180,14 +222,27 @@ export function StaffSettingsTab() {
             </div>
           </div>
 
-          <button
-            type="button"
-            className="settings-btn-primary"
-            onClick={() => setShowAddModal(true)}
-          >
-            <UserPlus size={16} />
-            <span>Add Team Member</span>
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            {!isOnline && (
+              <span className="badge badge-warning" style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", padding: "0.35rem 0.65rem", fontSize: "0.75rem", fontWeight: 600 }}>
+                <WifiOff size={12} /> Offline (Cached Roster)
+              </span>
+            )}
+            <button
+              type="button"
+              className="settings-btn-primary"
+              onClick={() => {
+                if (!isOnline) {
+                  toast.error("Adding staff members requires an active server connection.");
+                  return;
+                }
+                setShowAddModal(true);
+              }}
+            >
+              <UserPlus size={16} />
+              <span>Add Team Member</span>
+            </button>
+          </div>
         </div>
 
         {/* Segmented Sub Tabs */}
@@ -236,6 +291,7 @@ export function StaffSettingsTab() {
 
                 const roleMeta = ROLE_COLORS[m.role] ?? ROLE_COLORS.cashier;
                 const isYou = m.user_id === currentUserId;
+                const isParentAdminInherited = isBranch && m.role === "admin";
 
                 return (
                   <div key={m.id} className="staff-roster-row">
@@ -251,6 +307,11 @@ export function StaffSettingsTab() {
                         <div className="staff-user-name">
                           <span>{m.name || "Unnamed Staff Member"}</span>
                           {isYou && <span className="you-pill">You</span>}
+                          {isParentAdminInherited && (
+                            <span className="badge badge-info" style={{ fontSize: "0.68rem", padding: "0.15rem 0.45rem", fontWeight: 600 }}>
+                              Parent Store Admin
+                            </span>
+                          )}
                         </div>
                         <span className="staff-user-email">{m.email ?? "—"}</span>
                       </div>
@@ -261,12 +322,14 @@ export function StaffSettingsTab() {
                         className="role-select"
                         value={m.role}
                         aria-label={`Role for ${m.name ?? m.email ?? "member"}`}
-                        disabled={changeRole.isPending || !isAdmin}
+                        disabled={changeRole.isPending || !isAdmin || isParentAdminInherited}
+                        title={isParentAdminInherited ? "Parent store admins always remain admins in all branches" : undefined}
                         onChange={(e) => changeRole.mutate({ id: m.id, role: e.target.value })}
                         style={{
                           background: roleMeta.bg,
                           color: roleMeta.text,
                           borderColor: `color-mix(in srgb, ${roleMeta.text} 30%, transparent)`,
+                          cursor: isParentAdminInherited ? "not-allowed" : "pointer",
                         }}
                       >
                         {ROLES.map((r) => (
@@ -280,9 +343,11 @@ export function StaffSettingsTab() {
                         <button
                           type="button"
                           className="category-action-btn btn-danger"
-                          title={`Remove ${m.name ?? "staff member"} from this store`}
-                          disabled={removeMember.isPending}
+                          title={isParentAdminInherited ? "Parent store admins cannot be removed from a branch" : `Remove ${m.name ?? "staff member"} from this store`}
+                          disabled={removeMember.isPending || isParentAdminInherited}
+                          style={{ opacity: isParentAdminInherited ? 0.35 : 1, cursor: isParentAdminInherited ? "not-allowed" : "pointer" }}
                           onClick={() => {
+                            if (isParentAdminInherited) return;
                             if (window.confirm(`Remove ${m.name ?? m.email} from store staff?`)) {
                               removeMember.mutate(m.id);
                             }

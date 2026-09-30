@@ -1,0 +1,777 @@
+/* ==========================================================================
+   OmniPOS Super Admin - Executive Platform Suite Stylesheet
+   ========================================================================== */
+
+/* Platform Page Outer & Headers */
+.platform-page {
+  animation: platform-fade-in 180ms ease-out;
+}
+
+@keyframes platform-fade-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.platform-page-header {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.platform-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-text);
+  margin-bottom: 0.25rem;
+}
+
+.platform-scope-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 9999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid rgba(7, 103, 222, 0.18);
+  box-shadow: 0 2px 6px rgba(7, 103, 222, 0.08);
+}
+
+/* Executive Alert / Maintenance Banner */
+.platform-alert-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.2rem;
+  border-radius: var(--radius);
+  margin-bottom: 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1px solid;
+  animation: platform-fade-in 200ms ease;
+}
+
+.platform-alert-banner.banner-danger {
+  background: var(--danger-soft);
+  border-color: rgba(220, 38, 38, 0.3);
+  color: var(--danger);
+}
+
+.platform-alert-banner.banner-warn {
+  background: var(--warn-soft);
+  border-color: rgba(217, 119, 6, 0.3);
+  color: var(--warn);
+}
+
+.platform-alert-banner.banner-info {
+  background: var(--accent-soft);
+  border-color: rgba(7, 103, 222, 0.25);
+  color: var(--accent-text);
+}
+
+.platform-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.platform-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 0 currentColor;
+  animation: platform-pulse 1.8s infinite;
+}
+
+@keyframes platform-pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 currentColor; }
+  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(0,0,0,0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0,0,0,0); }
+}
+
+/* Executive KPI Grid & Bento Cards */
+.platform-kpi-bento {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 1.4rem;
+}
+
+.platform-kpi-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.platform-kpi-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: transparent;
+  transition: background-color 140ms ease;
+}
+
+.platform-kpi-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-text);
+  box-shadow: var(--shadow-md);
+}
+
+.platform-kpi-card:hover::after {
+  background: var(--accent-text);
+}
+
+.platform-kpi-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.platform-kpi-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.platform-kpi-icon-wrap {
+  display: grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 0.55rem;
+  background: var(--panel-2);
+  color: var(--accent-text);
+  border: 1px solid var(--line);
+}
+
+.platform-kpi-value {
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--text-strong);
+  letter-spacing: -0.02em;
+}
+
+.platform-kpi-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.platform-kpi-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 9999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.platform-kpi-badge.badge-ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.platform-kpi-badge.badge-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.platform-kpi-badge.badge-info {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+/* Executive Section Containers */
+.platform-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.1rem;
+  margin-bottom: 1.4rem;
+}
+
+.platform-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 1.15rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.platform-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.platform-card-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 750;
+  color: var(--text-strong);
+}
+
+.platform-card-header p {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* Progress / Health Bars */
+.platform-health-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.platform-health-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.platform-health-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--text-strong);
+}
+
+.platform-health-label span.metric {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.platform-progress-track {
+  height: 7px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.platform-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent-text);
+  transition: width 300ms ease;
+}
+
+.platform-progress-fill.fill-ok { background: var(--ok); }
+.platform-progress-fill.fill-warn { background: var(--warn); }
+.platform-progress-fill.fill-danger { background: var(--danger); }
+
+/* Executive Filter Toolbars */
+.platform-toolbar-pro {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin-bottom: 1rem;
+}
+
+.platform-toolbar-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  flex: 1;
+}
+
+.platform-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.platform-chip-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.platform-chip {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  border-radius: 9999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.platform-chip:hover {
+  border-color: var(--accent-text);
+  color: var(--text-strong);
+}
+
+.platform-chip.active {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-color: rgba(7, 103, 222, 0.4);
+  font-weight: 700;
+}
+
+/* Data Tables & Ledger */
+.platform-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.platform-table-pro {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.82rem;
+}
+
+.platform-table-pro th {
+  padding: 0.75rem 0.9rem;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.platform-table-pro td {
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-strong);
+  vertical-align: middle;
+}
+
+.platform-table-pro tr:last-child td {
+  border-bottom: none;
+}
+
+.platform-table-pro tbody tr {
+  transition: background-color 100ms ease;
+}
+
+.platform-table-pro tbody tr:hover {
+  background-color: var(--panel-2);
+}
+
+/* Audit Log Action Badges */
+.audit-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: -0.01em;
+}
+
+.audit-badge.badge-store { background: rgba(7, 103, 222, 0.12); color: #0767de; border: 1px solid rgba(7, 103, 222, 0.25); }
+.audit-badge.badge-branch { background: rgba(139, 92, 246, 0.12); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.25); }
+.audit-badge.badge-device { background: rgba(14, 165, 233, 0.12); color: #0284c7; border: 1px solid rgba(14, 165, 233, 0.25); }
+.audit-badge.badge-plan { background: rgba(16, 185, 129, 0.12); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.25); }
+.audit-badge.badge-sub { background: rgba(245, 158, 11, 0.12); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.25); }
+.audit-badge.badge-user { background: rgba(236, 72, 153, 0.12); color: #ec4899; border: 1px solid rgba(236, 72, 153, 0.25); }
+.audit-badge.badge-default { background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); }
+
+/* Audit JSON Diff Inspector */
+.audit-inspect-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--accent-text);
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.audit-inspect-btn:hover {
+  background: var(--surface);
+  border-color: var(--accent-text);
+}
+
+.audit-diff-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 0.8rem;
+}
+
+.audit-diff-box {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  overflow: hidden;
+}
+
+.audit-diff-title {
+  padding: 0.45rem 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.audit-diff-content {
+  padding: 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--text-strong);
+  overflow-x: auto;
+  max-height: 280px;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* Subscription Plans Bento Cards */
+.platform-plans-deck {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.4rem;
+}
+
+.platform-tier-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 1.35rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+}
+
+.platform-tier-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-text);
+  box-shadow: var(--shadow-md);
+}
+
+.platform-tier-card.tier-archived {
+  opacity: 0.65;
+  background: var(--panel-2);
+}
+
+.platform-tier-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.platform-tier-name {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-strong);
+  margin: 0;
+}
+
+.platform-tier-slug {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+}
+
+.platform-tier-pricing {
+  margin: 0.5rem 0 0.8rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.platform-tier-amount {
+  font-size: 1.85rem;
+  font-weight: 850;
+  color: var(--text-strong);
+  line-height: 1;
+}
+
+.platform-tier-period {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.platform-tier-desc {
+  font-size: 0.82rem;
+  color: var(--muted);
+  min-height: 2.2rem;
+  margin: 0 0 0.9rem;
+  line-height: 1.4;
+}
+
+.platform-limits-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 1.1rem;
+}
+
+.platform-limit-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  font-size: 0.72rem;
+  color: var(--text-strong);
+}
+
+.platform-limit-tag b {
+  color: var(--accent-text);
+}
+
+.platform-tier-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--line);
+  margin-top: auto;
+}
+
+.platform-tier-subs {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+/* Settings Form Sections & Modern Toggle Switch */
+.platform-settings-grid {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.platform-setting-card {
+  padding: 1.25rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.platform-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.platform-setting-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  max-width: 65%;
+}
+
+.platform-setting-meta h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.platform-setting-meta p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* Modern iOS / Material style toggle switch */
+.platform-switch {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+.platform-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.platform-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background-color: var(--panel-2);
+  border: 1px solid var(--line);
+  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 999px;
+}
+
+.platform-slider::before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.platform-switch input:checked + .platform-slider {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+.platform-switch input:checked + .platform-slider::before {
+  transform: translateX(22px);
+}
+
+.platform-switch input:focus-visible + .platform-slider {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Form input group for setting text/presets */
+.platform-input-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.platform-input-group select,
+.platform-input-group input {
+  min-width: 160px;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.82rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text-strong);
+}
+
+/* Print/PDF Export Styles for Super Admin */
+@media print {
+  .platform-page-header .page-actions,
+  .platform-toolbar-pro,
+  .platform-row-actions,
+  .audit-inspect-btn,
+  .no-print {
+    display: none !important;
+  }
+
+  .platform-page {
+    animation: none;
+    padding: 0 !important;
+  }
+
+  .platform-table-pro {
+    font-size: 9pt;
+  }
+}
+
+/* Responsive Breakpoints */
+@media (max-width: 900px) {
+  .platform-grid-2 {
+    grid-template-columns: 1fr;
+  }
+  .audit-diff-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .platform-kpi-bento {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .platform-setting-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  .platform-setting-meta {
+    max-width: 100%;
+  }
+  .platform-toolbar-pro {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .platform-toolbar-left,
+  .platform-toolbar-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

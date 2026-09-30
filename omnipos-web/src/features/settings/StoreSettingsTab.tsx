@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Building2,
@@ -11,10 +11,13 @@ import {
   AlertCircle,
   Calculator,
   ShieldCheck,
+  WifiOff,
 } from "lucide-react";
 
 import { api } from "@/api/client";
+import { formatMoney } from "@/features/pos/cart";
 import { useSession } from "@/state/session";
+import { useSync } from "@/state/sync";
 import { toast } from "@/state/toast";
 
 export interface StoreSettings {
@@ -34,16 +37,65 @@ interface StoreSettingsTabProps {
   canEdit: boolean;
 }
 
+export const CURRENCY_OPTIONS = [
+  { code: "GHS", label: "GHS — Ghanaian Cedi (GH₵)" },
+  { code: "USD", label: "USD — US Dollar ($)" },
+  { code: "EUR", label: "EUR — Euro (€)" },
+  { code: "GBP", label: "GBP — British Pound (£)" },
+  { code: "NGN", label: "NGN — Nigerian Naira (₦)" },
+  { code: "KES", label: "KES — Kenyan Shilling (KSh)" },
+  { code: "ZAR", label: "ZAR — South African Rand (R)" },
+  { code: "CAD", label: "CAD — Canadian Dollar ($)" },
+  { code: "AUD", label: "AUD — Australian Dollar ($)" },
+  { code: "CNY", label: "CNY — Chinese Yuan (¥)" },
+  { code: "INR", label: "INR — Indian Rupee (₹)" },
+  { code: "JPY", label: "JPY — Japanese Yen (¥)" },
+  { code: "AED", label: "AED — UAE Dirham (د.إ)" },
+];
+
+export const TIMEZONE_OPTIONS = [
+  { value: "Africa/Accra", label: "Africa/Accra (GMT+0 / GMT)" },
+  { value: "UTC", label: "UTC (Coordinated Universal Time)" },
+  { value: "Africa/Lagos", label: "Africa/Lagos (GMT+1 / WAT)" },
+  { value: "Africa/Nairobi", label: "Africa/Nairobi (GMT+3 / EAT)" },
+  { value: "Africa/Johannesburg", label: "Africa/Johannesburg (GMT+2 / SAST)" },
+  { value: "Africa/Cairo", label: "Africa/Cairo (GMT+2 / EET)" },
+  { value: "Africa/Casablanca", label: "Africa/Casablanca (GMT+1 / WEST)" },
+  { value: "Europe/London", label: "Europe/London (GMT+0 / BST)" },
+  { value: "Europe/Paris", label: "Europe/Paris (CET / CEST)" },
+  { value: "Europe/Berlin", label: "Europe/Berlin (CET / CEST)" },
+  { value: "America/New_York", label: "America/New_York (EST / EDT)" },
+  { value: "America/Chicago", label: "America/Chicago (CST / CDT)" },
+  { value: "America/Denver", label: "America/Denver (MST / MDT)" },
+  { value: "America/Los_Angeles", label: "America/Los_Angeles (PST / PDT)" },
+  { value: "America/Toronto", label: "America/Toronto (EST / EDT)" },
+  { value: "America/Sao_Paulo", label: "America/Sao_Paulo (BRT)" },
+  { value: "Asia/Dubai", label: "Asia/Dubai (GST+4)" },
+  { value: "Asia/Riyadh", label: "Asia/Riyadh (AST+3)" },
+  { value: "Asia/Singapore", label: "Asia/Singapore (SGT+8)" },
+  { value: "Asia/Hong_Kong", label: "Asia/Hong_Kong (HKT+8)" },
+  { value: "Asia/Tokyo", label: "Asia/Tokyo (JST+9)" },
+  { value: "Australia/Sydney", label: "Australia/Sydney (AEST / AEDT)" },
+];
+
 export function StoreSettingsTab({ settings, canEdit }: StoreSettingsTabProps) {
   const queryClient = useQueryClient();
   const selectStore = useSession((s) => s.selectStore);
   const storeId = useSession((s) => s.storeId);
+  const isOnline = useSync((s) => s.online);
+
+  // Cache settings in localStorage for offline availability
+  useEffect(() => {
+    if (settings && settings.id) {
+      localStorage.setItem(`omnipos_store_settings_${settings.id}`, JSON.stringify(settings));
+    }
+  }, [settings]);
 
   const [form, setForm] = useState({
     name: settings.name,
     email: settings.email ?? "",
-    currency: settings.currency,
-    timezone: settings.timezone,
+    currency: settings.currency || "GHS",
+    timezone: settings.timezone || "Africa/Accra",
     tax_rate: settings.tax_rate ?? "0",
     vat_rate: settings.vat_rate ?? "0",
     service_rate: settings.service_rate ?? "0",
@@ -62,8 +114,11 @@ export function StoreSettingsTab({ settings, canEdit }: StoreSettingsTabProps) {
         vat_rate: Number(form.vat_rate),
         service_rate: Number(form.service_rate),
       }),
-    onSuccess: async () => {
+    onSuccess: async (res) => {
       setSaved(true);
+      if (res?.data && res.data.id) {
+        localStorage.setItem(`omnipos_store_settings_${res.data.id}`, JSON.stringify(res.data));
+      }
       toast.success("Store and tax settings saved successfully.");
       await queryClient.invalidateQueries({ queryKey: ["store-settings"] });
       if (storeId) await selectStore(storeId);
@@ -84,19 +139,35 @@ export function StoreSettingsTab({ settings, canEdit }: StoreSettingsTabProps) {
     },
   });
 
-  // Calculate live breakdown for sample $100 sale
-  const sampleBase = 100;
+  // Calculate live breakdown for sample cart using store selected currency
+  const curr = form.currency || "GHS";
+  const sampleBaseMinor = 100 * 100; // 100.00
   const taxPct = Math.max(0, Number(form.tax_rate) || 0);
   const vatPct = Math.max(0, Number(form.vat_rate) || 0);
   const servicePct = Math.max(0, Number(form.service_rate) || 0);
 
-  const taxAmount = (sampleBase * taxPct) / 100;
-  const vatAmount = (sampleBase * vatPct) / 100;
-  const serviceAmount = (sampleBase * servicePct) / 100;
-  const sampleTotal = sampleBase + taxAmount + vatAmount + serviceAmount;
+  const taxAmountMinor = Math.round((sampleBaseMinor * taxPct) / 100);
+  const vatAmountMinor = Math.round((sampleBaseMinor * vatPct) / 100);
+  const serviceAmountMinor = Math.round((sampleBaseMinor * servicePct) / 100);
+  const sampleTotalMinor = sampleBaseMinor + taxAmountMinor + vatAmountMinor + serviceAmountMinor;
 
   return (
     <div className="settings-tab-pane">
+      {!isOnline && (
+        <div
+          className="action-alert-banner alert-warn-theme"
+          role="status"
+          style={{ marginBottom: "1rem" }}
+        >
+          <div className="alert-left-content">
+            <WifiOff size={16} />
+            <span>
+              <strong>Offline Mode:</strong> Store configuration is displayed from local device cache. Settings updates require server reconnection.
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="settings-card">
         <div className="settings-card-header">
           <div className="settings-title-group">
@@ -120,7 +191,7 @@ export function StoreSettingsTab({ settings, canEdit }: StoreSettingsTabProps) {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (canEdit) save.mutate();
+            if (canEdit && isOnline) save.mutate();
           }}
           className="settings-form-grid"
         >
@@ -168,7 +239,7 @@ export function StoreSettingsTab({ settings, canEdit }: StoreSettingsTabProps) {
             </span>
           </div>
 
-          {/* Currency */}
+          {/* Currency Populated Dropdown List */}
           <div className="settings-field-group">
             <label className="settings-label" htmlFor="s-currency">
               Store Currency Code
@@ -177,21 +248,30 @@ export function StoreSettingsTab({ settings, canEdit }: StoreSettingsTabProps) {
               <span className="settings-input-icon">
                 <Coins size={16} />
               </span>
-              <input
+              <select
                 id="s-currency"
                 className="settings-input has-icon"
-                placeholder="USD, GHS, EUR, GBP…"
-                maxLength={5}
                 required
                 {...field("currency")}
-              />
+              >
+                {!CURRENCY_OPTIONS.some((c) => c.code === form.currency) && form.currency && (
+                  <option value={form.currency}>
+                    {form.currency} — Current Configured Currency
+                  </option>
+                )}
+                {CURRENCY_OPTIONS.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
             </div>
             <span className="settings-field-hint">
               Used for formatting all sales, drawer floats, and profit metrics
             </span>
           </div>
 
-          {/* Timezone */}
+          {/* Timezone Populated Dropdown List */}
           <div className="settings-field-group">
             <label className="settings-label" htmlFor="s-tz">
               Operating Timezone
@@ -200,13 +280,23 @@ export function StoreSettingsTab({ settings, canEdit }: StoreSettingsTabProps) {
               <span className="settings-input-icon">
                 <Globe2 size={16} />
               </span>
-              <input
+              <select
                 id="s-tz"
                 className="settings-input has-icon"
-                placeholder="UTC, Africa/Accra, America/New_York…"
                 required
                 {...field("timezone")}
-              />
+              >
+                {!TIMEZONE_OPTIONS.some((tz) => tz.value === form.timezone) && form.timezone && (
+                  <option value={form.timezone}>
+                    {form.timezone} — Current Configured Timezone
+                  </option>
+                )}
+                {TIMEZONE_OPTIONS.map((tz) => (
+                  <option key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </option>
+                ))}
+              </select>
             </div>
             <span className="settings-field-hint">
               Determines daily shift boundaries, audit timestamps, and sales reporting
@@ -292,48 +382,48 @@ export function StoreSettingsTab({ settings, canEdit }: StoreSettingsTabProps) {
             </div>
           </div>
 
-          {/* Interactive Calculator Preview Card */}
+          {/* Interactive Calculator Preview Card using Store Selected Currency */}
           <div className="tax-preview-panel">
             <div className="tax-preview-header">
               <span className="tax-preview-title">
                 <Calculator size={16} /> Live Receipt Calculation Simulator
               </span>
               <span className="settings-pill-badge" style={{ fontSize: "0.68rem" }}>
-                Sample ${sampleBase} Cart
+                Sample {formatMoney(sampleBaseMinor, curr)} Cart
               </span>
             </div>
 
             <div className="tax-preview-receipt">
               <div className="receipt-line">
                 <span>Items Subtotal</span>
-                <strong>${sampleBase.toFixed(2)}</strong>
+                <strong>{formatMoney(sampleBaseMinor, curr)}</strong>
               </div>
 
               {taxPct > 0 && (
                 <div className="receipt-line">
                   <span>Tax ({taxPct.toFixed(1)}%)</span>
-                  <strong>+${taxAmount.toFixed(2)}</strong>
+                  <strong>+{formatMoney(taxAmountMinor, curr)}</strong>
                 </div>
               )}
 
               {vatPct > 0 && (
                 <div className="receipt-line">
                   <span>VAT ({vatPct.toFixed(1)}%)</span>
-                  <strong>+${vatAmount.toFixed(2)}</strong>
+                  <strong>+{formatMoney(vatAmountMinor, curr)}</strong>
                 </div>
               )}
 
               {servicePct > 0 && (
                 <div className="receipt-line">
                   <span>Service ({servicePct.toFixed(1)}%)</span>
-                  <strong>+${serviceAmount.toFixed(2)}</strong>
+                  <strong>+{formatMoney(serviceAmountMinor, curr)}</strong>
                 </div>
               )}
 
               {taxPct === 0 && vatPct === 0 && servicePct === 0 && (
                 <div className="receipt-line" style={{ fontStyle: "italic", opacity: 0.75 }}>
                   <span>No tax/levies configured</span>
-                  <span>$0.00</span>
+                  <span>{formatMoney(0, curr)}</span>
                 </div>
               )}
 
@@ -341,7 +431,7 @@ export function StoreSettingsTab({ settings, canEdit }: StoreSettingsTabProps) {
 
               <div className="receipt-total-line">
                 <span>Customer Total</span>
-                <span className="receipt-total-val">${sampleTotal.toFixed(2)}</span>
+                <span className="receipt-total-val">{formatMoney(sampleTotalMinor, curr)}</span>
               </div>
             </div>
           </div>
@@ -375,10 +465,11 @@ export function StoreSettingsTab({ settings, canEdit }: StoreSettingsTabProps) {
             <button
               type="button"
               className="settings-btn-primary"
-              disabled={save.isPending}
+              disabled={save.isPending || !isOnline}
               onClick={() => save.mutate()}
+              title={!isOnline ? "Re-connect to internet to save settings" : "Save configuration"}
             >
-              {save.isPending ? "Saving changes…" : "Save Store Configuration"}
+              {save.isPending ? "Saving changes…" : !isOnline ? "Offline (Read Only)" : "Save Store Configuration"}
             </button>
           </div>
         )}

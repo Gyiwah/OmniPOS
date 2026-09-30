@@ -61,6 +61,7 @@ export function buildReceipt(order: LocalOrder, context: ReceiptContext): Uint8A
     .line(new Date(order.client_created_at).toLocaleString());
 
   if (context.cashierName) p.line(`Served by ${context.cashierName}`);
+  p.line(`Currency: ${context.currency}`);
 
   /*
    * A reprint says so, prominently. Two identical receipts for one sale is how

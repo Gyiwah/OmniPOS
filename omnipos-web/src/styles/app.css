@@ -265,19 +265,83 @@ input:disabled, select:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .brand {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 0.65rem;
   padding: 0.25rem 0.4rem 1rem;
   font-size: 1.08rem;
   color: var(--nav-text);
   min-width: 0;
   border-bottom: 1px solid var(--line);
 }
-.brand strong { letter-spacing: -0.02em; }
+.brand-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  width: 100%;
+}
+.brand-text-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+}
+.brand strong { font-weight: 800; letter-spacing: -0.03em; color: var(--nav-text); }
 .brand .muted { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--nav-muted); }
+.brand .brand-store-name {
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--nav-muted);
+  padding: 0.1rem 0.2rem;
+}
 .brand-mark { color: var(--accent-text); flex: none; }
-.brand strong { font-weight: 800; letter-spacing: -0.03em; }
 .brand-image { width: 2rem; height: 2rem; flex: none; object-fit: contain; border-radius: 0.55rem; box-shadow: 0 4px 12px rgba(7, 103, 222, 0.16); }
+
+.shell-currency-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  border-radius: var(--radius-pill);
+  background: var(--cta-soft);
+  color: var(--cta);
+  border: 1px solid rgba(254, 116, 3, 0.4);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.shell-currency-pill .pill-sym {
+  font-size: 0.76rem;
+  opacity: 0.95;
+}
+.shell-currency-pill .pill-code {
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+}
+
+.dashboard-currency-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-pill);
+  background: var(--cta-soft);
+  color: var(--cta);
+  font-size: 0.76rem;
+  font-weight: 600;
+  border: 1px solid rgba(254, 116, 3, 0.35);
+  white-space: nowrap;
+}
+.dashboard-currency-tag strong {
+  font-weight: 750;
+  color: var(--text-strong);
+}
 
 .sr-only {
   position: absolute;
